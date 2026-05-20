@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect  } from 'react';
 import MainTerminal from './components/MainTerminal';
-const API_BASE = ''; 
+const API_BASE = 'http://38.180.137.122:8000';
 const MOCK_STOCKS = ["BTC/USD", "ETH/USD", "AAPL", "TSLA", "NVDA", "AMZN", "GOOGL", "MSFT", "META", "NFLX", "SOL/USD", "XRP/USD", "AMD", "PLTR", "COIN"];
 
 export default function App() {
