@@ -17,7 +17,11 @@ export default function App() {
   const [assetSettings, setAssetSettings] = useState({}); 
   const [tradingProfile, setTradingProfile] = useState({ experience: 'Beginner (0-1 yrs)', frequency: 'Daily' });
   const [searchTerm, setSearchTerm] = useState('');
-
+const filteredStocks = useMemo(() => {
+    return MOCK_STOCKS.filter(stock => 
+      stock.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [searchTerm]);
   // עדכון ה-LocalStorage בכל פעם שהערכים משתנים
   useEffect(() => {
     localStorage.setItem('currentView', currentView);
@@ -85,7 +89,7 @@ export default function App() {
         style={{ width: '100%', padding: '1rem', background: '#111', border: '1px solid #333', borderRadius: '12px', color: '#fff', marginBottom: '1rem', outline: 'none' }}
       />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '10px', maxHeight: '250px', overflowY: 'auto', padding: '10px' }}>
-        {filteredStocks.map(s => (
+        {filteredStocks?.map(s => (
           <div key={s} onClick={() => toggleAsset(s)} style={{ 
             padding: '10px', borderRadius: '8px', cursor: 'pointer', textAlign: 'center', fontSize: '0.8rem', border: '1px solid',
             borderColor: selectedAssets.includes(s) ? '#ff3333' : '#333',
