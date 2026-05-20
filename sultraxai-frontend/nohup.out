@@ -7,3 +7,12 @@
 
   ➜  Local:   http://localhost:5173/
   ➜  Network: http://38.180.137.122:5173/
+
+> sultraxai-frontend@0.0.0 dev
+> vite --host 0.0.0.0
+
+
+  VITE v8.0.13  ready in 513 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: http://38.180.137.122:5173/
