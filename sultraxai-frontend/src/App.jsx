@@ -37,8 +37,9 @@ const filteredStocks = useMemo(() => {
     localStorage.setItem('selectedAssets', JSON.stringify(selectedAssets));
   }, [selectedAssets]);
 
-  const handleRegisterSuccess = (id) => {
+ const handleRegisterSuccess = (id, email) => {
     setUserId(id);
+    setPendingEmail(email); // שומר את המייל
     setSelectedAssets([]);
     setOnboardingStep(1);
     setCurrentView('verify');
@@ -185,11 +186,31 @@ const filteredStocks = useMemo(() => {
 
           {currentView === 'verify' && (
             <div style={{ textAlign: 'center', color: '#fff', padding: '2rem', border: '1px solid #333', borderRadius: '24px', background: 'rgba(5,5,5,0.7)' }}>
-              <h2 style={{ fontSize: '2rem' }}>Registration Successful!</h2>
-              <p style={{ color: '#aaa', margin: '1rem 0' }}>Please check your email to verify your account.</p>
-              <button onClick={() => setCurrentView('signin')} style={{ background: '#ff3333', padding: '0.8rem 2rem', borderRadius: '50px', border: 'none', color: '#fff', cursor: 'pointer' }}>
-                Back to Sign In
-              </button>
+              <h2 style={{ fontSize: '2rem' }}>Verify Account</h2>
+              <p style={{ color: '#aaa', margin: '1rem 0' }}>Enter the 6-digit code sent to {pendingEmail}</p>
+              <input 
+                type="text" 
+                maxLength="6" 
+                placeholder="000000" 
+                style={{ width: '100%', padding: '1rem', background: '#000', border: '1px solid #333', color: '#fff', textAlign: 'center', fontSize: '1.5rem', letterSpacing: '0.5rem', marginBottom: '1rem', borderRadius: '12px', outline: 'none' }}
+                onChange={(e) => {
+                  if(e.target.value.length === 6) {
+                    fetch(`${API_BASE}/api/verify-code`, {
+                      method: 'POST',
+                      headers: {'Content-Type': 'application/json'},
+                      body: JSON.stringify({ email: pendingEmail, code: e.target.value })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                      if (data.status === 'success') { 
+                        alert("Verified! You can now sign in."); 
+                        setCurrentView('signin'); 
+                      }
+                      else alert("Invalid code, please try again.");
+                    });
+                  }
+                }}
+              />
             </div>
           )}
 
