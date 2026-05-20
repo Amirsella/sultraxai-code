@@ -270,7 +270,7 @@ function SignUpForm({ onRegisterSuccess, setErrorMessage, errorMessage }) {
     setErrorMessage('');
 
     try {
-      const res = await fetch('/api/register', {
+      const res = await fetch('http://38.180.137.122:8000/api/register',{
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
