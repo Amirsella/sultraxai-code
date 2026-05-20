@@ -14,6 +14,7 @@ export default function App() {
 
   const [onboardingStep, setOnboardingStep] = useState(1);
   const [errorMessage, setErrorMessage] = useState('');
+  const [pendingEmail, setPendingEmail] = useState(''); // <--- הוסף את השורה הזו כאן
   const [assetSettings, setAssetSettings] = useState({}); 
   const [tradingProfile, setTradingProfile] = useState({ experience: 'Beginner (0-1 yrs)', frequency: 'Daily' });
   const [searchTerm, setSearchTerm] = useState('');
@@ -36,8 +37,9 @@ const filteredStocks = useMemo(() => {
     localStorage.setItem('selectedAssets', JSON.stringify(selectedAssets));
   }, [selectedAssets]);
 
-  const handleRegisterSuccess = (id) => {
+  const handleRegisterSuccess = (id, email) => {
     setUserId(id);
+    setPendingEmail(email); // שומר את המייל שנרשם
     setSelectedAssets([]);
     setOnboardingStep(1);
     setCurrentView('verify');
@@ -280,7 +282,7 @@ function SignUpForm({ onRegisterSuccess, setErrorMessage, errorMessage }) {
     setErrorMessage('');
 
     try {
-      const res = await fetch('http://38.180.137.122:8000/api/register',{
+      const res = await fetch('http://38.180.137.122:8000/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -291,11 +293,20 @@ function SignUpForm({ onRegisterSuccess, setErrorMessage, errorMessage }) {
           password: password
         })
       });
+      
       const data = await res.json();
-      if (res.ok) onRegisterSuccess(data.user_id);
-      else setErrorMessage(data.detail);
-    } catch (err) { setErrorMessage("Registration connection error."); }
+      
+      if (res.ok) {
+        onRegisterSuccess(data.user_id, email.trim());
+      } else {
+        setErrorMessage(data.detail);
+      }
+    } catch (err) {
+      setErrorMessage("Registration connection error.");
+    }
   };
+
+  const inputStyle = { padding: '1rem', background: '#111', border: '1px solid #222', borderRadius: '12px', color: '#fff', outline: 'none' };
 
   return (
     <div style={{ width: '450px', background: 'rgba(5, 5, 5, 0.7)', padding: '2.5rem', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)', backdropFilter: 'blur(10px)' }}>
@@ -306,8 +317,7 @@ function SignUpForm({ onRegisterSuccess, setErrorMessage, errorMessage }) {
         <input type="text" placeholder="First Name" value={firstName} onChange={e => setFirstName(e.target.value)} style={inputStyle} required />
         <input type="text" placeholder="Full Name" value={fullName} onChange={e => setFullName(e.target.value)} style={inputStyle} required />
         <input type="email" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} required />
-        {email && !isEmailValid(email) && <span style={{ color: '#ff3333', fontSize: '0.8rem', marginTop: '-0.5rem' }}>Please enter a valid email format</span>}
-
+        
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <select value={countryCode} onChange={e => setCountryCode(e.target.value)} style={{ ...inputStyle, width: '38%', cursor: 'pointer' }}>
             <option value="+972">🇮🇱 +972</option>
@@ -318,31 +328,17 @@ function SignUpForm({ onRegisterSuccess, setErrorMessage, errorMessage }) {
         </div>
         
         <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} style={inputStyle} required />
-        
-        {password && (
-          <div style={{ fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.2rem', paddingLeft: '0.25rem', color: '#aaa' }}>
-            <span style={{ color: pwdCriteria.hasMinLength ? '#44ff44' : '#ff3333' }}>✓ Minimum 8 characters</span>
-            <span style={{ color: pwdCriteria.hasUppercase ? '#44ff44' : '#ff3333' }}>✓ At least one uppercase letter (A-Z)</span>
-            <span style={{ color: pwdCriteria.hasSpecialChar ? '#44ff44' : '#ff3333' }}>✓ At least one special character (!@#$)</span>
-          </div>
-        )}
-
         <input type="password" placeholder="Confirm Password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} style={inputStyle} required />
-        {password && confirmPassword && password !== confirmPassword && (
-          <span style={{ color: '#ff3333', fontSize: '0.8rem' }}>Passwords do not match</span>
-        )}
-
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#aaa', cursor: 'pointer', marginTop: '0.5rem' }}>
+        
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#aaa', cursor: 'pointer' }}>
           <input type="checkbox" checked={agreeTerms} onChange={e => setAgreeTerms(e.target.checked)} style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#ff3333' }} />
-          I agree to the Terms of Service & Privacy Policy
+          I agree to the Terms of Service
         </label>
         
-        <button type="submit" disabled={!isFormValid} style={{ backgroundColor: isFormValid ? '#ff3333' : '#331111', color: isFormValid ? '#fff' : '#666', padding: '1rem', border: 'none', borderRadius: '12px', fontWeight: '600', cursor: isFormValid ? 'pointer' : 'not-allowed', marginTop: '0.5rem', transition: '0.3s' }}>
+        <button type="submit" disabled={!isFormValid} style={{ backgroundColor: isFormValid ? '#ff3333' : '#331111', color: isFormValid ? '#fff' : '#666', padding: '1rem', border: 'none', borderRadius: '12px', fontWeight: '600', cursor: isFormValid ? 'pointer' : 'not-allowed' }}>
           Register & Continue
         </button>
       </form>
     </div>
   );
 }
-
-const inputStyle = { padding: '1rem', background: '#111', border: '1px solid #222', borderRadius: '12px', color: '#fff', outline: 'none' };
