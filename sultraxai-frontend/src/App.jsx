@@ -17,11 +17,14 @@ export default function App() {
   const [assetSettings, setAssetSettings] = useState({}); 
   const [tradingProfile, setTradingProfile] = useState({ experience: 'Beginner (0-1 yrs)', frequency: 'Daily' });
   const [searchTerm, setSearchTerm] = useState('');
-const filteredStocks = useMemo(() => {
+
+  // סינון רשימת המניות לפי מה שהמשתמש מקליד בתיבת החיפוש
+  const filteredStocks = useMemo(() => {
     return MOCK_STOCKS.filter(stock => 
       stock.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [searchTerm]);
+
   // עדכון ה-LocalStorage בכל פעם שהערכים משתנים
   useEffect(() => {
     localStorage.setItem('currentView', currentView);
@@ -40,7 +43,7 @@ const filteredStocks = useMemo(() => {
     setUserId(id);
     setSelectedAssets([]);
     setOnboardingStep(1);
-    setCurrentView('onboarding');
+    setCurrentView('verify'); // מעביר למסך אימות קוד במקום דילוג
   };
 
   const handleSignOut = () => {
@@ -182,6 +185,15 @@ const filteredStocks = useMemo(() => {
             <SignUpForm onRegisterSuccess={handleRegisterSuccess} setErrorMessage={setErrorMessage} errorMessage={errorMessage} />
           )}
 
+          {currentView === 'verify' && (
+            <VerificationForm 
+              userId={userId} 
+              onVerificationSuccess={() => setCurrentView('onboarding')} 
+              setErrorMessage={setErrorMessage} 
+              errorMessage={errorMessage} 
+            />
+          )}
+
           {currentView === 'signin' && (
             <div style={{ width: '400px', background: 'rgba(5, 5, 5, 0.7)', padding: '2.5rem', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)', backdropFilter: 'blur(10px)' }}>
               <h3 style={{ fontSize: '1.8rem', fontWeight: '800', marginBottom: '1.5rem', textAlign: 'center' }}>Sign In</h3>
@@ -198,11 +210,9 @@ const filteredStocks = useMemo(() => {
                   if (res.ok) { 
                     setUserId(data.user_id); 
                     if (data.onboarding_completed) {
-                      // משתמש ותיק - טוענים את המניות שלו ומעבירים ישר לאפליקציה
                       setSelectedAssets(data.assets);
                       setCurrentView('main_app'); 
                     } else {
-                      // משתמש שנרשם אך לא סיים שלבים - מעבירים ל-Onboarding
                       setSelectedAssets([]);
                       setOnboardingStep(1);
                       setCurrentView('onboarding');
@@ -230,7 +240,6 @@ const filteredStocks = useMemo(() => {
 
          {currentView === 'main_app' && (
             <MainTerminal selectedAssets={selectedAssets} onSignOut={handleSignOut} />
-          
           )}
 
         </div>
@@ -329,6 +338,64 @@ function SignUpForm({ onRegisterSuccess, setErrorMessage, errorMessage }) {
         
         <button type="submit" disabled={!isFormValid} style={{ backgroundColor: isFormValid ? '#ff3333' : '#331111', color: isFormValid ? '#fff' : '#666', padding: '1rem', border: 'none', borderRadius: '12px', fontWeight: '600', cursor: isFormValid ? 'pointer' : 'not-allowed', marginTop: '0.5rem', transition: '0.3s' }}>
           Register & Continue
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function VerificationForm({ userId, onVerificationSuccess, setErrorMessage, errorMessage }) {
+  const [code, setCode] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (code.trim().length !== 6) {
+      setErrorMessage("Please enter a valid 6-digit code.");
+      return;
+    }
+    setErrorMessage('');
+
+    try {
+      const res = await fetch('/api/verify-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: userId,
+          code: code.trim()
+        })
+      });
+      const data = await res.json();
+      
+      if (res.ok) {
+        onVerificationSuccess();
+      } else {
+        setErrorMessage(data.detail || "Invalid verification code.");
+      }
+    } catch (err) {
+      setErrorMessage("Verification connection error.");
+    }
+  };
+
+  return (
+    <div style={{ width: '450px', background: 'rgba(5, 5, 5, 0.7)', padding: '2.5rem', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)', backdropFilter: 'blur(10px)' }}>
+      <h3 style={{ fontSize: '1.8rem', fontWeight: '800', marginBottom: '1rem', textAlign: 'center' }}>Verify Your Email</h3>
+      <p style={{ color: '#888', fontSize: '0.9rem', marginBottom: '1.5rem', textAlign: 'center' }}>We've sent a 6-digit verification code to your email address.</p>
+      
+      {errorMessage && <div style={{ color: '#ff3333', backgroundColor: 'rgba(255,51,51,0.1)', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.9rem', textAlign: 'center', border: '1px solid rgba(255,51,51,0.2)' }}>{errorMessage}</div>}
+      
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <input 
+          type="text" 
+          placeholder="Enter 6-Digit Code" 
+          maxLength="6"
+          value={code} 
+          onChange={e => setCode(e.target.value.replace(/\D/g, ''))}
+          style={{ padding: '1rem', background: '#111', border: '1px solid #222', borderRadius: '12px', color: '#fff', outline: 'none', textAlign: 'center', fontSize: '1.5rem', letterSpacing: '5px' }} 
+          required 
+        />
+        
+        <button type="submit" style={{ backgroundColor: '#ff3333', color: '#fff', padding: '1rem', border: 'none', borderRadius: '12px', fontWeight: '600', cursor: 'pointer', marginTop: '0.5rem' }}>
+          Verify & Continue
         </button>
       </form>
     </div>
