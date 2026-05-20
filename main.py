@@ -7,6 +7,10 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 import uvicorn
+import resend
+import random
+resend.api_key = "re_ATcLAiAb_EevVxJgGwMaT81tFvTj8AAER"
+verification_codes = {}
 dist_path = "/root/sultraxai/sultraxai-frontend/dist"
 app = FastAPI()
 
@@ -52,6 +56,15 @@ init_db()
 class UserRegister(BaseModel):
     first_name: str; full_name: str; email: EmailStr; phone: str; password: str
 
+@app.post("/api/verify-code")
+async def verify_code(data: dict):
+    email = data.get('email')
+    code = data.get('code')
+    if verification_codes.get(email) == code:
+        del verification_codes[email]
+        return {"status": "success"}
+    
+    return JSONResponse(status_code=400, content={"detail": "Invalid code"})
 class OnboardingData(BaseModel):
     user_id: int; assets: list; experience: str; frequency: str
 
@@ -70,6 +83,18 @@ async def register(user: UserRegister):
         conn.close()
         return JSONResponse(status_code=400, content={"detail": "User already exists"})
     
+    code = str(random.randint(100000, 999999))
+    verification_codes[user.email.strip()] = code
+    try:
+        resend.Emails.send({
+            "from": "onboarding@resend.dev",
+            "to": user.email.strip(),
+            "subject": "Your Verification Code",
+            "html": f"Your code is: <strong>{code}</strong>"
+        })
+    except Exception as e:
+        print(f"Email error: {e}")
+
     pwd_hash = hash_password(user.password)
     cursor.execute("INSERT INTO users (first_name, full_name, email, phone, password_hash) VALUES (?, ?, ?, ?, ?)",
                    (user.first_name, user.full_name, user.email.strip(), user.phone.strip(), pwd_hash))
@@ -77,6 +102,14 @@ async def register(user: UserRegister):
     conn.commit()
     conn.close()
     return {"status": "success", "user_id": user_id}
+@app.post("/api/verify-code")
+async def verify_code(data: dict):
+    email = data.get('email')
+    code = data.get('code')
+    if verification_codes.get(email) == code:
+        del verification_codes[email]
+        return {"status": "success"}
+    return JSONResponse(status_code=400, content={"detail": "Invalid code"})
 
 @app.post("/api/complete-onboarding")
 async def complete_onboarding(data: OnboardingData):
@@ -129,6 +162,7 @@ async def login(user: UserLogin):
     
     return {"user_id": user_id, "first_name": first_name, "onboarding_completed": has_profile, "assets": assets}
 
+    
 dist_path = "/root/sultraxai/sultraxai-frontend/dist"
 if os.path.exists(dist_path):
     app.mount("/assets", StaticFiles(directory=f"{dist_path}/assets"), name="assets")
