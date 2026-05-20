@@ -182,6 +182,16 @@ const filteredStocks = useMemo(() => {
             <SignUpForm onRegisterSuccess={handleRegisterSuccess} setErrorMessage={setErrorMessage} errorMessage={errorMessage} />
           )}
 
+          {currentView === 'verify' && (
+            <div style={{ textAlign: 'center', color: '#fff', padding: '2rem', border: '1px solid #333', borderRadius: '24px', background: 'rgba(5,5,5,0.7)' }}>
+              <h2 style={{ fontSize: '2rem' }}>Registration Successful!</h2>
+              <p style={{ color: '#aaa', margin: '1rem 0' }}>Please check your email to verify your account.</p>
+              <button onClick={() => setCurrentView('signin')} style={{ background: '#ff3333', padding: '0.8rem 2rem', borderRadius: '50px', border: 'none', color: '#fff', cursor: 'pointer' }}>
+                Back to Sign In
+              </button>
+            </div>
+          )}
+
           {currentView === 'signin' && (
             <div style={{ width: '400px', background: 'rgba(5, 5, 5, 0.7)', padding: '2.5rem', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)', backdropFilter: 'blur(10px)' }}>
               <h3 style={{ fontSize: '1.8rem', fontWeight: '800', marginBottom: '1.5rem', textAlign: 'center' }}>Sign In</h3>
