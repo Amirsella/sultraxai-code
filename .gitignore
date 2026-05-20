@@ -1,0 +1,7 @@
+venv/
+node_modules/
+sultraxai-frontend/node_modules/
+sultraxai-frontend/dist/
+*.pyc
+__pycache__/
+.env
