@@ -24,6 +24,132 @@ const fromFinnhubSym = (finnhub, watchlist) => {
 const fmtPrice = (p) =>
   p?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? '—';
 
+const toTVSymbol = (yahoo) => {
+  const map = { 'BTC-USD':'COINBASE:BTCUSD', 'ETH-USD':'COINBASE:ETHUSD', 'SOL-USD':'COINBASE:SOLUSD', 'XRP-USD':'COINBASE:XRPUSD', 'DOGE-USD':'COINBASE:DOGEUSD', 'BNB-USD':'BINANCE:BNBUSDT' };
+  if (map[yahoo]) return map[yahoo];
+  if (yahoo.endsWith('-USD')) return `BINANCE:${yahoo.slice(0,-4)}USDT`;
+  return yahoo;
+};
+
+const TV_INTERVALS = [
+  { label: '1H', value: '60' },
+  { label: '4H', value: '240' },
+  { label: '1D', value: 'D' },
+  { label: '1W', value: 'W' },
+  { label: '1M', value: 'M' },
+  { label: '1Y', value: '12M' },
+];
+
+function ChartModal({ sym, price, rvol, symAlerts, onClose }) {
+  const [activeInterval, setActiveInterval] = useState('D');
+  const containerId = `tv_${sym.replace(/[^a-zA-Z0-9]/g, '_')}`;
+
+  useEffect(() => {
+    const el = document.getElementById(containerId);
+    if (el) el.innerHTML = '';
+
+    const init = () => {
+      if (!window.TradingView || !document.getElementById(containerId)) return;
+      new window.TradingView.widget({
+        container_id: containerId,
+        symbol: toTVSymbol(sym),
+        interval: activeInterval,
+        theme: 'dark',
+        style: '1',
+        width: '100%',
+        height: 420,
+        hide_side_toolbar: false,
+        allow_symbol_change: false,
+        save_image: false,
+        locale: 'en',
+        backgroundColor: '#070707',
+        gridColor: 'rgba(255,255,255,0.03)',
+        hide_top_toolbar: false,
+      });
+    };
+
+    if (window.TradingView) {
+      init();
+    } else if (!document.getElementById('tv-script')) {
+      const s = document.createElement('script');
+      s.id = 'tv-script';
+      s.src = 'https://s3.tradingview.com/tv.js';
+      s.async = true;
+      s.onload = init;
+      document.head.appendChild(s);
+    } else {
+      const wait = setInterval(() => { if (window.TradingView) { clearInterval(wait); init(); } }, 100);
+    }
+  }, [sym, activeInterval]);
+
+  const p = price;
+  const signals = (symAlerts || []).filter(a => a.type === 'signal').slice(0, 4);
+  const priceEvts = (symAlerts || []).filter(a => a.type === 'price').slice(0, 3);
+
+  return (
+    <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.25rem' }}>
+      <div style={{ background: '#070707', border: '1px solid #1c1c1c', borderRadius: '20px', width: '100%', maxWidth: '1020px', maxHeight: '92vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 80px rgba(0,0,0,0.7)' }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.1rem 1.5rem', borderBottom: '1px solid #111' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ fontWeight: '900', fontSize: '1.25rem', letterSpacing: '0.04em' }}>{sym}</span>
+            {p && <>
+              <span style={{ fontWeight: '800', fontSize: '1.1rem', fontVariantNumeric: 'tabular-nums', color: '#fff' }}>${fmtPrice(p.price)}</span>
+              <span style={{ fontWeight: '700', fontSize: '0.88rem', color: (p.change_pct || 0) >= 0 ? '#44cc44' : '#ff4444' }}>
+                {(p.change_pct || 0) >= 0 ? '+' : ''}{(p.change_pct || 0).toFixed(2)}%
+              </span>
+            </>}
+            {rvol >= 1.5 && (
+              <span style={{ fontSize: '0.65rem', fontWeight: '700', color: rvol >= 3 ? '#ff9900' : '#666', background: rvol >= 3 ? 'rgba(255,153,0,0.1)' : 'rgba(255,255,255,0.04)', padding: '3px 9px', borderRadius: '6px', border: `1px solid ${rvol >= 3 ? 'rgba(255,153,0,0.2)' : '#1a1a1a'}` }}>
+                {rvol >= 5 ? '🔥' : '⚡'} {rvol.toFixed(1)}x VOL
+              </span>
+            )}
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: '1px solid #222', color: '#555', borderRadius: '8px', width: '32px', height: '32px', cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: '0.15s' }}>✕</button>
+        </div>
+
+        {/* Interval bar */}
+        <div style={{ display: 'flex', gap: '4px', padding: '0.6rem 1.5rem', background: '#050505', borderBottom: '1px solid #0d0d0d' }}>
+          {TV_INTERVALS.map(({ label, value }) => (
+            <button key={value} onClick={() => setActiveInterval(value)}
+              style={{ padding: '4px 16px', borderRadius: '7px', border: `1px solid ${activeInterval === value ? '#333' : '#111'}`, background: activeInterval === value ? '#1c1c1c' : 'transparent', color: activeInterval === value ? '#fff' : '#3a3a3a', cursor: 'pointer', fontSize: '0.72rem', fontWeight: activeInterval === value ? '700' : '500', transition: '0.15s' }}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* TradingView chart */}
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <div id={containerId} style={{ width: '100%', height: '420px' }} />
+        </div>
+
+        {/* Recent activity */}
+        {(signals.length > 0 || priceEvts.length > 0) && (
+          <div style={{ borderTop: '1px solid #0d0d0d', padding: '0.85rem 1.5rem', background: '#050505' }}>
+            <div style={{ fontSize: '0.6rem', color: '#2a2a2a', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '0.6rem' }}>Recent Activity</div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {signals.map((a, i) => (
+                <div key={i} style={{ padding: '5px 11px', borderRadius: '8px', background: a.dir === 'buy' ? 'rgba(255,153,0,0.07)' : 'rgba(255,68,68,0.07)', border: `1px solid ${a.dir === 'buy' ? 'rgba(255,153,0,0.18)' : 'rgba(255,68,68,0.18)'}` }}>
+                  <span style={{ fontSize: '0.7rem', color: a.dir === 'buy' ? '#ff9900' : '#ff4444', fontWeight: '700' }}>{a.dir === 'buy' ? '🐋' : '🔴'} {a.strengthLabel}</span>
+                  <span style={{ fontSize: '0.62rem', color: '#444', marginLeft: '7px' }}>{a.score}/100 · {a.time}</span>
+                </div>
+              ))}
+              {priceEvts.map((a, i) => (
+                <div key={i} style={{ padding: '5px 11px', borderRadius: '8px', background: '#0d0d0d', border: '1px solid #1a1a1a' }}>
+                  <span style={{ fontSize: '0.7rem', color: a.pct > 0 ? '#44cc44' : '#ff4444', fontWeight: '700' }}>{a.pct > 0 ? '▲' : '▼'} {Math.abs(a.pct).toFixed(2)}% move</span>
+                  <span style={{ fontSize: '0.62rem', color: '#444', marginLeft: '7px' }}>{a.time}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Sparkline({ sym, prices }) {
   if (!prices || prices.length < 2) {
     return (
@@ -166,6 +292,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
   const [savedCard, setSavedCard] = useState(null);
   const [customValues, setCustomValues] = useState({});
   const [expandedSignal, setExpandedSignal] = useState(null);
+  const [chartSym, setChartSym] = useState(null);
 
   const wsRef = useRef(null);
   const reconnectTimerRef = useRef(null);
@@ -559,6 +686,16 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
         />
       )}
 
+      {chartSym && (
+        <ChartModal
+          sym={chartSym}
+          price={prices[chartSym]}
+          rvol={rvols[chartSym]}
+          symAlerts={alerts.filter(a => a.symbol === chartSym)}
+          onClose={() => setChartSym(null)}
+        />
+      )}
+
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.75rem', paddingTop: '1.5rem' }}>
         <div>
@@ -595,14 +732,15 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
             const rvolStyle = getRvolStyle(rvols[sym]);
 
             return (
-              <div key={sym} style={{ background: cardBg, border: `1px solid ${status.color}22`, borderLeft: `3px solid ${status.color}`, borderRadius: '16px', padding: '1.25rem', backdropFilter: 'blur(12px)', transition: 'background 0.2s ease, border-color 0.4s', animation: 'fadeIn 0.35s ease', boxShadow: status.label === 'ALERT' ? `0 0 24px ${status.color}18, 0 2px 8px rgba(0,0,0,0.4)` : '0 2px 8px rgba(0,0,0,0.3)' }}>
+              <div key={sym} style={{ background: cardBg, border: `1px solid ${status.color}22`, borderLeft: `3px solid ${status.color}`, borderRadius: '16px', padding: '1.25rem', backdropFilter: 'blur(12px)', transition: 'background 0.2s ease, border-color 0.4s', animation: 'fadeIn 0.35s ease', boxShadow: status.label === 'ALERT' ? `0 0 24px ${status.color}18, 0 2px 8px rgba(0,0,0,0.4)` : '0 2px 8px rgba(0,0,0,0.3)', cursor: 'pointer' }}
+                onClick={() => setChartSym(sym)}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
                   <span style={{ fontWeight: '700', fontSize: '0.95rem' }}>{sym}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <span style={{ fontSize: '0.65rem', fontWeight: '700', color: status.color, background: `${status.color}18`, padding: '3px 8px', borderRadius: '20px' }}>
                       {status.label}
                     </span>
-                    <button onClick={() => setExpandedCard(expandedCard === sym ? null : sym)}
+                    <button onClick={e => { e.stopPropagation(); setExpandedCard(expandedCard === sym ? null : sym); }}
                       style={{ background: 'none', border: 'none', color: expandedCard === sym ? '#fff' : '#444', cursor: 'pointer', fontSize: '0.85rem', lineHeight: 1, padding: '2px' }}>
                       ⚙
                     </button>
@@ -633,7 +771,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                 </div>
 
                 {expandedCard === sym && (
-                  <div style={{ marginTop: '0.85rem', paddingTop: '0.85rem', borderTop: '1px solid #1a1a1a' }}>
+                  <div onClick={e => e.stopPropagation()} style={{ marginTop: '0.85rem', paddingTop: '0.85rem', borderTop: '1px solid #1a1a1a' }}>
                     <div style={{ fontSize: '0.65rem', color: '#555', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
                       Alert on move ≥ <span style={{ color: '#fff', fontVariantNumeric: 'tabular-nums' }}>{t}%</span>
                     </div>
