@@ -10,6 +10,7 @@ import email.utils
 import json as _json
 import yfinance as yf
 from concurrent.futures import ThreadPoolExecutor
+import asyncio
 from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -484,6 +485,8 @@ SCAN_UNIVERSE = [
     "SPY","QQQ","IWM","ARKK",
 ]
 
+_scanner_cache = {"movers": [], "scanned": 0, "updated": None}
+
 def _fetch_quote(symbol: str):
     try:
         res = requests.get("https://finnhub.io/api/v1/quote",
@@ -507,13 +510,37 @@ def _fetch_quote(symbol: str):
     except Exception:
         return None
 
-@app.get("/api/scanner")
-async def get_scanner(threshold: float = 1.0):
+def _run_scanner_sync():
     with ThreadPoolExecutor(max_workers=15) as ex:
         results = list(ex.map(_fetch_quote, SCAN_UNIVERSE))
-    movers = [r for r in results if r and abs(r["pct"]) >= threshold]
+    movers = [r for r in results if r]
     movers.sort(key=lambda x: abs(x["pct"]), reverse=True)
-    return {"movers": movers, "total_scanned": len([r for r in results if r]), "threshold": threshold}
+    _scanner_cache["movers"] = movers
+    _scanner_cache["scanned"] = len(movers)
+    _scanner_cache["updated"] = datetime.now().isoformat()
+
+async def _scanner_background_loop():
+    loop = asyncio.get_event_loop()
+    while True:
+        try:
+            await loop.run_in_executor(None, _run_scanner_sync)
+        except Exception as e:
+            print(f"Scanner background error: {e}")
+        await asyncio.sleep(60)
+
+@app.on_event("startup")
+async def start_scanner_loop():
+    asyncio.create_task(_scanner_background_loop())
+
+@app.get("/api/scanner")
+async def get_scanner(threshold: float = 1.0):
+    movers = [m for m in _scanner_cache["movers"] if abs(m["pct"]) >= threshold]
+    return {
+        "movers": movers,
+        "total_scanned": _scanner_cache["scanned"],
+        "threshold": threshold,
+        "updated": _scanner_cache["updated"],
+    }
 
 @app.get("/api/zone/all")
 async def get_zone_all(symbol: str):
