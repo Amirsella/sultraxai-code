@@ -328,6 +328,75 @@ async def update_assets(data: UpdateAssets):
     conn.close()
     return {"status": "success"}
 
+@app.get("/api/user/{user_id}")
+async def get_user(user_id: int):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT first_name, full_name, email, phone FROM users WHERE id = ?", (user_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return JSONResponse(status_code=404, content={"detail": "User not found"})
+    cursor.execute("SELECT experience, frequency FROM user_profiles WHERE user_id = ?", (user_id,))
+    profile = cursor.fetchone()
+    conn.close()
+    return {
+        "first_name": row[0], "full_name": row[1], "email": row[2], "phone": row[3],
+        "experience": profile[0] if profile else "Beginner (0-1 yrs)",
+        "frequency": profile[1] if profile else "Daily"
+    }
+
+@app.post("/api/update-profile")
+async def update_profile(data: dict):
+    user_id = data.get("user_id")
+    first_name = data.get("first_name", "").strip()
+    full_name = data.get("full_name", "").strip()
+    phone = data.get("phone", "").strip()
+    experience = data.get("experience")
+    frequency = data.get("frequency")
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET first_name = ?, full_name = ?, phone = ? WHERE id = ?",
+                   (first_name, full_name, phone, user_id))
+    if experience and frequency:
+        cursor.execute("INSERT OR REPLACE INTO user_profiles (user_id, experience, frequency) VALUES (?, ?, ?)",
+                       (user_id, experience, frequency))
+    conn.commit()
+    conn.close()
+    return {"status": "success"}
+
+@app.post("/api/change-password")
+async def change_password_endpoint(data: dict):
+    user_id = data.get("user_id")
+    current_password = data.get("current_password", "")
+    new_password = data.get("new_password", "")
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return JSONResponse(status_code=404, content={"detail": "User not found"})
+    if row[0] != hash_password(current_password):
+        conn.close()
+        return JSONResponse(status_code=400, content={"detail": "Current password is incorrect"})
+    cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(new_password), user_id))
+    conn.commit()
+    conn.close()
+    return {"status": "success"}
+
+@app.delete("/api/delete-account/{user_id}")
+async def delete_account(user_id: int):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM user_assets WHERE user_id = ?", (user_id,))
+    cursor.execute("DELETE FROM user_profiles WHERE user_id = ?", (user_id,))
+    cursor.execute("DELETE FROM reset_tokens WHERE email = (SELECT email FROM users WHERE id = ?)", (user_id,))
+    cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    return {"status": "success"}
+
 def _zone_news(symbol: str) -> list:
     try:
         is_crypto = '-USD' in symbol or '/' in symbol
@@ -400,8 +469,8 @@ async def login(user: UserLogin):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    email_clean = user.email.strip()
-    cursor.execute("SELECT id, first_name, password_hash FROM users WHERE email = ?", (email_clean,))
+    email_clean = user.email.strip().lower()
+    cursor.execute("SELECT id, first_name, password_hash FROM users WHERE LOWER(email) = ?", (email_clean,))
     row = cursor.fetchone()
     
     if not row:

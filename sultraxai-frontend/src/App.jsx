@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import MainTerminal from './components/MainTerminal';
 import TheZone from './components/TheZone';
+import AccountSettings from './components/AccountSettings';
 const API_BASE = 'http://38.180.137.122:8000';
 const MOCK_STOCKS = ["BTC/USD", "ETH/USD", "AAPL", "TSLA", "NVDA", "AMZN", "GOOGL", "MSFT", "META", "NFLX", "SOL/USD", "XRP/USD", "AMD", "PLTR", "COIN"];
 
@@ -19,6 +20,7 @@ export default function App() {
     return 'landing';
   });
   const [userId, setUserId] = useState(() => localStorage.getItem('userId') || null);
+  const [firstName, setFirstName] = useState(() => localStorage.getItem('firstName') || '');
   const [selectedAssets, setSelectedAssets] = useState(() => {
     const saved = localStorage.getItem('selectedAssets');
     return saved ? JSON.parse(saved) : [];
@@ -40,6 +42,11 @@ export default function App() {
   }, [userId]);
 
   useEffect(() => {
+    if (firstName) localStorage.setItem('firstName', firstName);
+    else localStorage.removeItem('firstName');
+  }, [firstName]);
+
+  useEffect(() => {
     localStorage.setItem('selectedAssets', JSON.stringify(selectedAssets));
   }, [selectedAssets]);
 
@@ -58,6 +65,7 @@ export default function App() {
 
   const handleSignOut = () => {
     setUserId(null);
+    setFirstName('');
     setSelectedAssets([]);
     setAssetSettings({});
     setOnboardingStep(1);
@@ -98,20 +106,29 @@ export default function App() {
       <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: 'linear-gradient(-45deg, #020202, #0a0303, #140505, #020202)', backgroundSize: '400% 400%', zIndex: 0 }}></div>
 
       <div style={{ position: 'relative', zIndex: 1 }}>
-        {['landing', 'signup', 'signin', 'main_app', 'zone'].includes(currentView) && !isNative && (
+        {['landing', 'signup', 'signin', 'main_app', 'zone', 'settings'].includes(currentView) && !isNative && (
           <nav style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', padding: '1.5rem 5rem', alignItems: 'center' }}>
-            <h1 onClick={() => { if (currentView !== 'main_app' && currentView !== 'zone') setCurrentView('landing'); }} style={{ fontSize: '1.5rem', fontWeight: '800', margin: 0, cursor: (currentView === 'main_app' || currentView === 'zone') ? 'default' : 'pointer' }}>SULTRAXAI</h1>
-            {(currentView === 'main_app' || currentView === 'zone') ? (
+            <h1 onClick={() => { if (!['main_app', 'zone', 'settings'].includes(currentView)) setCurrentView('landing'); }} style={{ fontSize: '1.5rem', fontWeight: '800', margin: 0, cursor: ['main_app', 'zone', 'settings'].includes(currentView) ? 'default' : 'pointer' }}>SULTRAXAI</h1>
+            {['main_app', 'zone', 'settings'].includes(currentView) ? (
               <button onClick={() => setCurrentView(currentView === 'zone' ? 'main_app' : 'zone')}
                 style={{ border: `1px solid ${currentView === 'zone' ? '#4488ff' : 'rgba(68,136,255,0.35)'}`, color: '#4488ff', background: currentView === 'zone' ? 'rgba(68,136,255,0.12)' : 'rgba(68,136,255,0.05)', padding: '0.5rem 1.8rem', borderRadius: '50px', cursor: 'pointer', fontWeight: '700', fontSize: '0.82rem', letterSpacing: '0.06em' }}>
                 THE ZONE
               </button>
             ) : <div />}
-            <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.9rem', alignItems: 'center', justifyContent: 'flex-end' }}>
-              {(currentView === 'main_app' || currentView === 'zone') ? (
-                <button onClick={handleSignOut} style={{ border: '1px solid #ff3333', color: '#ff3333', padding: '0.5rem 1.5rem', borderRadius: '50px', background: 'transparent', cursor: 'pointer', fontWeight: '600' }}>
-                  SIGN OUT
-                </button>
+            <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.9rem', alignItems: 'center', justifyContent: 'flex-end' }}>
+              {['main_app', 'zone', 'settings'].includes(currentView) ? (
+                <>
+                  <button onClick={() => setCurrentView('settings')}
+                    style={{ display: 'flex', alignItems: 'center', gap: '7px', border: `1px solid ${currentView === 'settings' ? '#666' : '#222'}`, color: currentView === 'settings' ? '#ccc' : '#555', padding: '0.45rem 1.1rem', borderRadius: '50px', background: currentView === 'settings' ? 'rgba(255,255,255,0.06)' : 'transparent', cursor: 'pointer', fontWeight: '700', fontSize: '0.75rem', letterSpacing: '0.04em' }}>
+                    <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: '800', color: '#888', flexShrink: 0 }}>
+                      {(firstName || 'U').charAt(0).toUpperCase()}
+                    </span>
+                    ACCOUNT
+                  </button>
+                  <button onClick={handleSignOut} style={{ border: '1px solid #ff3333', color: '#ff3333', padding: '0.5rem 1.5rem', borderRadius: '50px', background: 'transparent', cursor: 'pointer', fontWeight: '600', fontSize: '0.82rem' }}>
+                    SIGN OUT
+                  </button>
+                </>
               ) : (
                 <>
                   <span style={{ color: '#888', cursor: 'pointer' }} onClick={() => setCurrentView('landing')}>TECHNOLOGY</span>
@@ -125,6 +142,10 @@ export default function App() {
 
         {currentView === 'zone' && (
           <TheZone selectedAssets={selectedAssets} onBack={() => setCurrentView('main_app')} isNative={isNative} />
+        )}
+
+        {currentView === 'settings' && (
+          <AccountSettings userId={userId} onBack={() => setCurrentView('main_app')} onSignOut={handleSignOut} isNative={isNative} onProfileUpdate={setFirstName} />
         )}
 
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '2rem' }}>
@@ -171,6 +192,7 @@ export default function App() {
           {currentView === 'reset_password' && (
             <ResetPasswordForm isNative={isNative} token={resetToken} onSuccess={(userData) => {
               setUserId(userData.user_id);
+              setFirstName(userData.first_name || '');
               setSelectedAssets(userData.assets || []);
               window.history.replaceState({}, document.title, '/');
               setCurrentView(userData.onboarding_completed ? 'main_app' : 'onboarding');
@@ -228,7 +250,7 @@ export default function App() {
                     try {
                       const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e.target[0].value, password: e.target[1].value }) });
                       const data = await res.json();
-                      if (res.ok) { setUserId(data.user_id); if (data.onboarding_completed) { setSelectedAssets(data.assets); setCurrentView('main_app'); } else { setSelectedAssets([]); setOnboardingStep(1); setCurrentView('onboarding'); } } else setErrorMessage(data.detail);
+                      if (res.ok) { setUserId(data.user_id); setFirstName(data.first_name || ''); if (data.onboarding_completed) { setSelectedAssets(data.assets); setCurrentView('main_app'); } else { setSelectedAssets([]); setOnboardingStep(1); setCurrentView('onboarding'); } } else setErrorMessage(data.detail);
                     } catch { setErrorMessage("Login failed."); }
                   }} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                     <input type="text" inputMode="email" placeholder="Email" required style={mobileInputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
@@ -254,7 +276,7 @@ export default function App() {
                   try {
                     const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e.target[0].value, password: e.target[1].value }) });
                     const data = await res.json();
-                    if (res.ok) { setUserId(data.user_id); if (data.onboarding_completed) { setSelectedAssets(data.assets); setCurrentView('main_app'); } else { setSelectedAssets([]); setOnboardingStep(1); setCurrentView('onboarding'); } } else setErrorMessage(data.detail);
+                    if (res.ok) { setUserId(data.user_id); setFirstName(data.first_name || ''); if (data.onboarding_completed) { setSelectedAssets(data.assets); setCurrentView('main_app'); } else { setSelectedAssets([]); setOnboardingStep(1); setCurrentView('onboarding'); } } else setErrorMessage(data.detail);
                   } catch { setErrorMessage("Login failed."); }
                 }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <input type="text" inputMode="email" placeholder="Email Address" required style={inputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
@@ -288,7 +310,7 @@ export default function App() {
           )}
 
          {currentView === 'main_app' && (
-            <MainTerminal userId={userId} selectedAssets={selectedAssets} onSignOut={handleSignOut} onAssetsUpdate={setSelectedAssets} isNative={isNative} onNavigateToZone={() => setCurrentView('zone')} />
+            <MainTerminal userId={userId} selectedAssets={selectedAssets} onSignOut={handleSignOut} onAssetsUpdate={setSelectedAssets} isNative={isNative} onNavigateToZone={() => setCurrentView('zone')} onNavigateToSettings={() => setCurrentView('settings')} />
           )}
 
         </div>

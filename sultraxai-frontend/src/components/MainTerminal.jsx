@@ -368,7 +368,7 @@ function EditPanel({ userId, selectedAssets, thresholds, onSave, onClose }) {
   );
 }
 
-export default function MainTerminal({ userId, selectedAssets, onSignOut, onAssetsUpdate, isNative, onNavigateToZone }) {
+export default function MainTerminal({ userId, selectedAssets, onSignOut, onAssetsUpdate, isNative, onNavigateToZone, onNavigateToSettings }) {
   const [thresholds, setThresholds] = useState({});
   const [prices, setPrices] = useState({});
   const [history, setHistory] = useState({});
@@ -821,6 +821,9 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
             </button>
             <button onClick={onNavigateToZone} style={{ background: 'rgba(68,136,255,0.08)', border: '1px solid rgba(68,136,255,0.2)', color: '#4488ff', padding: '7px 13px', borderRadius: '10px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: '700' }}>
               ZONE
+            </button>
+            <button onClick={onNavigateToSettings} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid #2a2a2a', color: '#666', padding: '7px 13px', borderRadius: '10px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: '700' }}>
+              ⚙
             </button>
             <button onClick={onSignOut} style={{ background: 'rgba(255,51,51,0.07)', border: '1px solid rgba(255,51,51,0.18)', color: '#ff4444', padding: '7px 13px', borderRadius: '10px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: '700' }}>
               OUT
