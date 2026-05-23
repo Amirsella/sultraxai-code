@@ -106,40 +106,56 @@ export default function App() {
       <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: 'linear-gradient(-45deg, #020202, #0a0303, #140505, #020202)', backgroundSize: '400% 400%', zIndex: 0 }}></div>
 
       <div style={{ position: 'relative', zIndex: 1 }}>
+        <style>{`
+          .sultrax-nav { display: flex; justify-content: space-between; align-items: center; padding: 1.2rem 4rem; border-bottom: 1px solid #0d0d0d; }
+          .nav-btn { border: 1px solid #222; color: #555; background: transparent; padding: 0.45rem 1.2rem; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 0.76rem; letter-spacing: 0.06em; font-family: inherit; transition: border-color 0.15s, color 0.15s, background 0.15s; white-space: nowrap; }
+          .nav-btn:hover { border-color: #333; color: #888; }
+          .nav-btn.active { border-color: #444; color: #ddd; background: rgba(255,255,255,0.04); }
+          .nav-btn.danger { border-color: #ff333340; color: #ff4444; }
+          .nav-btn.danger:hover { border-color: #ff3333; }
+          .nav-logo { font-size: 1.3rem; font-weight: 800; margin: 0; letter-spacing: 0.04em; white-space: nowrap; }
+          .nav-center { display: flex; gap: 6px; }
+          .nav-right { display: flex; gap: 6px; align-items: center; }
+          @media (max-width: 900px) {
+            .sultrax-nav { padding: 1rem 1.5rem; }
+            .nav-btn { padding: 0.4rem 0.8rem; font-size: 0.7rem; }
+            .nav-logo { font-size: 1.1rem; }
+          }
+          @media (max-width: 680px) {
+            .sultrax-nav { padding: 0.9rem 1rem; }
+            .nav-btn { padding: 0.35rem 0.65rem; font-size: 0.65rem; letter-spacing: 0.03em; }
+            .nav-logo { font-size: 1rem; }
+            .nav-btn-label { display: none; }
+          }
+        `}</style>
         {['landing', 'signup', 'signin', 'main_app', 'zone', 'settings'].includes(currentView) && !isNative && (
-          <nav style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', padding: '1.5rem 5rem', alignItems: 'center' }}>
-            <h1 onClick={() => { if (!['main_app', 'zone', 'settings'].includes(currentView)) setCurrentView('landing'); }} style={{ fontSize: '1.5rem', fontWeight: '800', margin: 0, cursor: ['main_app', 'zone', 'settings'].includes(currentView) ? 'default' : 'pointer' }}>SULTRAXAI</h1>
+          <nav className="sultrax-nav">
+            <h1 className="nav-logo" onClick={() => { if (!['main_app', 'zone', 'settings'].includes(currentView)) setCurrentView('landing'); }}
+              style={{ cursor: ['main_app', 'zone', 'settings'].includes(currentView) ? 'default' : 'pointer' }}>SULTRAXAI</h1>
+
             {['main_app', 'zone', 'settings'].includes(currentView) ? (
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button onClick={() => setCurrentView('main_app')}
-                  style={{ border: `1px solid ${currentView === 'main_app' ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)'}`, color: currentView === 'main_app' ? '#fff' : '#555', background: currentView === 'main_app' ? 'rgba(255,255,255,0.06)' : 'transparent', padding: '0.5rem 1.6rem', borderRadius: '50px', cursor: 'pointer', fontWeight: '700', fontSize: '0.82rem', letterSpacing: '0.06em' }}>
-                  DASHBOARD
-                </button>
-                <button onClick={() => setCurrentView('zone')}
-                  style={{ border: `1px solid ${currentView === 'zone' ? '#4488ff' : 'rgba(68,136,255,0.3)'}`, color: '#4488ff', background: currentView === 'zone' ? 'rgba(68,136,255,0.12)' : 'rgba(68,136,255,0.04)', padding: '0.5rem 1.6rem', borderRadius: '50px', cursor: 'pointer', fontWeight: '700', fontSize: '0.82rem', letterSpacing: '0.06em' }}>
-                  THE ZONE
-                </button>
+              <div className="nav-center">
+                <button className={`nav-btn${currentView === 'main_app' ? ' active' : ''}`} onClick={() => setCurrentView('main_app')}>DASHBOARD</button>
+                <button className={`nav-btn${currentView === 'zone' ? ' active' : ''}`} onClick={() => setCurrentView('zone')}>THE ZONE</button>
               </div>
             ) : <div />}
-            <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.9rem', alignItems: 'center', justifyContent: 'flex-end' }}>
+
+            <div className="nav-right">
               {['main_app', 'zone', 'settings'].includes(currentView) ? (
                 <>
-                  <button onClick={() => setCurrentView('settings')}
-                    style={{ display: 'flex', alignItems: 'center', gap: '7px', border: `1px solid ${currentView === 'settings' ? '#666' : '#222'}`, color: currentView === 'settings' ? '#ccc' : '#555', padding: '0.45rem 1.1rem', borderRadius: '50px', background: currentView === 'settings' ? 'rgba(255,255,255,0.06)' : 'transparent', cursor: 'pointer', fontWeight: '700', fontSize: '0.75rem', letterSpacing: '0.04em' }}>
-                    <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: '800', color: '#888', flexShrink: 0 }}>
+                  <button className={`nav-btn${currentView === 'settings' ? ' active' : ''}`} onClick={() => setCurrentView('settings')}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ width: '18px', height: '18px', borderRadius: '50%', background: '#1a1a1a', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.58rem', fontWeight: '800', color: '#666', flexShrink: 0, border: '1px solid #2a2a2a' }}>
                       {(firstName || 'U').charAt(0).toUpperCase()}
                     </span>
-                    ACCOUNT
+                    <span className="nav-btn-label">ACCOUNT</span>
                   </button>
-                  <button onClick={handleSignOut} style={{ border: '1px solid #ff3333', color: '#ff3333', padding: '0.5rem 1.5rem', borderRadius: '50px', background: 'transparent', cursor: 'pointer', fontWeight: '600', fontSize: '0.82rem' }}>
-                    SIGN OUT
-                  </button>
+                  <button className="nav-btn danger" onClick={handleSignOut}>SIGN OUT</button>
                 </>
               ) : (
                 <>
-                  <span style={{ color: '#888', cursor: 'pointer' }} onClick={() => setCurrentView('landing')}>TECHNOLOGY</span>
-                  <button onClick={() => setCurrentView('signin')} style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer' }}>SIGN IN</button>
-                  <button onClick={() => setCurrentView('signup')} style={{ border: '1px solid #ff3333', color: '#ff3333', padding: '0.5rem 1.5rem', borderRadius: '50px', background: 'none', cursor: 'pointer', fontWeight: '600' }}>SIGN UP</button>
+                  <button className="nav-btn" onClick={() => setCurrentView('signin')}>SIGN IN</button>
+                  <button className="nav-btn danger" onClick={() => setCurrentView('signup')}>SIGN UP</button>
                 </>
               )}
             </div>
