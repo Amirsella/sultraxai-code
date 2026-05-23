@@ -160,8 +160,8 @@ export default function App() {
                 </>
               ) : (
                 <>
-                  <button className="nav-btn" onClick={() => setCurrentView('signin')}>SIGN IN</button>
-                  <button className="nav-btn danger" onClick={() => setCurrentView('signup')}>SIGN UP</button>
+                  {currentView !== 'signin' && <button className="nav-btn" onClick={() => setCurrentView('signin')}>SIGN IN</button>}
+                  {currentView !== 'signup' && <button className="nav-btn danger" onClick={() => setCurrentView('signup')}>SIGN UP</button>}
                 </>
               )}
             </div>
