@@ -164,6 +164,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
   const [flashing, setFlashing] = useState({});
   const [expandedCard, setExpandedCard] = useState(null);
   const [savingThreshold, setSavingThreshold] = useState(false);
+  const [savedCard, setSavedCard] = useState(null);
 
   // Stable refs — avoid stale closures inside WebSocket handlers
   const wsRef = useRef(null);
@@ -320,9 +321,10 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
             if (cancelled) return;
             const initial = data.prices || {};
             pricesRef.current = initial;
+            // Use prev_close as baseline so alerts fire from daily open, not page-load price
             Object.entries(initial).forEach(([sym, p]) => {
-              if (baselinePricesRef.current[sym] === undefined) {
-                baselinePricesRef.current[sym] = p.price;
+              if (baselinePricesRef.current[sym] === undefined && p.prev_close) {
+                baselinePricesRef.current[sym] = p.prev_close;
               }
             });
             setPrices(initial);
@@ -350,14 +352,19 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
     const newThresholds = { ...thresholds, [sym]: value };
     const assets = selectedAssets.map(s => ({ symbol: s, threshold: newThresholds[s] ?? 2.0 }));
     try {
-      await fetch(`${API_BASE}/api/update-assets`, {
+      const res = await fetch(`${API_BASE}/api/update-assets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, assets }),
+        body: JSON.stringify({ user_id: parseInt(userId), assets }),
       });
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
       setThresholds(newThresholds);
-      setExpandedCard(null);
-    } catch (e) { console.error(e); }
+      setSavedCard(sym);
+      setTimeout(() => { setSavedCard(null); setExpandedCard(null); }, 900);
+    } catch (e) {
+      console.error('Failed to save threshold:', e);
+      alert('Failed to save. Check connection.');
+    }
     setSavingThreshold(false);
   };
 
@@ -468,7 +475,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                           <button key={lvl.value}
                             onClick={() => !savingThreshold && updateThreshold(sym, lvl.value)}
                             style={{ flex: 1, padding: '0.45rem 0.2rem', borderRadius: '8px', border: `1px solid ${active ? lvl.color : '#2a2a2a'}`, background: active ? `${lvl.color}20` : 'transparent', color: active ? lvl.color : '#555', cursor: savingThreshold ? 'wait' : 'pointer', fontSize: '0.68rem', fontWeight: active ? '700' : '400', transition: '0.15s' }}>
-                            <div>{lvl.label}</div>
+                            <div>{savedCard === sym && active ? '✓ Saved' : lvl.label}</div>
                             <div style={{ fontSize: '0.6rem', opacity: 0.75 }}>{lvl.desc}</div>
                           </button>
                         );
