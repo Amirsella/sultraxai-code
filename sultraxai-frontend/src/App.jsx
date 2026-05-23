@@ -210,7 +210,7 @@ const filteredStocks = useMemo(() => {
                     .then(data => {
                       if (data.status === 'success') {
                         setPendingEmail('');
-                        setCurrentView('signin');
+                        setCurrentView('onboarding');
                       }
                       else alert("Invalid code, please try again.");
                     });
