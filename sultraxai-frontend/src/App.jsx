@@ -648,14 +648,24 @@ function ResetPasswordForm({ isNative, token, onSuccess }) {
     if (!isStrong) { setError('Password does not meet requirements'); return; }
     setLoading(true); setError('');
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
       const res = await fetch(`${API_BASE}/api/reset-password`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, password })
+        body: JSON.stringify({ token, password }),
+        signal: controller.signal
       });
+      clearTimeout(timeout);
       const data = await res.json();
-      if (res.ok) { setDone(true); setTimeout(() => onSuccess(data), 1000); }
-      else { setError(data.detail || 'Invalid or expired link'); }
-    } catch { setError('Connection error. Please try again.'); }
+      if (res.ok) {
+        setDone(true);
+        setTimeout(() => onSuccess(data), 1200);
+      } else {
+        setError(data.detail || 'Invalid or expired link. Please request a new reset email.');
+      }
+    } catch (err) {
+      setError(err.name === 'AbortError' ? 'Request timed out. Check your connection.' : 'Connection error. Please try again.');
+    }
     setLoading(false);
   };
 
@@ -670,19 +680,19 @@ function ResetPasswordForm({ isNative, token, onSuccess }) {
         </div>
       ) : (
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {error && <div style={{ color: '#ff3333', background: 'rgba(255,51,51,0.1)', padding: '0.75rem', borderRadius: '8px', fontSize: '0.9rem', textAlign: 'center' }}>{error}</div>}
+          {error && <div style={{ color: '#fff', background: '#cc0000', padding: '0.85rem', borderRadius: '10px', fontSize: '0.88rem', textAlign: 'center', fontWeight: '600' }}>{error}</div>}
           <input type="password" placeholder="New Password" value={password} onChange={e => setPassword(e.target.value)} required style={isNative ? mobileInputStyle : inputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
           {password && (
             <div style={{ fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.2rem', paddingLeft: '0.25rem' }}>
-              <span style={{ color: criteria.hasMinLength ? '#44ff44' : '#ff3333' }}>✓ Minimum 8 characters</span>
-              <span style={{ color: criteria.hasUppercase ? '#44ff44' : '#ff3333' }}>✓ At least one uppercase letter (A-Z)</span>
-              <span style={{ color: criteria.hasSpecialChar ? '#44ff44' : '#ff3333' }}>✓ At least one special character (!@#$)</span>
+              <span style={{ color: criteria.hasMinLength ? '#44ff44' : '#ff4444' }}>✓ Minimum 8 characters</span>
+              <span style={{ color: criteria.hasUppercase ? '#44ff44' : '#ff4444' }}>✓ At least one uppercase letter (A-Z)</span>
+              <span style={{ color: criteria.hasSpecialChar ? '#44ff44' : '#ff4444' }}>✓ At least one special character (!@#$)</span>
             </div>
           )}
           <input type="password" placeholder="Confirm Password" value={confirm} onChange={e => setConfirm(e.target.value)} required style={isNative ? mobileInputStyle : inputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
-          {password && confirm && password !== confirm && <span style={{ color: '#ff3333', fontSize: '0.8rem' }}>Passwords do not match</span>}
-          <button type="submit" disabled={loading || !isStrong} style={{ backgroundColor: isStrong ? '#ff3333' : '#331111', color: isStrong ? '#fff' : '#666', padding: '1rem', border: 'none', borderRadius: isNative ? '14px' : '12px', fontWeight: '600', cursor: isStrong && !loading ? 'pointer' : 'not-allowed', marginTop: '0.5rem' }}>
-            {loading ? 'Saving…' : 'Set New Password'}
+          {password && confirm && password !== confirm && <span style={{ color: '#ff4444', fontSize: '0.8rem' }}>Passwords do not match</span>}
+          <button type="submit" disabled={loading || !isStrong} style={{ backgroundColor: isStrong && !loading ? '#ff3333' : '#222', color: isStrong && !loading ? '#fff' : '#555', padding: '1rem', border: 'none', borderRadius: isNative ? '14px' : '12px', fontWeight: '700', cursor: isStrong && !loading ? 'pointer' : 'not-allowed', marginTop: '0.5rem', transition: '0.2s', letterSpacing: '0.04em' }}>
+            {loading ? '⏳ Saving…' : 'Set New Password'}
           </button>
         </form>
       )}
