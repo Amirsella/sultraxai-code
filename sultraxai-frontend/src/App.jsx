@@ -3,7 +3,8 @@ import MainTerminal from './components/MainTerminal';
 const API_BASE = 'http://38.180.137.122:8000';
 const MOCK_STOCKS = ["BTC/USD", "ETH/USD", "AAPL", "TSLA", "NVDA", "AMZN", "GOOGL", "MSFT", "META", "NFLX", "SOL/USD", "XRP/USD", "AMD", "PLTR", "COIN"];
 
-const isNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
+const isNative = typeof window !== 'undefined' &&
+  (window.location.protocol === 'capacitor:' || !!window.Capacitor?.isNativePlatform?.());
 
 export default function App() {
   // טעינת מצב ראשוני מה-LocalStorage כדי למנוע ניתוק בריפרש
@@ -116,25 +117,29 @@ export default function App() {
           
           {currentView === 'landing' && (
             isNative ? (
-              <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', padding: '80px 32px 60px', background: '#020202' }}>
-                {/* Logo area */}
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
-                  <div style={{ width: '72px', height: '72px', borderRadius: '18px', background: 'linear-gradient(135deg, #ff3333, #ff6600)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px', boxShadow: '0 8px 32px rgba(255,51,51,0.35)' }}>
-                    <span style={{ fontSize: '2rem', fontWeight: '900', color: '#fff' }}>S</span>
-                  </div>
-                  <h1 style={{ fontSize: '2.4rem', fontWeight: '900', letterSpacing: '0.08em', margin: 0, color: '#fff' }}>SULTRAXAI</h1>
-                  <p style={{ color: '#444', fontSize: '0.95rem', margin: 0, letterSpacing: '0.04em', textAlign: 'center', lineHeight: 1.5 }}>Real-time market intelligence</p>
+              <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', background: '#020202', overflow: 'hidden' }}>
+
+                {/* Background logo — centered, large, subtle */}
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                  <img src="./sword-logo.png" alt="" style={{ width: '88%', maxWidth: '380px', opacity: 0.12, filter: 'grayscale(20%)' }} />
                 </div>
 
-                {/* Buttons */}
-                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {/* Top: name */}
+                <div style={{ paddingTop: '80px', textAlign: 'center', position: 'relative', zIndex: 1 }}>
+                  <p style={{ color: '#333', fontSize: '0.75rem', letterSpacing: '0.25em', textTransform: 'uppercase', margin: '0 0 10px' }}>Welcome to</p>
+                  <h1 style={{ fontSize: '2.6rem', fontWeight: '900', letterSpacing: '0.06em', margin: 0, color: '#fff' }}>SULTRAXAI</h1>
+                  <p style={{ color: '#444', fontSize: '0.82rem', margin: '8px 0 0', letterSpacing: '0.06em' }}>Real-time market intelligence</p>
+                </div>
+
+                {/* Bottom: buttons */}
+                <div style={{ width: '100%', padding: '0 28px 56px', display: 'flex', flexDirection: 'column', gap: '12px', position: 'relative', zIndex: 1 }}>
                   <button onClick={() => setCurrentView('signin')}
-                    style={{ width: '100%', padding: '1rem', borderRadius: '14px', background: '#ff3333', border: 'none', color: '#fff', fontSize: '1rem', fontWeight: '700', cursor: 'pointer', letterSpacing: '0.04em' }}>
+                    style={{ width: '100%', padding: '1rem', borderRadius: '14px', background: '#ff3333', border: 'none', color: '#fff', fontSize: '1rem', fontWeight: '700', cursor: 'pointer', letterSpacing: '0.05em', boxShadow: '0 4px 24px rgba(255,51,51,0.35)' }}>
                     LOG IN
                   </button>
                   <button onClick={() => setCurrentView('signup')}
-                    style={{ width: '100%', padding: '1rem', borderRadius: '14px', background: 'transparent', border: '1px solid #2a2a2a', color: '#888', fontSize: '1rem', fontWeight: '600', cursor: 'pointer', letterSpacing: '0.04em' }}>
-                    SIGN UP
+                    style={{ width: '100%', padding: '1rem', borderRadius: '14px', background: 'rgba(255,255,255,0.04)', border: '1px solid #2a2a2a', color: '#888', fontSize: '1rem', fontWeight: '600', cursor: 'pointer', letterSpacing: '0.05em' }}>
+                    CREATE ACCOUNT
                   </button>
                 </div>
               </div>
