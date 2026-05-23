@@ -156,7 +156,10 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
   const [thresholds, setThresholds] = useState({});
   const [prices, setPrices] = useState({});
   const [history, setHistory] = useState({});
-  const [alerts, setAlerts] = useState([]);
+  const [alerts, setAlerts] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('sultrax_alerts') || '[]'); }
+    catch { return []; }
+  });
   const [lastUpdate, setLastUpdate] = useState(null);
   const [loading, setLoading] = useState(true);
   const [wsStatus, setWsStatus] = useState('connecting');
@@ -176,6 +179,10 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
   const watchlistRef = useRef(selectedAssets);
   const thresholdsRef = useRef(thresholds);
   const pricesRef = useRef(prices);
+
+  useEffect(() => {
+    localStorage.setItem('sultrax_alerts', JSON.stringify(alerts));
+  }, [alerts]);
 
   useEffect(() => { watchlistRef.current = selectedAssets; }, [selectedAssets]);
   useEffect(() => { thresholdsRef.current = thresholds; }, [thresholds]);
@@ -492,9 +499,14 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
           <div style={{ background: 'rgba(8,8,8,0.85)', borderRadius: '16px', border: '1px solid #1a1a1a', padding: '1.25rem', backdropFilter: 'blur(12px)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 style={{ margin: 0, fontSize: '0.75rem', fontWeight: '700', color: '#555', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Alert Feed</h3>
-              {alerts.length > 0 && (
-                <span style={{ fontSize: '0.65rem', background: '#ff333322', color: '#ff3333', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>{alerts.length}</span>
-              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {alerts.length > 0 && (
+                  <span style={{ fontSize: '0.65rem', background: '#ff333322', color: '#ff3333', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>{alerts.length}</span>
+                )}
+                {alerts.length > 0 && (
+                  <button onClick={() => setAlerts([])} title="Clear all" style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.75rem', lineHeight: 1, padding: '2px' }}>✕</button>
+                )}
+              </div>
             </div>
             {alerts.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '2rem 0.5rem' }}>
