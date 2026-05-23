@@ -363,7 +363,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
           type: 'signal', id: alertId,
           symbol: sym, dir: isBuy ? 'buy' : 'sell',
           score, strengthLabel,
-          z: parseFloat(z.toFixed(1)),
+          volMultiplier: parseFloat((vol / tracking.emaVol).toFixed(1)),
           flowRatio: parseFloat(flowRatio.toFixed(2)),
           price, vwap: parseFloat(vwap.toFixed(2)),
           time: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
@@ -753,7 +753,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                           <div style={{ padding: '0 0.75rem 0.65rem', display: 'flex', flexDirection: 'column', gap: '3px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                               <span style={{ fontSize: '0.68rem', color: '#555' }}>Volume spike</span>
-                              <span style={{ fontSize: '0.68rem', color: '#aaa', fontWeight: '600' }}>×{a.z}</span>
+                              <span style={{ fontSize: '0.68rem', color: '#aaa', fontWeight: '600' }}>×{a.volMultiplier} larger than usual</span>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                               <span style={{ fontSize: '0.68rem', color: '#555' }}>Buyers</span>
