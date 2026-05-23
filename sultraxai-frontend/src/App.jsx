@@ -3,6 +3,7 @@ import MainTerminal from './components/MainTerminal';
 import TheZone from './components/TheZone';
 import Scanner from './components/Scanner';
 import AccountSettings from './components/AccountSettings';
+import SupportBot from './components/SupportBot';
 const API_BASE = 'http://38.180.137.122:8000';
 const MOCK_STOCKS = ["BTC/USD", "ETH/USD", "AAPL", "TSLA", "NVDA", "AMZN", "GOOGL", "MSFT", "META", "NFLX", "SOL/USD", "XRP/USD", "AMD", "PLTR", "COIN"];
 
@@ -338,6 +339,9 @@ export default function App() {
           )}
 
         </div>
+      {['main_app', 'zone', 'scanner', 'settings'].includes(currentView) && !isNative && (
+        <SupportBot />
+      )}
       </div>
     </div>
   );

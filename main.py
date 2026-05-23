@@ -21,6 +21,7 @@ import uvicorn
 
 BREVO_API_KEY = "YOUR_BREVO_API_KEY"
 FINNHUB_KEY = "FINNHUB_API_KEY"
+ANTHROPIC_KEY = "YOUR_ANTHROPIC_KEY"
 APP_URL = "http://38.180.137.122:8000"
 
 verification_codes = {}
@@ -573,6 +574,57 @@ async def get_scanner(threshold: float = 1.0):
         "threshold": threshold,
         "updated": _scanner_cache["updated"],
     }
+
+_SUPPORT_SYSTEM = """You are the SultraxAI support assistant — a knowledgeable, concise helper for traders using the SultraxAI platform.
+
+About SultraxAI:
+SultraxAI is a real-time market intelligence terminal for active traders. It tracks stocks and crypto, sends price alerts, and surfaces news + social signals.
+
+Platform features:
+- DASHBOARD: Real-time price cards for all your watchlist assets (stocks & crypto). Each card shows current price, % change from previous close, a sparkline, and volume data. A scrolling ticker at the top shows the 20 biggest movers right now. Click any ticker symbol to open its TradingView chart.
+- THE ZONE: A unified intel feed merging news from Finnhub, social posts from StockTwits, and headlines from Yahoo Finance — all sorted by time. Each item is tagged with its source (FINNHUB / STOCKTWITS / YAHOO). Filter by source. Refreshes every 90 seconds.
+- SCANNER: Scans ~100 stocks and 12 crypto assets every 60 seconds for unusual price movements. Sorted by biggest % move. Filter by >1%, >2%, >5%, >10%. Click a symbol to open its chart instantly.
+- SMART ALERTS: Set a custom price-move threshold per asset (1%, 2%, or 5%). When an asset crosses its threshold, an alert appears in the Alerts tab. The dashboard also detects unusual volume (relative volume spikes).
+- ACCOUNT SETTINGS: Update your name, phone, experience level, and check frequency. Change your password. Delete your account from the Danger Zone tab.
+- ONBOARDING: When registering, you select at least 3 assets to follow and set alert sensitivity per asset.
+
+Common tasks:
+- Add assets: click "+ Watchlist" on the dashboard, search by name or ticker.
+- Change alert threshold: click the asset card on the dashboard to expand it, then select a sensitivity level.
+- Forgot password: on the Sign In page, click "Forgot password?" to receive a reset email.
+- Navigate: use the top nav bar — DASHBOARD, THE ZONE, SCANNER, ACCOUNT, SIGN OUT.
+
+Tone: be short, direct, and helpful. Use plain language. No fluff. If unsure, say so honestly."""
+
+class SupportRequest(BaseModel):
+    messages: list
+
+@app.post("/api/support/chat")
+async def support_chat(req: SupportRequest):
+    if not ANTHROPIC_KEY or ANTHROPIC_KEY == "YOUR_ANTHROPIC_KEY":
+        raise HTTPException(status_code=503, detail="Support not configured")
+    history = req.messages[-12:]
+    try:
+        res = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 400,
+                "system": _SUPPORT_SYSTEM,
+                "messages": history,
+            },
+            timeout=15,
+        )
+        if res.status_code != 200:
+            raise HTTPException(status_code=502, detail="AI service error")
+        return {"reply": res.json()["content"][0]["text"]}
+    except requests.Timeout:
+        raise HTTPException(status_code=504, detail="Request timed out")
 
 @app.get("/api/zone/all")
 async def get_zone_all(symbol: str):
