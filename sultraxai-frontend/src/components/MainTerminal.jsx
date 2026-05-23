@@ -959,32 +959,31 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                       return (
                         <div key={a.id} style={{ borderRadius: '10px', overflow: 'hidden', border: `1px solid ${isExpanded ? accent + '40' : '#1a1a1a'}`, animation: isNew ? 'fadeIn 0.3s ease' : 'none', background: isExpanded ? (isBuy ? 'rgba(255,153,0,0.05)' : 'rgba(255,50,50,0.05)') : 'transparent', transition: 'border-color 0.15s, background 0.15s' }}>
 
-                          {/* Compact row */}
+                          {/* Compact row — 2-line layout so text isn't squished */}
                           <div onClick={() => setExpandedSignal(isExpanded ? null : a.id)}
-                            style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto auto', alignItems: 'center', gap: '8px', padding: '0.5rem 0.7rem', cursor: 'pointer', userSelect: 'none' }}>
+                            style={{ padding: '0.55rem 0.75rem', cursor: 'pointer', userSelect: 'none' }}>
 
-                            {/* Symbol */}
-                            <span style={{ fontWeight: '700', color: '#fff', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
-                              {isBuy ? '🐋' : '🔴'} {a.symbol}
-                            </span>
+                            {/* Line 1: symbol + strength label + time */}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                              <span style={{ fontWeight: '700', color: '#fff', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+                                {isBuy ? '🐋' : '🔴'} {a.symbol}
+                              </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontSize: '0.68rem', fontWeight: '700', color: accent }}>
+                                  {a.strengthLabel}
+                                </span>
+                                <span style={{ fontSize: '0.58rem', color: '#444' }}>{a.time}</span>
+                              </div>
+                            </div>
 
-                            {/* Strength label */}
-                            <span style={{ fontSize: '0.65rem', fontWeight: '700', color: accent, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {a.strengthLabel}
-                            </span>
-
-                            {/* Multiplier */}
-                            <span style={{ fontSize: '0.65rem', color: '#555', whiteSpace: 'nowrap' }}>×{a.volMultiplier}</span>
-
-                            {/* Score badge */}
-                            <span style={{ fontSize: '0.6rem', fontWeight: '800', color: accent, background: `${accent}18`, padding: '2px 5px', borderRadius: '5px', whiteSpace: 'nowrap' }}>
-                              {score}
-                            </span>
-
-                            {/* Confirm + time */}
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '1px' }}>
+                            {/* Line 2: vol multiplier + score badge + confirm */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ fontSize: '0.62rem', color: '#555' }}>vol ×{a.volMultiplier}</span>
+                              <span style={{ fontSize: '0.62rem', fontWeight: '800', color: accent, background: `${accent}18`, padding: '1px 6px', borderRadius: '5px' }}>
+                                {score}/100
+                              </span>
+                              <div style={{ flex: 1 }} />
                               <span style={{ fontSize: '0.65rem', color: confirmColor }}>{confirmIcon}</span>
-                              <span style={{ fontSize: '0.58rem', color: '#333' }}>{a.time}</span>
                             </div>
                           </div>
 
