@@ -6,4 +6,20 @@ body {
   background-color: #070709;
   color: #E2E8F0;
   margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, system-ui, "Inter", "Segoe UI", Arial, sans-serif;
+}
+
+input, textarea {
+  font-family: -apple-system, BlinkMacSystemFont, system-ui, "Inter", Arial, sans-serif !important;
+}
+
+select, button {
+  font-family: -apple-system, BlinkMacSystemFont, system-ui, "Inter", Arial, sans-serif !important;
+}
+
+[data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: #666;
+  pointer-events: none;
+  display: block;
 }

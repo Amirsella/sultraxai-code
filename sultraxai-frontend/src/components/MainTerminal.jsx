@@ -273,6 +273,7 @@ function EditPanel({ userId, selectedAssets, thresholds, onSave, onClose }) {
   const [searchLoading, setSearchLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const timerRef = useRef(null);
+  const searchDivRef = useRef(null);
 
   const handleSearch = (value) => {
     clearTimeout(timerRef.current);
@@ -288,8 +289,11 @@ function EditPanel({ userId, selectedAssets, thresholds, onSave, onClose }) {
     }, 300);
   };
 
-  const toggle = (sym) =>
+  const toggle = (sym) => {
     setEditAssets(prev => prev.includes(sym) ? prev.filter(s => s !== sym) : [...prev, sym]);
+    if (searchDivRef.current) { searchDivRef.current.textContent = ''; }
+    setSearchResults([]);
+  };
 
   const save = async () => {
     setSaving(true);
@@ -313,8 +317,15 @@ function EditPanel({ userId, selectedAssets, thresholds, onSave, onClose }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
         </div>
         <div style={{ position: 'relative' }}>
-          <input type="text" placeholder="Search stock or crypto..." onChange={e => handleSearch(e.target.value)}
-            style={{ width: '100%', padding: '0.85rem 1rem', background: '#111', border: '1px solid #2a2a2a', borderRadius: '12px', color: '#fff', outline: 'none', boxSizing: 'border-box', fontSize: '0.9rem' }} />
+          <div
+            ref={searchDivRef}
+            contentEditable="plaintext-only"
+            suppressContentEditableWarning
+            data-placeholder="Search stock or crypto..."
+            onInput={e => handleSearch(e.currentTarget.textContent || '')}
+            dir="auto"
+            style={{ width: '100%', padding: '0.85rem 1rem', background: '#111', border: '1px solid #2a2a2a', borderRadius: '12px', color: '#fff', outline: 'none', boxSizing: 'border-box', fontSize: '0.9rem', fontFamily: '-apple-system, BlinkMacSystemFont, system-ui, sans-serif', minHeight: '1.4em', cursor: 'text', whiteSpace: 'nowrap', overflowX: 'hidden' }}
+          />
           {(searchLoading || searchResults.length > 0) && (
             <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, background: '#111', border: '1px solid #2a2a2a', borderRadius: '12px', maxHeight: '200px', overflowY: 'auto', zIndex: 10 }}>
               {searchLoading && <div style={{ padding: '0.75rem 1rem', color: '#555', fontSize: '0.82rem' }}>Searching...</div>}
@@ -357,7 +368,7 @@ function EditPanel({ userId, selectedAssets, thresholds, onSave, onClose }) {
   );
 }
 
-export default function MainTerminal({ userId, selectedAssets, onSignOut, onAssetsUpdate }) {
+export default function MainTerminal({ userId, selectedAssets, onSignOut, onAssetsUpdate, isNative, onNavigateToZone }) {
   const [thresholds, setThresholds] = useState({});
   const [prices, setPrices] = useState({});
   const [history, setHistory] = useState({});
@@ -377,6 +388,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
   const [savedCard, setSavedCard] = useState(null);
   const [customValues, setCustomValues] = useState({});
   const [expandedSignal, setExpandedSignal] = useState(null);
+  const [activeTab, setActiveTab] = useState('assets');
   const [chartSym, setChartSym] = useState(null);
   const chartSymRef = useRef(null);
   const chartCallbackRef = useRef(null);
@@ -763,6 +775,257 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
   const statusDot = wsStatus === 'live' ? '#44cc44' : wsStatus === 'reconnecting' ? '#ff9900' : '#555';
   const statusLabel = wsStatus === 'live' ? 'LIVE' : wsStatus === 'reconnecting' ? 'RECONNECTING' : 'CONNECTING';
 
+  const signals = alerts.filter(a => a.type === 'signal');
+  const priceAlerts = alerts.filter(a => a.type === 'price');
+
+  const sharedModals = (
+    <>
+      {editing && (
+        <EditPanel userId={userId} selectedAssets={selectedAssets} thresholds={thresholds}
+          onSave={(newAssets) => { onAssetsUpdate(newAssets); setEditing(false); }}
+          onClose={() => setEditing(false)} />
+      )}
+      {chartSym && (
+        <ChartModal sym={chartSym} price={prices[chartSym]} rvol={rvols[chartSym]}
+          symAlerts={alerts.filter(a => a.symbol === chartSym)}
+          onClose={() => { setChartSym(null); chartCallbackRef.current = null; }}
+          onRegisterLive={cb => { chartCallbackRef.current = cb; }} />
+      )}
+    </>
+  );
+
+  // ── NATIVE MOBILE LAYOUT ──
+  if (isNative) {
+    return (
+      <div style={{ position: 'fixed', inset: 0, background: '#020202', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <style>{`
+          @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+          @keyframes fadeIn { from{opacity:0;transform:translateY(-5px)} to{opacity:1;transform:translateY(0)} }
+          ::-webkit-scrollbar { width: 3px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #222; border-radius: 2px; }
+        `}</style>
+        {sharedModals}
+
+        {/* ── Native Header ── */}
+        <div style={{ paddingTop: '56px', paddingLeft: '20px', paddingRight: '20px', paddingBottom: '14px', background: '#020202', borderBottom: '1px solid #0f0f0f', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '900', letterSpacing: '0.07em', color: '#fff' }}>TERMINAL</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '3px' }}>
+              <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: statusDot, animation: wsStatus === 'live' ? 'pulse 2s infinite' : 'none', boxShadow: wsStatus === 'live' ? `0 0 6px ${statusDot}` : 'none' }} />
+              <span style={{ fontSize: '0.62rem', color: statusDot, fontWeight: '700', letterSpacing: '0.06em' }}>{statusLabel}</span>
+              {lastUpdate && <span style={{ fontSize: '0.58rem', color: '#2a2a2a' }}>· {lastUpdate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={() => setEditing(true)} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid #1e1e1e', color: '#666', padding: '7px 13px', borderRadius: '10px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: '600' }}>
+              + LIST
+            </button>
+            <button onClick={onNavigateToZone} style={{ background: 'rgba(68,136,255,0.08)', border: '1px solid rgba(68,136,255,0.2)', color: '#4488ff', padding: '7px 13px', borderRadius: '10px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: '700' }}>
+              ZONE
+            </button>
+            <button onClick={onSignOut} style={{ background: 'rgba(255,51,51,0.07)', border: '1px solid rgba(255,51,51,0.18)', color: '#ff4444', padding: '7px 13px', borderRadius: '10px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: '700' }}>
+              OUT
+            </button>
+          </div>
+        </div>
+
+        {/* ── Tab content ── */}
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
+
+          {/* ASSETS */}
+          {activeTab === 'assets' && (
+            <div style={{ padding: '14px 16px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {selectedAssets.map(sym => {
+                const p = prices[sym];
+                const status = getStatus(sym);
+                const pct = p?.change_pct;
+                const t = thresholds[sym] ?? 2.0;
+                const barWidth = Math.min(100, (Math.abs(pct || 0) / t) * 100);
+                const flash = flashing[sym];
+                const cardBg = flash === 'up' ? 'rgba(68,204,68,0.07)' : flash === 'down' ? 'rgba(255,68,68,0.07)' : '#0a0a0a';
+                const priceColor = flash === 'up' ? '#44cc44' : flash === 'down' ? '#ff4444' : '#fff';
+                const rvolStyle = getRvolStyle(rvols[sym]);
+                return (
+                  <div key={sym}
+                    style={{ background: cardBg, border: '1px solid #111', borderLeft: `3px solid ${status.color}`, borderRadius: '14px', padding: '14px 16px', cursor: 'pointer', transition: 'background 0.2s', animation: 'fadeIn 0.3s ease', boxShadow: status.label === 'ALERT' ? `0 0 20px ${status.color}12` : 'none' }}
+                    onClick={() => setChartSym(sym)}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '7px', flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: '800', fontSize: '0.95rem', color: '#fff' }}>{sym}</span>
+                          <span style={{ fontSize: '0.6rem', fontWeight: '700', color: status.color, background: `${status.color}18`, padding: '2px 8px', borderRadius: '20px' }}>{status.label}</span>
+                          {rvolStyle && <span style={{ fontSize: '0.58rem', fontWeight: '700', color: rvolStyle.color }}>{rvolStyle.icon} {rvols[sym].toFixed(1)}x</span>}
+                          <button onClick={e => { e.stopPropagation(); setExpandedCard(expandedCard === sym ? null : sym); }}
+                            style={{ background: 'none', border: 'none', color: expandedCard === sym ? '#aaa' : '#2a2a2a', cursor: 'pointer', fontSize: '0.88rem', marginLeft: 'auto', padding: '2px 4px', lineHeight: 1 }}>⚙</button>
+                        </div>
+                        <div style={{ fontSize: '1.55rem', fontWeight: '800', fontVariantNumeric: 'tabular-nums', color: priceColor, transition: 'color 0.15s', lineHeight: 1.1 }}>
+                          {p ? `$${fmtPrice(p.price)}` : '—'}
+                        </div>
+                        <div style={{ fontSize: '0.82rem', fontWeight: '600', color: pct > 0 ? '#44cc44' : pct < 0 ? '#ff4444' : '#444', marginTop: '2px' }}>
+                          {pct != null ? `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%` : '—'}
+                        </div>
+                      </div>
+                      <div style={{ width: '110px', marginTop: '2px', flexShrink: 0 }}>
+                        <Sparkline sym={sym} prices={history[sym]} />
+                      </div>
+                    </div>
+                    <div style={{ marginTop: '10px', height: '2px', background: '#1a1a1a', borderRadius: '2px', overflow: 'hidden' }}>
+                      <div style={{ width: `${barWidth}%`, height: '100%', background: status.color, transition: 'width 0.4s' }} />
+                    </div>
+                    <div style={{ fontSize: '0.6rem', color: '#2a2a2a', marginTop: '3px' }}>{barWidth.toFixed(0)}% of {t}% threshold</div>
+
+                    {expandedCard === sym && (
+                      <div onClick={e => e.stopPropagation()} style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #1a1a1a' }}>
+                        <div style={{ fontSize: '0.62rem', color: '#444', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Alert sensitivity</div>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          {SENSITIVITY_LEVELS.map(lvl => {
+                            const active = t === lvl.value;
+                            return (
+                              <button key={lvl.value} onClick={() => !savingThreshold && updateThreshold(sym, lvl.value)}
+                                style={{ flex: 1, padding: '0.5rem 0.25rem', borderRadius: '8px', border: `1px solid ${active ? lvl.color : '#2a2a2a'}`, background: active ? `${lvl.color}20` : 'transparent', color: active ? lvl.color : '#444', cursor: 'pointer', fontSize: '0.68rem', fontWeight: active ? '700' : '400' }}>
+                                <div>{savedCard === sym && active ? '✓' : lvl.label}</div>
+                                <div style={{ fontSize: '0.6rem', opacity: 0.75 }}>{lvl.desc}</div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* SIGNALS */}
+          {activeTab === 'signals' && (
+            <div style={{ padding: '14px 16px 20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '0.68rem', fontWeight: '700', color: '#444', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Signal Feed</span>
+                  {signals.length > 0 && <span style={{ fontSize: '0.62rem', background: 'rgba(255,153,0,0.15)', color: '#ff9900', padding: '1px 7px', borderRadius: '8px', fontWeight: '700' }}>{signals.length}</span>}
+                </div>
+                {signals.length > 0 && <button onClick={() => setAlerts(prev => prev.filter(a => a.type !== 'signal'))} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.75rem', padding: '2px 6px' }}>Clear</button>}
+              </div>
+              {signals.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '5rem 1rem' }}>
+                  <div style={{ fontSize: '2.2rem', marginBottom: '1rem' }}>📡</div>
+                  <p style={{ color: '#2a2a2a', fontSize: '0.82rem', margin: 0, lineHeight: 1.7 }}>Scanning for anomalous<br />order flow activity.</p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {signals.map((a, i) => {
+                    const isBuy = a.dir === 'buy';
+                    const score = a.score || 0;
+                    const accent = isBuy ? '#ff9900' : '#ff4444';
+                    const rowKey = a.id || `sig-${i}`;
+                    const isExpanded = expandedSignal === rowKey;
+                    const confirmIcon = a.confirmed === null ? '⏳' : a.confirmed ? '✓' : '↔';
+                    const confirmColor = a.confirmed === null ? '#555' : a.confirmed ? '#44cc44' : '#666';
+                    const label = a.strengthLabel || (score >= 80 ? (isBuy ? 'STRONG BUY' : 'STRONG SELL') : score >= 60 ? (isBuy ? 'BUY' : 'SELL') : 'NOTABLE');
+                    return (
+                      <div key={rowKey} onClick={() => setExpandedSignal(isExpanded ? null : rowKey)}
+                        style={{ padding: '12px 14px', borderRadius: '12px', background: isExpanded ? (isBuy ? 'rgba(255,153,0,0.07)' : 'rgba(255,68,68,0.07)') : '#0d0d0d', border: `1px solid ${isExpanded ? accent + '44' : '#1a1a1a'}`, cursor: 'pointer', animation: i === 0 ? 'fadeIn 0.3s ease' : 'none' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>{isBuy ? '🐋' : '🔴'}</span>
+                            <span style={{ fontWeight: '700', color: '#e8e8e8', fontSize: '0.9rem' }}>{a.symbol}</span>
+                            <span style={{ fontSize: '0.63rem', fontWeight: '700', color: accent, background: `${accent}18`, padding: '2px 8px', borderRadius: '6px' }}>{label}</span>
+                          </div>
+                          <span style={{ fontSize: '0.62rem', color: '#444' }}>{a.time}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ flex: 1, height: '3px', background: '#1a1a1a', borderRadius: '2px', overflow: 'hidden' }}>
+                            <div style={{ width: `${score}%`, height: '100%', background: `linear-gradient(to right, ${accent}66, ${accent})` }} />
+                          </div>
+                          <span style={{ fontSize: '0.65rem', color: '#666' }}>{score}/100</span>
+                          <span style={{ fontSize: '0.62rem', color: '#444' }}>×{a.volMultiplier ?? '–'}</span>
+                          <span style={{ fontSize: '0.75rem', color: confirmColor }}>{confirmIcon}</span>
+                        </div>
+                        {isExpanded && (
+                          <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: `1px solid ${accent}22` }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {[['Volume spike', `×${a.volMultiplier ?? '–'} above avg`], ['Order flow', `${Math.round((a.flowRatio || 0) * 100)}% buyers`], ['vs VWAP', `${(a.price || 0) >= (a.vwap || 0) ? 'above ↑' : 'below ↓'} avg`]].map(([lbl, val]) => (
+                                <div key={lbl} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                  <span style={{ fontSize: '0.72rem', color: '#444' }}>{lbl}</span>
+                                  <span style={{ fontSize: '0.72rem', color: '#888', fontWeight: '600' }}>{val}</span>
+                                </div>
+                              ))}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '6px', borderTop: `1px solid ${accent}18` }}>
+                                <span style={{ fontSize: '0.72rem', color: '#444' }}>Result</span>
+                                <span style={{ fontSize: '0.72rem', fontWeight: '600', color: confirmColor }}>
+                                  {a.confirmed === null ? '⏳ Confirming…' : a.confirmed ? `✓ +${Math.abs(a.priceImpact || 0).toFixed(2)}%` : `↔ ${(a.priceImpact || 0).toFixed(2)}%`}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ALERTS */}
+          {activeTab === 'alerts' && (
+            <div style={{ padding: '14px 16px 20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '0.68rem', fontWeight: '700', color: '#444', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Price Alerts</span>
+                  {priceAlerts.length > 0 && <span style={{ fontSize: '0.62rem', background: 'rgba(255,51,51,0.15)', color: '#ff4444', padding: '1px 7px', borderRadius: '8px', fontWeight: '700' }}>{priceAlerts.length}</span>}
+                </div>
+                {priceAlerts.length > 0 && <button onClick={() => setAlerts(prev => prev.filter(a => a.type !== 'price'))} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.75rem', padding: '2px 6px' }}>Clear</button>}
+              </div>
+              {priceAlerts.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '5rem 1rem' }}>
+                  <div style={{ fontSize: '2.2rem', marginBottom: '1rem' }}>🔔</div>
+                  <p style={{ color: '#2a2a2a', fontSize: '0.82rem', margin: 0, lineHeight: 1.7 }}>Alerts fire when price moves<br />past your set threshold.</p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {priceAlerts.map((a, i) => (
+                    <div key={i} style={{ padding: '14px', borderRadius: '12px', background: '#0d0d0d', border: '1px solid #1a1a1a', animation: 'fadeIn 0.3s ease' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <span style={{ fontWeight: '700', color: '#e8e8e8', fontSize: '0.9rem' }}>{a.symbol}</span>
+                        <span style={{ fontSize: '0.62rem', color: '#444' }}>{a.time}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ color: a.pct > 0 ? '#44cc44' : '#ff4444', fontSize: '0.88rem', fontWeight: '700' }}>
+                          {a.pct > 0 ? '▲' : '▼'} {Math.abs(a.pct).toFixed(2)}%
+                        </span>
+                        <span style={{ color: '#444', fontSize: '0.7rem' }}>${fmtPrice(a.price)} · {a.threshold}% thr</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── Bottom tab bar ── */}
+        <div style={{ flexShrink: 0, display: 'flex', background: '#070707', borderTop: '1px solid #0f0f0f', paddingBottom: '30px' }}>
+          {[
+            { id: 'assets',  label: 'ASSETS',  count: 0 },
+            { id: 'signals', label: 'SIGNALS', count: signals.length },
+            { id: 'alerts',  label: 'ALERTS',  count: priceAlerts.length },
+          ].map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              style={{ flex: 1, background: 'none', border: 'none', cursor: 'pointer', padding: '13px 0 6px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+              <span style={{ fontSize: '0.62rem', fontWeight: '700', letterSpacing: '0.1em', color: activeTab === tab.id ? '#fff' : '#333', transition: 'color 0.15s' }}>{tab.label}</span>
+              {tab.count > 0 && (
+                <span style={{ fontSize: '0.55rem', background: tab.id === 'signals' ? '#ff9900' : '#ff3333', color: '#fff', padding: '1px 6px', borderRadius: '8px', fontWeight: '700', lineHeight: 1.5 }}>{tab.count}</span>
+              )}
+              <div style={{ width: '20px', height: '2px', background: activeTab === tab.id ? '#ff3333' : 'transparent', borderRadius: '1px', transition: 'background 0.15s', marginTop: '2px' }} />
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── WEB LAYOUT ──
   return (
     <div style={{ width: '100%', padding: '0 2rem 4rem', color: '#fff' }}>
       <style>{`
@@ -771,24 +1034,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
         ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
       `}</style>
 
-      {editing && (
-        <EditPanel
-          userId={userId} selectedAssets={selectedAssets} thresholds={thresholds}
-          onSave={(newAssets) => { onAssetsUpdate(newAssets); setEditing(false); }}
-          onClose={() => setEditing(false)}
-        />
-      )}
-
-      {chartSym && (
-        <ChartModal
-          sym={chartSym}
-          price={prices[chartSym]}
-          rvol={rvols[chartSym]}
-          symAlerts={alerts.filter(a => a.symbol === chartSym)}
-          onClose={() => { setChartSym(null); chartCallbackRef.current = null; }}
-          onRegisterLive={cb => { chartCallbackRef.current = cb; }}
-        />
-      )}
+      {sharedModals}
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.75rem', paddingTop: '1.5rem' }}>
@@ -807,6 +1053,10 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
           <button onClick={() => setEditing(true)}
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid #222', color: '#666', padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: '600' }}>
             + Watchlist
+          </button>
+          <button onClick={onNavigateToZone}
+            style={{ background: 'rgba(68,136,255,0.08)', border: '1px solid rgba(68,136,255,0.2)', color: '#4488ff', padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: '700' }}>
+            THE ZONE
           </button>
         </div>
       </div>
@@ -841,7 +1091,6 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                   </div>
                 </div>
 
-                {/* RVOL badge */}
                 {rvolStyle && (
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '0.6rem', fontWeight: '700', color: rvolStyle.color, background: rvolStyle.bg, border: `1px solid ${rvolStyle.border}`, padding: '2px 7px', borderRadius: '8px', marginBottom: '0.4rem' }}>
                     {rvolStyle.icon} {rvols[sym].toFixed(1)}x VOL
@@ -889,30 +1138,17 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                       return (
                         <>
                           <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                            <input
-                              type="number" min="0.3" max="20" step="0.1"
-                              placeholder="e.g. 1.5"
-                              value={raw}
+                            <input type="number" min="0.3" max="20" step="0.1" placeholder="e.g. 1.5" value={raw}
                               onChange={e => setCustomValues(prev => ({ ...prev, [sym]: e.target.value }))}
                               onKeyDown={e => { if (e.key === 'Enter' && valid) updateThreshold(sym, num); }}
-                              style={{ flex: 1, padding: '0.4rem 0.6rem', background: '#111', border: `1px solid ${outOfRange ? '#ff3333' : '#2a2a2a'}`, borderRadius: '8px', color: outOfRange ? '#ff4444' : '#fff', fontSize: '0.78rem', outline: 'none', width: '0' }}
-                            />
-                            <button
-                              onClick={() => valid && !savingThreshold && updateThreshold(sym, num)}
+                              style={{ flex: 1, padding: '0.4rem 0.6rem', background: '#111', border: `1px solid ${outOfRange ? '#ff3333' : '#2a2a2a'}`, borderRadius: '8px', color: outOfRange ? '#ff4444' : '#fff', fontSize: '0.78rem', outline: 'none', width: '0' }} />
+                            <button onClick={() => valid && !savingThreshold && updateThreshold(sym, num)}
                               style={{ padding: '0.4rem 0.7rem', borderRadius: '8px', border: `1px solid ${valid ? '#555' : '#2a2a2a'}`, background: 'transparent', color: valid ? '#fff' : '#444', cursor: valid ? 'pointer' : 'default', fontSize: '0.72rem', fontWeight: '600', whiteSpace: 'nowrap' }}>
                               Set %
                             </button>
                           </div>
-                          {outOfRange && (
-                            <div style={{ fontSize: '0.62rem', color: '#ff4444', marginTop: '4px' }}>
-                              Range: 0.3% – 20%
-                            </div>
-                          )}
-                          {!outOfRange && (
-                            <div style={{ fontSize: '0.62rem', color: '#333', marginTop: '4px' }}>
-                              Custom range: 0.3% – 20%
-                            </div>
-                          )}
+                          {outOfRange && <div style={{ fontSize: '0.62rem', color: '#ff4444', marginTop: '4px' }}>Range: 0.3% – 20%</div>}
+                          {!outOfRange && <div style={{ fontSize: '0.62rem', color: '#333', marginTop: '4px' }}>Custom range: 0.3% – 20%</div>}
                         </>
                       );
                     })()}
@@ -923,138 +1159,108 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
           })}
         </div>
 
-        {/* ── RIGHT COLUMN: two feeds ── */}
+        {/* ── RIGHT COLUMN ── */}
         <div style={{ width: '300px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '14px' }}>
-
-          {/* ── SIGNAL FEED ── */}
-          {(() => {
-            const signals = alerts.filter(a => a.type === 'signal');
-            return (
-              <div style={{ background: '#0a0a0a', borderRadius: '16px', border: '1px solid #1c1c1c', padding: '1rem 1rem 0.75rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <h3 style={{ margin: 0, fontSize: '0.7rem', fontWeight: '700', color: '#444', letterSpacing: '0.12em', textTransform: 'uppercase' }}>Signal Feed</h3>
-                    {signals.length > 0 && <span style={{ fontSize: '0.62rem', background: 'rgba(255,153,0,0.15)', color: '#ff9900', padding: '1px 7px', borderRadius: '8px', fontWeight: '700' }}>{signals.length}</span>}
-                  </div>
-                  {signals.length > 0 && <button onClick={() => setAlerts(prev => prev.filter(a => a.type !== 'signal'))} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.72rem', padding: '2px 4px' }}>✕</button>}
-                </div>
-
-                {signals.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '1.5rem 0.5rem' }}>
-                    <div style={{ fontSize: '1.4rem', marginBottom: '0.4rem' }}>📡</div>
-                    <p style={{ color: '#2a2a2a', fontSize: '0.73rem', margin: 0, lineHeight: 1.6 }}>Scanning for anomalous<br />order flow activity.</p>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '400px', overflowY: 'auto', paddingBottom: '0.25rem' }}>
-                    {signals.map((a, i) => {
-                      const isBuy = a.dir === 'buy';
-                      const score = a.score || 0;
-                      const accent = isBuy ? '#ff9900' : '#ff4444';
-                      const rowKey = a.id || `sig-${i}`;
-                      const isExpanded = expandedSignal === rowKey;
-                      const confirmIcon = a.confirmed === null ? '⏳' : a.confirmed ? '✓' : '↔';
-                      const confirmColor = a.confirmed === null ? '#555' : a.confirmed ? '#44cc44' : '#666';
-                      const label = a.strengthLabel || (score >= 80 ? (isBuy ? 'STRONG BUY' : 'STRONG SELL') : score >= 60 ? (isBuy ? 'BUY' : 'SELL') : 'NOTABLE');
-
-                      return (
-                        <div key={rowKey} onClick={() => setExpandedSignal(isExpanded ? null : rowKey)}
-                          style={{ padding: '0.65rem 0.75rem', borderRadius: '10px', background: isExpanded ? (isBuy ? 'rgba(255,153,0,0.07)' : 'rgba(255,68,68,0.07)') : '#111', border: `1px solid ${isExpanded ? accent + '44' : '#1e1e1e'}`, cursor: 'pointer', transition: 'background 0.15s, border-color 0.15s', animation: i === 0 ? 'fadeIn 0.3s ease' : 'none' }}>
-
-                          {/* Row 1 */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                              <span style={{ fontSize: '0.78rem' }}>{isBuy ? '🐋' : '🔴'}</span>
-                              <span style={{ fontWeight: '700', color: '#e8e8e8', fontSize: '0.85rem' }}>{a.symbol}</span>
-                              <span style={{ fontSize: '0.62rem', fontWeight: '700', color: accent, background: `${accent}18`, padding: '1px 6px', borderRadius: '5px' }}>{label}</span>
-                            </div>
-                            <span style={{ fontSize: '0.6rem', color: '#444', flexShrink: 0 }}>{a.time}</span>
-                          </div>
-
-                          {/* Row 2: score bar */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-                            <div style={{ flex: 1, height: '3px', background: '#1a1a1a', borderRadius: '2px', overflow: 'hidden' }}>
-                              <div style={{ width: `${score}%`, height: '100%', background: `linear-gradient(to right, ${accent}66, ${accent})`, borderRadius: '2px' }} />
-                            </div>
-                            <span style={{ fontSize: '0.63rem', color: '#666', whiteSpace: 'nowrap' }}>{score}/100</span>
-                            <span style={{ fontSize: '0.6rem', color: '#444', whiteSpace: 'nowrap' }}>×{a.volMultiplier ?? '–'}</span>
-                            <span style={{ fontSize: '0.7rem', color: confirmColor }}>{confirmIcon}</span>
-                          </div>
-
-                          {/* Expanded detail */}
-                          {isExpanded && (
-                            <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${accent}22` }}>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                {[
-                                  ['Volume spike', `×${a.volMultiplier ?? '–'} above avg`],
-                                  ['Order flow', `${Math.round((a.flowRatio || 0) * 100)}% buyers`],
-                                  ['vs VWAP', `${(a.price || 0) >= (a.vwap || 0) ? 'above ↑' : 'below ↓'} avg`],
-                                ].map(([label, val]) => (
-                                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ fontSize: '0.65rem', color: '#444' }}>{label}</span>
-                                    <span style={{ fontSize: '0.65rem', color: '#888', fontWeight: '600' }}>{val}</span>
-                                  </div>
-                                ))}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '5px', borderTop: `1px solid ${accent}18` }}>
-                                  <span style={{ fontSize: '0.65rem', color: '#444' }}>Result</span>
-                                  <span style={{ fontSize: '0.65rem', fontWeight: '600', color: confirmColor }}>
-                                    {a.confirmed === null ? '⏳ Confirming…'
-                                      : a.confirmed ? `✓ +${Math.abs(a.priceImpact || 0).toFixed(2)}%`
-                                      : `↔ ${(a.priceImpact || 0).toFixed(2)}%`}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+          <div style={{ background: '#0a0a0a', borderRadius: '16px', border: '1px solid #1c1c1c', padding: '1rem 1rem 0.75rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <h3 style={{ margin: 0, fontSize: '0.7rem', fontWeight: '700', color: '#444', letterSpacing: '0.12em', textTransform: 'uppercase' }}>Signal Feed</h3>
+                {signals.length > 0 && <span style={{ fontSize: '0.62rem', background: 'rgba(255,153,0,0.15)', color: '#ff9900', padding: '1px 7px', borderRadius: '8px', fontWeight: '700' }}>{signals.length}</span>}
               </div>
-            );
-          })()}
-
-          {/* ── PRICE ALERTS ── */}
-          {(() => {
-            const priceAlerts = alerts.filter(a => a.type === 'price');
-            return (
-              <div style={{ background: '#0a0a0a', borderRadius: '16px', border: '1px solid #1c1c1c', padding: '1rem 1rem 0.75rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <h3 style={{ margin: 0, fontSize: '0.7rem', fontWeight: '700', color: '#444', letterSpacing: '0.12em', textTransform: 'uppercase' }}>Price Alerts</h3>
-                    {priceAlerts.length > 0 && <span style={{ fontSize: '0.62rem', background: 'rgba(255,51,51,0.15)', color: '#ff4444', padding: '1px 7px', borderRadius: '8px', fontWeight: '700' }}>{priceAlerts.length}</span>}
-                  </div>
-                  {priceAlerts.length > 0 && <button onClick={() => setAlerts(prev => prev.filter(a => a.type !== 'price'))} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.72rem', padding: '2px 4px' }}>✕</button>}
-                </div>
-                {priceAlerts.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '1.5rem 0.5rem' }}>
-                    <div style={{ fontSize: '1.4rem', marginBottom: '0.4rem' }}>🔔</div>
-                    <p style={{ color: '#2a2a2a', fontSize: '0.73rem', margin: 0, lineHeight: 1.6 }}>Alerts fire when price moves<br />past your set threshold.</p>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '260px', overflowY: 'auto' }}>
-                    {priceAlerts.map((a, i) => (
-                      <div key={i} style={{ padding: '0.65rem 0.75rem', borderRadius: '10px', animation: 'fadeIn 0.3s ease', background: '#111', border: '1px solid #1e1e1e' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+              {signals.length > 0 && <button onClick={() => setAlerts(prev => prev.filter(a => a.type !== 'signal'))} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.72rem', padding: '2px 4px' }}>✕</button>}
+            </div>
+            {signals.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '1.5rem 0.5rem' }}>
+                <div style={{ fontSize: '1.4rem', marginBottom: '0.4rem' }}>📡</div>
+                <p style={{ color: '#2a2a2a', fontSize: '0.73rem', margin: 0, lineHeight: 1.6 }}>Scanning for anomalous<br />order flow activity.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '400px', overflowY: 'auto', paddingBottom: '0.25rem' }}>
+                {signals.map((a, i) => {
+                  const isBuy = a.dir === 'buy';
+                  const score = a.score || 0;
+                  const accent = isBuy ? '#ff9900' : '#ff4444';
+                  const rowKey = a.id || `sig-${i}`;
+                  const isExpanded = expandedSignal === rowKey;
+                  const confirmIcon = a.confirmed === null ? '⏳' : a.confirmed ? '✓' : '↔';
+                  const confirmColor = a.confirmed === null ? '#555' : a.confirmed ? '#44cc44' : '#666';
+                  const label = a.strengthLabel || (score >= 80 ? (isBuy ? 'STRONG BUY' : 'STRONG SELL') : score >= 60 ? (isBuy ? 'BUY' : 'SELL') : 'NOTABLE');
+                  return (
+                    <div key={rowKey} onClick={() => setExpandedSignal(isExpanded ? null : rowKey)}
+                      style={{ padding: '0.65rem 0.75rem', borderRadius: '10px', background: isExpanded ? (isBuy ? 'rgba(255,153,0,0.07)' : 'rgba(255,68,68,0.07)') : '#111', border: `1px solid ${isExpanded ? accent + '44' : '#1e1e1e'}`, cursor: 'pointer', transition: 'background 0.15s, border-color 0.15s', animation: i === 0 ? 'fadeIn 0.3s ease' : 'none' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <span style={{ fontSize: '0.78rem' }}>{isBuy ? '🐋' : '🔴'}</span>
                           <span style={{ fontWeight: '700', color: '#e8e8e8', fontSize: '0.85rem' }}>{a.symbol}</span>
-                          <span style={{ fontSize: '0.6rem', color: '#444' }}>{a.time}</span>
+                          <span style={{ fontSize: '0.62rem', fontWeight: '700', color: accent, background: `${accent}18`, padding: '1px 6px', borderRadius: '5px' }}>{label}</span>
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ color: a.pct > 0 ? '#44cc44' : '#ff4444', fontSize: '0.8rem', fontWeight: '700' }}>
-                            {a.pct > 0 ? '▲' : '▼'} {Math.abs(a.pct).toFixed(2)}%
-                          </span>
-                          <span style={{ color: '#444', fontSize: '0.65rem' }}>
-                            ${fmtPrice(a.price)} · {a.threshold}% thr
-                          </span>
-                        </div>
+                        <span style={{ fontSize: '0.6rem', color: '#444', flexShrink: 0 }}>{a.time}</span>
                       </div>
-                    ))}
-                  </div>
-                )}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                        <div style={{ flex: 1, height: '3px', background: '#1a1a1a', borderRadius: '2px', overflow: 'hidden' }}>
+                          <div style={{ width: `${score}%`, height: '100%', background: `linear-gradient(to right, ${accent}66, ${accent})`, borderRadius: '2px' }} />
+                        </div>
+                        <span style={{ fontSize: '0.63rem', color: '#666', whiteSpace: 'nowrap' }}>{score}/100</span>
+                        <span style={{ fontSize: '0.6rem', color: '#444', whiteSpace: 'nowrap' }}>×{a.volMultiplier ?? '–'}</span>
+                        <span style={{ fontSize: '0.7rem', color: confirmColor }}>{confirmIcon}</span>
+                      </div>
+                      {isExpanded && (
+                        <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${accent}22` }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                            {[['Volume spike', `×${a.volMultiplier ?? '–'} above avg`], ['Order flow', `${Math.round((a.flowRatio || 0) * 100)}% buyers`], ['vs VWAP', `${(a.price || 0) >= (a.vwap || 0) ? 'above ↑' : 'below ↓'} avg`]].map(([lbl, val]) => (
+                              <div key={lbl} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ fontSize: '0.65rem', color: '#444' }}>{lbl}</span>
+                                <span style={{ fontSize: '0.65rem', color: '#888', fontWeight: '600' }}>{val}</span>
+                              </div>
+                            ))}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '5px', borderTop: `1px solid ${accent}18` }}>
+                              <span style={{ fontSize: '0.65rem', color: '#444' }}>Result</span>
+                              <span style={{ fontSize: '0.65rem', fontWeight: '600', color: confirmColor }}>
+                                {a.confirmed === null ? '⏳ Confirming…' : a.confirmed ? `✓ +${Math.abs(a.priceImpact || 0).toFixed(2)}%` : `↔ ${(a.priceImpact || 0).toFixed(2)}%`}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })()}
+            )}
+          </div>
 
+          <div style={{ background: '#0a0a0a', borderRadius: '16px', border: '1px solid #1c1c1c', padding: '1rem 1rem 0.75rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <h3 style={{ margin: 0, fontSize: '0.7rem', fontWeight: '700', color: '#444', letterSpacing: '0.12em', textTransform: 'uppercase' }}>Price Alerts</h3>
+                {priceAlerts.length > 0 && <span style={{ fontSize: '0.62rem', background: 'rgba(255,51,51,0.15)', color: '#ff4444', padding: '1px 7px', borderRadius: '8px', fontWeight: '700' }}>{priceAlerts.length}</span>}
+              </div>
+              {priceAlerts.length > 0 && <button onClick={() => setAlerts(prev => prev.filter(a => a.type !== 'price'))} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.72rem', padding: '2px 4px' }}>✕</button>}
+            </div>
+            {priceAlerts.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '1.5rem 0.5rem' }}>
+                <div style={{ fontSize: '1.4rem', marginBottom: '0.4rem' }}>🔔</div>
+                <p style={{ color: '#2a2a2a', fontSize: '0.73rem', margin: 0, lineHeight: 1.6 }}>Alerts fire when price moves<br />past your set threshold.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '260px', overflowY: 'auto' }}>
+                {priceAlerts.map((a, i) => (
+                  <div key={i} style={{ padding: '0.65rem 0.75rem', borderRadius: '10px', animation: 'fadeIn 0.3s ease', background: '#111', border: '1px solid #1e1e1e' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <span style={{ fontWeight: '700', color: '#e8e8e8', fontSize: '0.85rem' }}>{a.symbol}</span>
+                      <span style={{ fontSize: '0.6rem', color: '#444' }}>{a.time}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: a.pct > 0 ? '#44cc44' : '#ff4444', fontSize: '0.8rem', fontWeight: '700' }}>
+                        {a.pct > 0 ? '▲' : '▼'} {Math.abs(a.pct).toFixed(2)}%
+                      </span>
+                      <span style={{ color: '#444', fontSize: '0.65rem' }}>${fmtPrice(a.price)} · {a.threshold}% thr</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

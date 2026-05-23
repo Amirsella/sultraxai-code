@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import MainTerminal from './components/MainTerminal';
+import TheZone from './components/TheZone';
 const API_BASE = 'http://38.180.137.122:8000';
 const MOCK_STOCKS = ["BTC/USD", "ETH/USD", "AAPL", "TSLA", "NVDA", "AMZN", "GOOGL", "MSFT", "META", "NFLX", "SOL/USD", "XRP/USD", "AMD", "PLTR", "COIN"];
 
@@ -90,11 +91,11 @@ export default function App() {
 
 
   return (
-    <div style={{ color: '#fff', minHeight: '100vh', background: '#020202', fontFamily: 'Inter, sans-serif', position: 'relative', overflowX: 'hidden' }}>
+    <div style={{ color: '#fff', minHeight: '100vh', background: '#020202', fontFamily: '-apple-system, BlinkMacSystemFont, system-ui, "Inter", sans-serif', position: 'relative', overflowX: 'hidden' }}>
       <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: 'linear-gradient(-45deg, #020202, #0a0303, #140505, #020202)', backgroundSize: '400% 400%', zIndex: 0 }}></div>
 
       <div style={{ position: 'relative', zIndex: 1 }}>
-        {['landing', 'signup', 'signin', 'main_app'].includes(currentView) && !(isNative && currentView === 'landing') && (
+        {['landing', 'signup', 'signin', 'main_app'].includes(currentView) && !isNative && (
           <nav style={{ display: 'flex', justifyContent: 'space-between', padding: '2rem 5rem', alignItems: 'center' }}>
             <h1 onClick={() => { if (currentView !== 'main_app') setCurrentView('landing'); }} style={{ fontSize: '1.5rem', fontWeight: '800', cursor: currentView === 'main_app' ? 'default' : 'pointer' }}>SULTRAXAI</h1>
             <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.9rem', alignItems: 'center' }}>
@@ -147,7 +148,7 @@ export default function App() {
           )}
 
           {currentView === 'signup' && (
-            <SignUpForm onRegisterSuccess={handleRegisterSuccess} setErrorMessage={setErrorMessage} errorMessage={errorMessage} />
+            <SignUpForm isNative={isNative} onBack={() => setCurrentView('landing')} onRegisterSuccess={handleRegisterSuccess} setErrorMessage={setErrorMessage} errorMessage={errorMessage} />
           )}
 
           {currentView === 'verify' && (
@@ -158,6 +159,7 @@ export default function App() {
                 type="text"
                 maxLength="6"
                 placeholder="000000"
+                autoCorrect="off" autoCapitalize="none" spellCheck={false} inputMode="numeric" pattern="[0-9]*"
                 style={{ width: '100%', padding: '1rem', background: '#000', border: '1px solid #333', color: '#fff', textAlign: 'center', fontSize: '1.5rem', letterSpacing: '0.5rem', marginBottom: '1rem', borderRadius: '12px', outline: 'none', boxSizing: 'border-box' }}
                 onChange={(e) => {
                   if(e.target.value.length === 6) {
@@ -185,38 +187,53 @@ export default function App() {
           )}
 
           {currentView === 'signin' && (
-            <div style={{ width: '400px', background: 'rgba(5, 5, 5, 0.7)', padding: '2.5rem', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)', backdropFilter: 'blur(10px)' }}>
-              <h3 style={{ fontSize: '1.8rem', fontWeight: '800', marginBottom: '1.5rem', textAlign: 'center' }}>Sign In</h3>
-              {errorMessage && <div style={{ color: '#ff3333', backgroundColor: 'rgba(255,51,51,0.1)', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.9rem', textAlign: 'center' }}>{errorMessage}</div>}
-              <form onSubmit={async (e) => {
-                e.preventDefault(); setErrorMessage('');
-                try {
-                  const res = await fetch('/api/login', { 
-                    method: 'POST', 
-                    headers: { 'Content-Type': 'application/json' }, 
-                    body: JSON.stringify({ email: e.target[0].value, password: e.target[1].value }) 
-                  });
-                  const data = await res.json();
-                  if (res.ok) { 
-                    setUserId(data.user_id); 
-                    if (data.onboarding_completed) {
-                      // משתמש ותיק - טוענים את המניות שלו ומעבירים ישר לאפליקציה
-                      setSelectedAssets(data.assets);
-                      setCurrentView('main_app'); 
-                    } else {
-                      // משתמש שנרשם אך לא סיים שלבים - מעבירים ל-Onboarding
-                      setSelectedAssets([]);
-                      setOnboardingStep(1);
-                      setCurrentView('onboarding');
-                    }
-                  } else setErrorMessage(data.detail);
-                } catch { setErrorMessage("Login failed."); }
-              }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <input type="email" placeholder="Email Address" required style={inputStyle} />
-                <input type="password" placeholder="Password" required style={inputStyle} />
-                <button type="submit" style={{ backgroundColor: '#ff3333', color: '#fff', padding: '1rem', border: 'none', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}>Connect to Terminal</button>
-              </form>
-            </div>
+            isNative ? (
+              <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', background: '#020202' }}>
+                <button onClick={() => setCurrentView('landing')}
+                  style={{ position: 'absolute', top: '56px', left: '24px', background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: '1.5rem', zIndex: 10, padding: '4px 8px', lineHeight: 1 }}>
+                  ←
+                </button>
+                <div style={{ flex: 1, padding: '100px 28px 48px', display: 'flex', flexDirection: 'column' }}>
+                  <h2 style={{ fontSize: '2.4rem', fontWeight: '900', color: '#fff', margin: '0 0 6px', letterSpacing: '-0.01em' }}>Welcome back</h2>
+                  <p style={{ color: '#555', fontSize: '0.88rem', margin: '0 0 36px', letterSpacing: '0.02em' }}>Sign in to your terminal</p>
+                  {errorMessage && <div style={{ color: '#ff3333', backgroundColor: 'rgba(255,51,51,0.1)', padding: '0.75rem', borderRadius: '10px', marginBottom: '1rem', fontSize: '0.88rem', textAlign: 'center' }}>{errorMessage}</div>}
+                  <form onSubmit={async (e) => {
+                    e.preventDefault(); setErrorMessage('');
+                    try {
+                      const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e.target[0].value, password: e.target[1].value }) });
+                      const data = await res.json();
+                      if (res.ok) { setUserId(data.user_id); if (data.onboarding_completed) { setSelectedAssets(data.assets); setCurrentView('main_app'); } else { setSelectedAssets([]); setOnboardingStep(1); setCurrentView('onboarding'); } } else setErrorMessage(data.detail);
+                    } catch { setErrorMessage("Login failed."); }
+                  }} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <input type="text" inputMode="email" placeholder="Email" required style={mobileInputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
+                    <input type="password" placeholder="Password" required style={mobileInputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
+                    <button type="submit" style={{ marginTop: '8px', width: '100%', padding: '1rem', borderRadius: '14px', background: '#ff3333', border: 'none', color: '#fff', fontSize: '1rem', fontWeight: '700', cursor: 'pointer', letterSpacing: '0.04em', boxShadow: '0 4px 24px rgba(255,51,51,0.3)' }}>
+                      Connect to Terminal
+                    </button>
+                  </form>
+                  <button onClick={() => setCurrentView('signup')} style={{ marginTop: '28px', background: 'none', border: 'none', color: '#444', cursor: 'pointer', fontSize: '0.85rem', textAlign: 'center', width: '100%' }}>
+                    Don't have an account? <span style={{ color: '#777' }}>Create one</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ width: '400px', background: 'rgba(5, 5, 5, 0.7)', padding: '2.5rem', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)', backdropFilter: 'blur(10px)' }}>
+                <h3 style={{ fontSize: '1.8rem', fontWeight: '800', marginBottom: '1.5rem', textAlign: 'center' }}>Sign In</h3>
+                {errorMessage && <div style={{ color: '#ff3333', backgroundColor: 'rgba(255,51,51,0.1)', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.9rem', textAlign: 'center' }}>{errorMessage}</div>}
+                <form onSubmit={async (e) => {
+                  e.preventDefault(); setErrorMessage('');
+                  try {
+                    const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e.target[0].value, password: e.target[1].value }) });
+                    const data = await res.json();
+                    if (res.ok) { setUserId(data.user_id); if (data.onboarding_completed) { setSelectedAssets(data.assets); setCurrentView('main_app'); } else { setSelectedAssets([]); setOnboardingStep(1); setCurrentView('onboarding'); } } else setErrorMessage(data.detail);
+                  } catch { setErrorMessage("Login failed."); }
+                }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <input type="text" inputMode="email" placeholder="Email Address" required style={inputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
+                  <input type="password" placeholder="Password" required style={inputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
+                  <button type="submit" style={{ backgroundColor: '#ff3333', color: '#fff', padding: '1rem', border: 'none', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}>Connect to Terminal</button>
+                </form>
+              </div>
+            )
           )}
 
           {currentView === 'onboarding' && (
@@ -241,8 +258,11 @@ export default function App() {
           )}
 
          {currentView === 'main_app' && (
-            <MainTerminal userId={userId} selectedAssets={selectedAssets} onSignOut={handleSignOut} onAssetsUpdate={setSelectedAssets} />
-          
+            <MainTerminal userId={userId} selectedAssets={selectedAssets} onSignOut={handleSignOut} onAssetsUpdate={setSelectedAssets} isNative={isNative} onNavigateToZone={() => setCurrentView('zone')} />
+          )}
+
+          {currentView === 'zone' && (
+            <TheZone selectedAssets={selectedAssets} onBack={() => setCurrentView('main_app')} isNative={isNative} />
           )}
 
         </div>
@@ -280,7 +300,8 @@ function OnboardingStep1({ selectedAssets, toggleAsset, setOnboardingStep }) {
           type="text"
           placeholder="Search any stock or crypto (e.g. TSLA, BTC)..."
           onChange={e => handleSearch(e.target.value)}
-          style={{ width: '100%', padding: '1rem', background: '#111', border: '1px solid #333', borderRadius: '12px', color: '#fff', outline: 'none', boxSizing: 'border-box' }}
+          dir="auto"
+          style={{ width: '100%', padding: '1rem', background: '#111', border: '1px solid #333', borderRadius: '12px', color: '#fff', outline: 'none', boxSizing: 'border-box', fontFamily: '-apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
         />
         {(searchLoading || searchResults.length > 0) && (
           <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, background: '#111', border: '1px solid #333', borderRadius: '12px', maxHeight: '240px', overflowY: 'auto', zIndex: 100 }}>
@@ -380,7 +401,7 @@ function OnboardingStep3({ tradingProfile, setTradingProfile, submitOnboarding }
   );
 }
 
-function SignUpForm({ onRegisterSuccess, setErrorMessage, errorMessage }) {
+function SignUpForm({ isNative, onBack, onRegisterSuccess, setErrorMessage, errorMessage }) {
   const [firstName, setFirstName] = useState('');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -437,28 +458,45 @@ function SignUpForm({ onRegisterSuccess, setErrorMessage, errorMessage }) {
     }
   };
 
-  return (
-    <div style={{ width: '450px', background: 'rgba(5, 5, 5, 0.7)', padding: '2.5rem', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)', backdropFilter: 'blur(10px)' }}>
-      <h3 style={{ fontSize: '1.8rem', fontWeight: '800', marginBottom: '1.5rem', textAlign: 'center' }}>Create Account</h3>
+  const formContent = (
+    <>
+      <h3 style={{ fontSize: isNative ? '2.4rem' : '1.8rem', fontWeight: '800', marginBottom: isNative ? '6px' : '1.5rem', textAlign: isNative ? 'left' : 'center', letterSpacing: isNative ? '-0.01em' : 'normal' }}>Create Account</h3>
+      {isNative && <p style={{ color: '#555', fontSize: '0.88rem', margin: '0 0 28px', letterSpacing: '0.02em' }}>Join the terminal</p>}
       {errorMessage && <div style={{ color: '#ff3333', backgroundColor: 'rgba(255,51,51,0.1)', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.9rem', textAlign: 'center', border: '1px solid rgba(255,51,51,0.2)' }}>{errorMessage}</div>}
       
       <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '1rem', textAlign: 'left' }}>
-        <input type="text" placeholder="First Name" value={firstName} onChange={e => setFirstName(e.target.value)} style={inputStyle} required />
-        <input type="text" placeholder="Full Name" value={fullName} onChange={e => setFullName(e.target.value)} style={inputStyle} required />
-        <input type="email" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} required />
+        <div contentEditable="plaintext-only" suppressContentEditableWarning data-placeholder="First Name"
+          onInput={e => setFirstName(e.currentTarget.textContent || '')}
+          dir="auto"
+          style={{ ...(isNative ? mobileInputStyle : inputStyle), minHeight: '1.4em', cursor: 'text', whiteSpace: 'nowrap', overflowX: 'hidden' }} />
+        <div contentEditable="plaintext-only" suppressContentEditableWarning data-placeholder="Full Name"
+          onInput={e => setFullName(e.currentTarget.textContent || '')}
+          dir="auto"
+          style={{ ...(isNative ? mobileInputStyle : inputStyle), minHeight: '1.4em', cursor: 'text', whiteSpace: 'nowrap', overflowX: 'hidden' }} />
+        <input type="text" inputMode="email" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} style={isNative ? mobileInputStyle : inputStyle} required autoCorrect="off" autoCapitalize="none" spellCheck={false} />
         {email && !isEmailValid(email) && <span style={{ color: '#ff3333', fontSize: '0.8rem', marginTop: '-0.5rem' }}>Please enter a valid email format</span>}
 
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <select value={countryCode} onChange={e => setCountryCode(e.target.value)} style={{ ...inputStyle, width: '38%', cursor: 'pointer' }}>
-            <option value="+972">🇮🇱 +972</option>
-            <option value="+1">🇺🇸 +1</option>
-            <option value="+44">🇬🇧 +44</option>
+          <select value={countryCode} onChange={e => setCountryCode(e.target.value)} style={{ ...(isNative ? mobileInputStyle : inputStyle), width: '38%', cursor: 'pointer' }}>
+            {isNative ? (
+              <>
+                <option value="+972">+972 IL</option>
+                <option value="+1">+1 US</option>
+                <option value="+44">+44 GB</option>
+              </>
+            ) : (
+              <>
+                <option value="+972">🇮🇱 +972</option>
+                <option value="+1">🇺🇸 +1</option>
+                <option value="+44">🇬🇧 +44</option>
+              </>
+            )}
           </select>
-          <input type="tel" placeholder="Phone Number" value={phone} onChange={e => setPhone(e.target.value)} style={{ ...inputStyle, width: '62%' }} required />
+          <input type="tel" placeholder="Phone Number" value={phone} onChange={e => setPhone(e.target.value)} style={{ ...(isNative ? mobileInputStyle : inputStyle), width: '62%' }} required inputMode="numeric" pattern="[0-9]*" />
         </div>
-        
-        <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} style={inputStyle} required />
-        
+
+        <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} style={isNative ? mobileInputStyle : inputStyle} required autoCorrect="off" autoCapitalize="none" spellCheck={false} />
+
         {password && (
           <div style={{ fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.2rem', paddingLeft: '0.25rem', color: '#aaa' }}>
             <span style={{ color: pwdCriteria.hasMinLength ? '#44ff44' : '#ff3333' }}>✓ Minimum 8 characters</span>
@@ -467,7 +505,7 @@ function SignUpForm({ onRegisterSuccess, setErrorMessage, errorMessage }) {
           </div>
         )}
 
-        <input type="password" placeholder="Confirm Password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} style={inputStyle} required />
+        <input type="password" placeholder="Confirm Password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} style={isNative ? mobileInputStyle : inputStyle} required autoCorrect="off" autoCapitalize="none" spellCheck={false} />
         {password && confirmPassword && password !== confirmPassword && (
           <span style={{ color: '#ff3333', fontSize: '0.8rem' }}>Passwords do not match</span>
         )}
@@ -488,12 +526,30 @@ function SignUpForm({ onRegisterSuccess, setErrorMessage, errorMessage }) {
             {!agreeTerms && <span>• You must agree to the Terms of Service</span>}
           </div>
         )}
-        <button type="submit" disabled={isLoading} style={{ backgroundColor: isFormValid && !isLoading ? '#ff3333' : '#331111', color: isFormValid && !isLoading ? '#fff' : '#666', padding: '1rem', border: 'none', borderRadius: '12px', fontWeight: '600', cursor: isLoading ? 'not-allowed' : 'pointer', marginTop: '0.5rem', transition: '0.3s' }}>
+        <button type="submit" disabled={isLoading} style={{ backgroundColor: isFormValid && !isLoading ? '#ff3333' : '#331111', color: isFormValid && !isLoading ? '#fff' : '#666', padding: '1rem', border: 'none', borderRadius: isNative ? '14px' : '12px', fontWeight: '600', cursor: isLoading ? 'not-allowed' : 'pointer', marginTop: '0.5rem', transition: '0.3s', boxShadow: isNative && isFormValid ? '0 4px 24px rgba(255,51,51,0.3)' : 'none' }}>
           {isLoading ? 'Creating account...' : 'Register & Continue'}
         </button>
       </form>
+    </>
+  );
+
+  return isNative ? (
+    <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', background: '#020202' }}>
+      <button onClick={onBack}
+        style={{ position: 'absolute', top: '56px', left: '24px', background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: '1.5rem', zIndex: 10, padding: '4px 8px', lineHeight: 1 }}>
+        ←
+      </button>
+      <div style={{ flex: 1, padding: '100px 28px 48px', overflowY: 'auto' }}>
+        {formContent}
+      </div>
+    </div>
+  ) : (
+    <div style={{ width: '450px', background: 'rgba(5, 5, 5, 0.7)', padding: '2.5rem', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)', backdropFilter: 'blur(10px)' }}>
+      {formContent}
     </div>
   );
 }
 
-const inputStyle = { padding: '1rem', background: '#111', border: '1px solid #222', borderRadius: '12px', color: '#fff', outline: 'none' };
+const SYS_FONT = '-apple-system, BlinkMacSystemFont, system-ui, sans-serif';
+const inputStyle = { padding: '1rem', background: '#111', border: '1px solid #222', borderRadius: '12px', color: '#fff', outline: 'none', fontFamily: SYS_FONT };
+const mobileInputStyle = { padding: '1rem 1.25rem', background: '#111', border: '1px solid #1e1e1e', borderRadius: '14px', color: '#fff', outline: 'none', fontSize: '1rem', boxSizing: 'border-box', width: '100%', fontFamily: SYS_FONT };

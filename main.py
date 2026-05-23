@@ -5,6 +5,7 @@ import random
 import requests
 import yfinance as yf
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
@@ -250,6 +251,73 @@ async def update_assets(data: UpdateAssets):
         return JSONResponse(status_code=500, content={"detail": str(e)})
     conn.close()
     return {"status": "success"}
+
+def _zone_news(symbol: str) -> list:
+    try:
+        is_crypto = '-USD' in symbol or '/' in symbol
+        if is_crypto:
+            res = requests.get("https://finnhub.io/api/v1/news",
+                params={"category": "crypto", "token": FINNHUB_KEY},
+                headers={"User-Agent": "SultraxAI/1.0"}, timeout=5)
+        else:
+            from_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+            to_date = datetime.now().strftime('%Y-%m-%d')
+            res = requests.get("https://finnhub.io/api/v1/company-news",
+                params={"symbol": symbol, "from": from_date, "to": to_date, "token": FINNHUB_KEY},
+                headers={"User-Agent": "SultraxAI/1.0"}, timeout=5)
+        items = res.json() if isinstance(res.json(), list) else []
+        return [{"headline": i.get("headline",""), "summary": (i.get("summary","") or "")[:220],
+                 "source": i.get("source",""), "url": i.get("url",""), "time": i.get("datetime",0)}
+                for i in items[:15] if i.get("headline")]
+    except Exception as e:
+        print(f"Zone news error: {e}"); return []
+
+def _zone_stocktwits(symbol: str) -> list:
+    try:
+        if '-USD' in symbol:
+            st_sym = symbol.replace('-USD', '.X')
+        elif '/' in symbol:
+            st_sym = symbol.split('/')[0] + '.X'
+        else:
+            st_sym = symbol
+        res = requests.get(f"https://api.stocktwits.com/api/2/streams/symbol/{st_sym}.json",
+            headers={"User-Agent": "SultraxAI/1.0"}, timeout=5)
+        msgs = res.json().get("messages", [])[:20]
+        return [{"text": m.get("body",""), "user": m.get("user",{}).get("username",""),
+                 "sentiment": m.get("entities",{}).get("sentiment",{}).get("basic",""),
+                 "likes": m.get("likes",{}).get("total",0), "time": m.get("created_at","")}
+                for m in msgs if m.get("body")]
+    except Exception as e:
+        print(f"Zone StockTwits error: {e}"); return []
+
+def _zone_reddit(symbol: str) -> list:
+    try:
+        ticker = symbol.replace('-USD','').replace('/','').split('.')[0]
+        subs = "stocks+wallstreetbets+investing+CryptoCurrency" if '-USD' in symbol else "stocks+wallstreetbets+investing"
+        res = requests.get(f"https://www.reddit.com/r/{subs}/search.json",
+            params={"q": ticker, "sort": "new", "restrict_sr": "1", "limit": "15", "type": "link"},
+            headers={"User-Agent": "SultraxAI/1.0"}, timeout=5)
+        posts = res.json().get("data",{}).get("children",[])
+        return [{"title": p["data"].get("title",""), "subreddit": p["data"].get("subreddit",""),
+                 "score": p["data"].get("score",0), "comments": p["data"].get("num_comments",0),
+                 "url": "https://reddit.com" + p["data"].get("permalink",""),
+                 "time": p["data"].get("created_utc",0)}
+                for p in posts if p.get("data",{}).get("title")][:12]
+    except Exception as e:
+        print(f"Zone Reddit error: {e}"); return []
+
+@app.get("/api/zone/all")
+async def get_zone_all(symbol: str):
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        nf = ex.submit(_zone_news, symbol)
+        sf = ex.submit(_zone_stocktwits, symbol)
+        rf = ex.submit(_zone_reddit, symbol)
+        news, twits, reddit = nf.result(), sf.result(), rf.result()
+    bull = sum(1 for m in twits if m.get("sentiment") == "Bullish")
+    bear = sum(1 for m in twits if m.get("sentiment") == "Bearish")
+    total = bull + bear
+    return {"symbol": symbol, "news": news, "stocktwits": twits, "reddit": reddit,
+            "sentiment": {"bull": bull, "bear": bear, "pct": round(bull/total*100) if total else 50}}
 
 @app.post("/api/login")
 async def login(user: UserLogin):

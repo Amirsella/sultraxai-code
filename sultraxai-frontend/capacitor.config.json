@@ -1,0 +1,12 @@
+{
+  "appId": "com.sultraxai.app",
+  "appName": "SultraxAI",
+  "webDir": "dist",
+  "server": {
+    "iosScheme": "https"
+  },
+  "ios": {
+    "contentInset": "automatic",
+    "backgroundColor": "#070707"
+  }
+}
