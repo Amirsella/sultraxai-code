@@ -30,7 +30,7 @@ def send_reset_email(to_email: str, reset_link: str) -> bool:
                 "sender": {"name": "SultraxAI", "email": "support@sultraxai.com"},
                 "to": [{"email": to_email}],
                 "subject": "SultraxAI - Reset Your Password",
-                "htmlContent": f"<p>Click the link below to reset your SultraxAI password:</p><p><a href='{reset_link}' style='background:#ff3333;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block;margin:16px 0'>Reset Password</a></p><p style='color:#888;font-size:12px'>This link expires in 15 minutes. If you didn't request this, ignore this email.</p>"
+                "htmlContent": f"<p>Click the link below to reset your SultraxAI password:</p><p><a href='{reset_link}' style='background:#ff3333;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block;margin:16px 0'>Reset Password</a></p><p style='color:#888;font-size:12px'>This link expires in 1 hour. If you didn't request this, ignore this email.</p>"
             }
         )
         return res.status_code == 201
@@ -154,7 +154,7 @@ async def forgot_password(data: dict, background_tasks: BackgroundTasks):
     user = cursor.fetchone()
     if user:
         token = str(uuid.uuid4())
-        expiry = (datetime.now() + timedelta(minutes=15)).timestamp()
+        expiry = (datetime.now() + timedelta(hours=1)).timestamp()
         cursor.execute("DELETE FROM reset_tokens WHERE email = ?", (email,))
         cursor.execute("INSERT INTO reset_tokens (token, email, expiry) VALUES (?, ?, ?)", (token, email, expiry))
         conn.commit()
