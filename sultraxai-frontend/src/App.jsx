@@ -3,6 +3,8 @@ import MainTerminal from './components/MainTerminal';
 const API_BASE = 'http://38.180.137.122:8000';
 const MOCK_STOCKS = ["BTC/USD", "ETH/USD", "AAPL", "TSLA", "NVDA", "AMZN", "GOOGL", "MSFT", "META", "NFLX", "SOL/USD", "XRP/USD", "AMD", "PLTR", "COIN"];
 
+const isNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
+
 export default function App() {
   // טעינת מצב ראשוני מה-LocalStorage כדי למנוע ניתוק בריפרש
   const [currentView, setCurrentView] = useState(() => {
@@ -91,7 +93,7 @@ export default function App() {
       <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: 'linear-gradient(-45deg, #020202, #0a0303, #140505, #020202)', backgroundSize: '400% 400%', zIndex: 0 }}></div>
 
       <div style={{ position: 'relative', zIndex: 1 }}>
-        {['landing', 'signup', 'signin', 'main_app'].includes(currentView) && (
+        {['landing', 'signup', 'signin', 'main_app'].includes(currentView) && !(isNative && currentView === 'landing') && (
           <nav style={{ display: 'flex', justifyContent: 'space-between', padding: '2rem 5rem', alignItems: 'center' }}>
             <h1 onClick={() => { if (currentView !== 'main_app') setCurrentView('landing'); }} style={{ fontSize: '1.5rem', fontWeight: '800', cursor: currentView === 'main_app' ? 'default' : 'pointer' }}>SULTRAXAI</h1>
             <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.9rem', alignItems: 'center' }}>
@@ -113,10 +115,35 @@ export default function App() {
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '2rem' }}>
           
           {currentView === 'landing' && (
-            <div style={{ textAlign: 'center', marginTop: '5rem' }}>
-              <h2 style={{ fontSize: '5rem', fontWeight: '900', background: 'linear-gradient(to bottom, #fff, #444)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>ALPHA FROM <br/> SOCIAL VOLATILITY.</h2>
-              <button onClick={() => setCurrentView('signup')} style={{ background: '#ff3333', padding: '1rem 3rem', borderRadius: '50px', border: 'none', color: '#fff', marginTop: '2rem', cursor: 'pointer', fontWeight: '600' }}>REQUEST ACCESS</button>
-            </div>
+            isNative ? (
+              <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', padding: '80px 32px 60px', background: '#020202' }}>
+                {/* Logo area */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '16px' }}>
+                  <div style={{ width: '72px', height: '72px', borderRadius: '18px', background: 'linear-gradient(135deg, #ff3333, #ff6600)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '8px', boxShadow: '0 8px 32px rgba(255,51,51,0.35)' }}>
+                    <span style={{ fontSize: '2rem', fontWeight: '900', color: '#fff' }}>S</span>
+                  </div>
+                  <h1 style={{ fontSize: '2.4rem', fontWeight: '900', letterSpacing: '0.08em', margin: 0, color: '#fff' }}>SULTRAXAI</h1>
+                  <p style={{ color: '#444', fontSize: '0.95rem', margin: 0, letterSpacing: '0.04em', textAlign: 'center', lineHeight: 1.5 }}>Real-time market intelligence</p>
+                </div>
+
+                {/* Buttons */}
+                <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <button onClick={() => setCurrentView('signin')}
+                    style={{ width: '100%', padding: '1rem', borderRadius: '14px', background: '#ff3333', border: 'none', color: '#fff', fontSize: '1rem', fontWeight: '700', cursor: 'pointer', letterSpacing: '0.04em' }}>
+                    LOG IN
+                  </button>
+                  <button onClick={() => setCurrentView('signup')}
+                    style={{ width: '100%', padding: '1rem', borderRadius: '14px', background: 'transparent', border: '1px solid #2a2a2a', color: '#888', fontSize: '1rem', fontWeight: '600', cursor: 'pointer', letterSpacing: '0.04em' }}>
+                    SIGN UP
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', marginTop: '5rem' }}>
+                <h2 style={{ fontSize: '5rem', fontWeight: '900', background: 'linear-gradient(to bottom, #fff, #444)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>ALPHA FROM <br/> SOCIAL VOLATILITY.</h2>
+                <button onClick={() => setCurrentView('signup')} style={{ background: '#ff3333', padding: '1rem 3rem', borderRadius: '50px', border: 'none', color: '#fff', marginTop: '2rem', cursor: 'pointer', fontWeight: '600' }}>REQUEST ACCESS</button>
+              </div>
+            )
           )}
 
           {currentView === 'signup' && (
