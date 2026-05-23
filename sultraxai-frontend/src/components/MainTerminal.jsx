@@ -32,16 +32,18 @@ const toTVSymbol = (yahoo) => {
 };
 
 const TV_INTERVALS = [
-  { label: '1H', value: '60' },
-  { label: '4H', value: '240' },
-  { label: '1D', value: 'D' },
-  { label: '1W', value: 'W' },
-  { label: '1M', value: 'M' },
-  { label: '1Y', value: '12M' },
+  { label: '1m',  value: '1' },
+  { label: '5m',  value: '5' },
+  { label: '15m', value: '15' },
+  { label: '1H',  value: '60' },
+  { label: '4H',  value: '240' },
+  { label: '1D',  value: 'D' },
+  { label: '1W',  value: 'W' },
+  { label: '1M',  value: 'M' },
 ];
 
 function ChartModal({ sym, price, rvol, symAlerts, onClose }) {
-  const [activeInterval, setActiveInterval] = useState('D');
+  const [activeInterval, setActiveInterval] = useState('5');
   const containerId = `tv_${sym.replace(/[^a-zA-Z0-9]/g, '_')}`;
 
   useEffect(() => {
