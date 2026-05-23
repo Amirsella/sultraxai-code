@@ -544,10 +544,13 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
   const statusLabel = wsStatus === 'live' ? 'LIVE' : wsStatus === 'reconnecting' ? 'RECONNECTING' : 'CONNECTING';
 
   return (
-    <div style={{ width: '100%', maxWidth: '1400px', padding: '0 2rem 4rem', margin: '0 auto', color: '#fff' }}>
+    <>
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
-        @keyframes fadeIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes shimmer { 0%{background-position:200% center} 100%{background-position:-200% center} }
+        * { box-sizing: border-box; }
+        ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
       `}</style>
 
       {editing && (
@@ -558,26 +561,61 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
         />
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', marginTop: '1.5rem' }}>
-        <div>
-          <h2 style={{ fontSize: '2rem', fontWeight: '900', margin: 0, background: 'linear-gradient(to bottom, #fff, #666)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-            TERMINAL
-          </h2>
-          <p style={{ color: '#444', margin: '0.2rem 0 0', fontSize: '0.75rem' }}>
-            {loading ? 'Loading...' : lastUpdate ? `Last trade: ${lastUpdate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : 'Waiting for trades...'}
-          </p>
+      {/* ── NAVBAR ── */}
+      <nav style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 150, height: '54px', background: 'rgba(4,4,4,0.97)', borderBottom: '1px solid #111', backdropFilter: 'blur(24px)', display: 'flex', alignItems: 'center', padding: '0 2rem', justifyContent: 'space-between' }}>
+
+        {/* Logo */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+          <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'linear-gradient(135deg, #ff3333, #ff6600)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', boxShadow: '0 0 12px rgba(255,51,51,0.4)' }}>⚡</div>
+          <span style={{ fontWeight: '900', fontSize: '1rem', letterSpacing: '0.1em', background: 'linear-gradient(to right, #fff 40%, #666)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>SULTRAXAI</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <button onClick={() => setEditing(true)}
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid #2a2a2a', color: '#aaa', padding: '0.45rem 1rem', borderRadius: '20px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '600' }}>
-            + Edit Watchlist
-          </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: statusDot, fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.08em' }}>
-            <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: statusDot, animation: wsStatus === 'live' ? 'pulse 2s infinite' : 'none' }} />
-            {statusLabel} · {selectedAssets.length} ASSETS
+
+        {/* Nav tabs */}
+        <div style={{ display: 'flex', gap: '2px', background: '#0d0d0d', border: '1px solid #1a1a1a', borderRadius: '10px', padding: '3px' }}>
+          {[['Terminal', true], ['Analytics', false], ['Alerts', false]].map(([label, active]) => (
+            <div key={label} style={{ padding: '5px 18px', borderRadius: '7px', fontSize: '0.72rem', fontWeight: active ? '700' : '500', background: active ? '#fff' : 'transparent', color: active ? '#000' : '#3a3a3a', cursor: active ? 'default' : 'not-allowed', transition: '0.15s', letterSpacing: '0.02em' }}>
+              {label}
+            </div>
+          ))}
+        </div>
+
+        {/* Right controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: statusDot, animation: wsStatus === 'live' ? 'pulse 2s infinite' : 'none', boxShadow: wsStatus === 'live' ? `0 0 6px ${statusDot}` : 'none' }} />
+            <span style={{ fontSize: '0.68rem', color: statusDot, fontWeight: '700', letterSpacing: '0.08em' }}>{statusLabel}</span>
+            <span style={{ fontSize: '0.65rem', color: '#2a2a2a' }}>·</span>
+            <span style={{ fontSize: '0.65rem', color: '#444' }}>{selectedAssets.length} assets</span>
           </div>
+          <div style={{ width: '1px', height: '16px', background: '#1a1a1a' }} />
+          <button onClick={() => setEditing(true)} style={{ background: 'transparent', border: '1px solid #222', color: '#666', padding: '5px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: '600', transition: '0.15s' }}
+            onMouseEnter={e => { e.target.style.borderColor='#444'; e.target.style.color='#aaa'; }}
+            onMouseLeave={e => { e.target.style.borderColor='#222'; e.target.style.color='#666'; }}>
+            + Watchlist
+          </button>
+          <button onClick={onSignOut} style={{ background: 'transparent', border: '1px solid #222', color: '#444', padding: '5px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: '600', transition: '0.15s' }}
+            onMouseEnter={e => { e.target.style.borderColor='#ff333344'; e.target.style.color='#ff5555'; }}
+            onMouseLeave={e => { e.target.style.borderColor='#222'; e.target.style.color='#444'; }}>
+            Sign out
+          </button>
         </div>
-      </div>
+      </nav>
+
+      {/* ── PAGE WRAPPER ── */}
+      <div style={{ minHeight: '100vh', background: 'radial-gradient(ellipse 80% 40% at 50% 0%, rgba(255,51,51,0.04) 0%, transparent 60%), #030303', paddingTop: '54px', color: '#fff' }}>
+        <div style={{ maxWidth: '1440px', padding: '2rem 2rem 4rem', margin: '0 auto' }}>
+
+          {/* Section header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '0.65rem', fontWeight: '700', color: '#333', letterSpacing: '0.14em', textTransform: 'uppercase' }}>Watchlist</span>
+              <span style={{ width: '4px', height: '4px', borderRadius: '50%', background: '#222', display: 'inline-block' }} />
+              <span style={{ fontSize: '0.65rem', color: '#2a2a2a' }}>{selectedAssets.length} assets</span>
+            </div>
+            <span style={{ fontSize: '0.65rem', color: '#2a2a2a' }}>
+              {loading ? 'Loading…' : lastUpdate ? `Last trade ${lastUpdate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : 'Waiting for trades…'}
+            </span>
+          </div>
 
       <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
         {/* ── WATCHLIST ── */}
@@ -594,7 +632,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
             const rvolStyle = getRvolStyle(rvols[sym]);
 
             return (
-              <div key={sym} style={{ background: cardBg, border: `1px solid ${status.color}28`, borderRadius: '16px', padding: '1.25rem', backdropFilter: 'blur(12px)', transition: 'background 0.15s ease, border-color 0.4s', animation: 'fadeIn 0.3s ease' }}>
+              <div key={sym} style={{ background: cardBg, border: `1px solid ${status.color}22`, borderLeft: `3px solid ${status.color}`, borderRadius: '16px', padding: '1.25rem', backdropFilter: 'blur(12px)', transition: 'background 0.2s ease, border-color 0.4s', animation: 'fadeIn 0.35s ease', boxShadow: status.label === 'ALERT' ? `0 0 24px ${status.color}18, 0 2px 8px rgba(0,0,0,0.4)` : '0 2px 8px rgba(0,0,0,0.3)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
                   <span style={{ fontWeight: '700', fontSize: '0.95rem' }}>{sym}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -847,6 +885,9 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
 
         </div>
       </div>
-    </div>
+
+        </div>
+      </div>
+    </>
   );
 }
