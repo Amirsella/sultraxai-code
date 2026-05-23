@@ -270,7 +270,7 @@ function OnboardingStep1({ selectedAssets, toggleAsset, setOnboardingStep }) {
           <div style={{ padding: '0.75rem', color: '#555', textAlign: 'center', fontSize: '0.8rem' }}>Start typing to search stocks & crypto</div>
         )}
         {searchResults.map(item => (
-          <div key={item.symbol} onClick={() => toggleAsset(item.symbol)} style={{
+          <div key={item.symbol} onMouseDown={e => e.preventDefault()} onClick={() => toggleAsset(item.symbol)} style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid #1a1a1a',
             background: selectedAssets.includes(item.symbol) ? 'rgba(255,51,51,0.08)' : 'transparent',
