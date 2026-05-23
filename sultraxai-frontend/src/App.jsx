@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect  } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import MainTerminal from './components/MainTerminal';
 const API_BASE = 'http://38.180.137.122:8000';
 const MOCK_STOCKS = ["BTC/USD", "ETH/USD", "AAPL", "TSLA", "NVDA", "AMZN", "GOOGL", "MSFT", "META", "NFLX", "SOL/USD", "XRP/USD", "AMD", "PLTR", "COIN"];
@@ -228,6 +228,9 @@ function OnboardingStep1({ selectedAssets, toggleAsset, setOnboardingStep }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
 
   useEffect(() => {
     if (!searchTerm.trim()) { setSearchResults([]); return; }
@@ -243,11 +246,17 @@ function OnboardingStep1({ selectedAssets, toggleAsset, setOnboardingStep }) {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
+  const handleToggle = (symbol) => {
+    toggleAsset(symbol);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+
   return (
     <div style={{ textAlign: 'left' }}>
       <h3 style={{ fontSize: '2rem', marginBottom: '1rem' }}>Step 1: Select Assets</h3>
       <p style={{ color: '#888', marginBottom: '2rem' }}>Search and choose at least 3 assets to follow.</p>
       <input
+        ref={inputRef}
         type="text" placeholder="Search any stock or crypto (e.g. TSLA, BTC)..."
         value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
         style={{ width: '100%', padding: '1rem', background: '#111', border: '1px solid #333', borderRadius: '12px', color: '#fff', marginBottom: '0.5rem', outline: 'none', boxSizing: 'border-box' }}
@@ -255,7 +264,7 @@ function OnboardingStep1({ selectedAssets, toggleAsset, setOnboardingStep }) {
       {selectedAssets.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '0.75rem' }}>
           {selectedAssets.map(s => (
-            <div key={s} onClick={() => toggleAsset(s)} style={{ padding: '5px 12px', borderRadius: '20px', background: 'rgba(255,51,51,0.15)', border: '1px solid #ff3333', color: '#ff3333', fontSize: '0.8rem', cursor: 'pointer' }}>
+            <div key={s} onMouseDown={e => e.preventDefault()} onClick={() => handleToggle(s)} style={{ padding: '5px 12px', borderRadius: '20px', background: 'rgba(255,51,51,0.15)', border: '1px solid #ff3333', color: '#ff3333', fontSize: '0.8rem', cursor: 'pointer' }}>
               {s} ✕
             </div>
           ))}
@@ -270,7 +279,7 @@ function OnboardingStep1({ selectedAssets, toggleAsset, setOnboardingStep }) {
           <div style={{ padding: '0.75rem', color: '#555', textAlign: 'center', fontSize: '0.8rem' }}>Start typing to search stocks & crypto</div>
         )}
         {searchResults.map(item => (
-          <div key={item.symbol} onMouseDown={e => e.preventDefault()} onClick={() => toggleAsset(item.symbol)} style={{
+          <div key={item.symbol} onMouseDown={e => e.preventDefault()} onClick={() => handleToggle(item.symbol)} style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid #1a1a1a',
             background: selectedAssets.includes(item.symbol) ? 'rgba(255,51,51,0.08)' : 'transparent',
