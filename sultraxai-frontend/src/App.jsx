@@ -124,10 +124,10 @@ export default function App() {
                   <img src="./sword-logo.png" alt="" style={{ width: '88%', maxWidth: '380px', opacity: 0.12, filter: 'grayscale(20%)' }} />
                 </div>
 
-                {/* Top: name */}
-                <div style={{ paddingTop: '80px', textAlign: 'center', position: 'relative', zIndex: 1 }}>
-                  <p style={{ color: '#333', fontSize: '0.75rem', letterSpacing: '0.25em', textTransform: 'uppercase', margin: '0 0 10px' }}>Welcome to</p>
-                  <h1 style={{ fontSize: '2.6rem', fontWeight: '900', letterSpacing: '0.06em', margin: 0, color: '#fff' }}>SULTRAXAI</h1>
+                {/* Top: logo + name */}
+                <div style={{ paddingTop: '80px', textAlign: 'center', position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <img src="./sword-logo.png" alt="SultraxAI" style={{ width: '180px', height: '180px', objectFit: 'contain', marginBottom: '8px' }} />
+                  <h1 style={{ fontSize: '2.4rem', fontWeight: '900', letterSpacing: '0.06em', margin: 0, color: '#fff' }}>SULTRAXAI</h1>
                   <p style={{ color: '#444', fontSize: '0.82rem', margin: '8px 0 0', letterSpacing: '0.06em' }}>Real-time market intelligence</p>
                 </div>
 
