@@ -149,7 +149,7 @@ function ChartModal({ sym, price, rvol, symAlerts, onClose, onRegisterLive }) {
 
   return (
     <div onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-      style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.25rem' }}>
+      style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.97)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.25rem' }}>
       <div style={{ background: '#070707', border: '1px solid #1c1c1c', borderRadius: '20px', width: '100%', maxWidth: '1020px', maxHeight: '92vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 80px rgba(0,0,0,0.7)' }}>
 
         {/* Header */}
@@ -194,7 +194,7 @@ function ChartModal({ sym, price, rvol, symAlerts, onClose, onRegisterLive }) {
         <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
           {liveMode ? (
             <>
-              <div ref={liveContainerRef} style={{ width: '100%', height: '420px' }} />
+              <div ref={liveContainerRef} style={{ width: '100%', height: '420px', overflow: 'hidden' }} />
               {!liveReady && (
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#070707' }}>
                   <div style={{ textAlign: 'center' }}>
