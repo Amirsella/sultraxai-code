@@ -712,38 +712,68 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                     </p>
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '260px', overflowY: 'auto' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '260px', overflowY: 'auto' }}>
                     {signals.map((a, i) => {
                       const isBuy = a.dir === 'buy';
                       const score = a.score || 0;
                       const accent = isBuy ? '#ff9900' : '#ff4444';
-                      const borderOpacity = score >= 80 ? '55' : score >= 60 ? '33' : '1a';
+                      const aboveBelow = a.price >= a.vwap ? 'above' : 'below';
+                      const borderColor = score >= 80 ? `${accent}55` : score >= 60 ? `${accent}30` : `${accent}18`;
                       return (
-                        <div key={i} style={{ padding: '0.75rem', borderRadius: '10px', animation: 'fadeIn 0.3s ease', background: isBuy ? 'rgba(255,153,0,0.05)' : 'rgba(255,50,50,0.05)', border: `1px solid ${accent}${borderOpacity}` }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                            <span style={{ fontWeight: '700', color: '#fff', fontSize: '0.85rem' }}>
-                              {isBuy ? '🐋 ' : '🔴 '}{a.symbol}
+                        <div key={i} style={{ borderRadius: '12px', overflow: 'hidden', border: `1px solid ${borderColor}`, animation: 'fadeIn 0.3s ease', background: isBuy ? 'rgba(255,153,0,0.04)' : 'rgba(255,50,50,0.04)' }}>
+
+                          {/* Header row */}
+                          <div style={{ padding: '0.7rem 0.75rem 0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ fontSize: '1rem' }}>{isBuy ? '🐋' : '🔴'}</span>
+                              <span style={{ fontWeight: '800', color: '#fff', fontSize: '0.9rem', letterSpacing: '0.03em' }}>{a.symbol}</span>
+                            </div>
+                            <span style={{ fontSize: '0.65rem', color: '#444' }}>{a.time}</span>
+                          </div>
+
+                          {/* Strength label */}
+                          <div style={{ padding: '0 0.75rem 0.55rem' }}>
+                            <span style={{ fontSize: '0.72rem', fontWeight: '800', color: accent, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                              {a.strengthLabel}
                             </span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                              <span style={{ fontSize: '0.65rem', fontWeight: '800', color: accent, background: `${accent}22`, padding: '2px 7px', borderRadius: '6px' }}>
-                                {score}/100
-                              </span>
+                          </div>
+
+                          {/* Score bar */}
+                          <div style={{ padding: '0 0.75rem 0.65rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                              <span style={{ fontSize: '0.6rem', color: '#444', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Conviction</span>
+                              <span style={{ fontSize: '0.65rem', fontWeight: '700', color: accent }}>{score}/100</span>
+                            </div>
+                            <div style={{ height: '4px', background: '#111', borderRadius: '2px', overflow: 'hidden' }}>
+                              <div style={{ width: `${score}%`, height: '100%', background: `linear-gradient(to right, ${accent}88, ${accent})`, borderRadius: '2px', transition: 'width 0.5s ease' }} />
                             </div>
                           </div>
-                          <div style={{ color: accent, fontSize: '0.78rem', fontWeight: '700', marginBottom: '4px' }}>
-                            {a.strengthLabel}
+
+                          {/* Stats */}
+                          <div style={{ padding: '0 0.75rem 0.65rem', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ fontSize: '0.68rem', color: '#555' }}>Volume spike</span>
+                              <span style={{ fontSize: '0.68rem', color: '#aaa', fontWeight: '600' }}>×{a.z}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ fontSize: '0.68rem', color: '#555' }}>Buyers</span>
+                              <span style={{ fontSize: '0.68rem', color: isBuy && a.flowRatio >= 0.65 ? accent : '#aaa', fontWeight: '600' }}>{Math.round(a.flowRatio * 100)}%</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ fontSize: '0.68rem', color: '#555' }}>Price</span>
+                              <span style={{ fontSize: '0.68rem', color: '#aaa', fontWeight: '600' }}>${fmtPrice(a.price)} <span style={{ color: a.price >= a.vwap ? '#44cc44' : '#ff4444', fontSize: '0.6rem' }}>({aboveBelow} avg)</span></span>
+                            </div>
                           </div>
-                          <div style={{ color: '#555', fontSize: '0.68rem', lineHeight: 1.7 }}>
-                            <span style={{ color: '#666' }}>{a.z}σ anomaly</span> · <span style={{ color: '#666' }}>{Math.round(a.flowRatio * 100)}% buy flow</span><br />
-                            <span>${fmtPrice(a.price)}</span> · <span>VWAP ${fmtPrice(a.vwap)}</span><br />
+
+                          {/* Confirmation badge */}
+                          <div style={{ borderTop: `1px solid ${borderColor}`, padding: '0.45rem 0.75rem', background: 'rgba(0,0,0,0.2)' }}>
                             {a.confirmed === null
-                              ? <span style={{ color: '#333' }}>⏳ Awaiting confirmation…</span>
+                              ? <span style={{ fontSize: '0.65rem', color: '#333' }}>⏳ Confirming in 30s…</span>
                               : a.confirmed
-                              ? <span style={{ color: '#44cc44' }}>✓ Confirmed {a.priceImpact > 0 ? '+' : ''}{a.priceImpact?.toFixed(2)}%</span>
-                              : <span style={{ color: '#444' }}>↔ No follow-through {a.priceImpact?.toFixed(2)}%</span>
+                              ? <span style={{ fontSize: '0.65rem', color: '#44cc44', fontWeight: '600' }}>✓ Confirmed {a.priceImpact > 0 ? '+' : ''}{a.priceImpact?.toFixed(2)}%</span>
+                              : <span style={{ fontSize: '0.65rem', color: '#444' }}>↔ No follow-through ({a.priceImpact?.toFixed(2)}%)</span>
                             }
                           </div>
-                          <div style={{ fontSize: '0.6rem', color: '#333', marginTop: '3px', textAlign: 'right' }}>{a.time}</div>
                         </div>
                       );
                     })}
