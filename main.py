@@ -3,6 +3,7 @@ import hashlib
 import os
 import random
 import requests
+import yfinance as yf
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
@@ -162,26 +163,21 @@ async def get_prices(symbols: str = ""):
     if not symbols:
         return {"prices": {}}
     symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
-    try:
-        res = requests.get(
-            "https://query1.finance.yahoo.com/v7/finance/quote",
-            params={"symbols": ",".join(symbol_list)},
-            headers={"User-Agent": "Mozilla/5.0"},
-            timeout=10
-        )
-        quotes = res.json().get("quoteResponse", {}).get("result", [])
-        prices = {}
-        for q in quotes:
-            sym = q.get("symbol")
+    prices = {}
+    for sym in symbol_list:
+        try:
+            fi = yf.Ticker(sym).fast_info
+            price = fi.last_price
+            prev = fi.previous_close
+            change_pct = ((price - prev) / prev * 100) if prev else 0
             prices[sym] = {
-                "price": q.get("regularMarketPrice"),
-                "change_pct": q.get("regularMarketChangePercent"),
-                "prev_close": q.get("regularMarketPreviousClose"),
+                "price": round(float(price), 4),
+                "change_pct": round(float(change_pct), 4),
+                "prev_close": round(float(prev), 4),
             }
-        return {"prices": prices}
-    except Exception as e:
-        print(f"Price fetch error: {e}")
-        return {"prices": {}}
+        except Exception as e:
+            print(f"yfinance error {sym}: {e}")
+    return {"prices": prices}
 
 @app.get("/api/user-assets/{user_id}")
 async def get_user_assets(user_id: int):
