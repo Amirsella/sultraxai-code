@@ -2,6 +2,7 @@ import sqlite3
 import hashlib
 import os
 import random
+import uuid
 import requests
 import yfinance as yf
 from concurrent.futures import ThreadPoolExecutor
@@ -15,8 +16,27 @@ import uvicorn
 
 BREVO_API_KEY = "YOUR_BREVO_API_KEY"
 FINNHUB_KEY = "FINNHUB_API_KEY"
+APP_URL = "http://38.180.137.122:8000"
 
 verification_codes = {}
+reset_tokens = {}
+
+def send_reset_email(to_email: str, reset_link: str) -> bool:
+    try:
+        res = requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={"api-key": BREVO_API_KEY, "Content-Type": "application/json"},
+            json={
+                "sender": {"name": "SultraxAI", "email": "sultraxai@gmail.com"},
+                "to": [{"email": to_email}],
+                "subject": "SultraxAI - Reset Your Password",
+                "htmlContent": f"<p>Click the link below to reset your SultraxAI password:</p><p><a href='{reset_link}' style='background:#ff3333;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block;margin:16px 0'>Reset Password</a></p><p style='color:#888;font-size:12px'>This link expires in 15 minutes. If you didn't request this, ignore this email.</p>"
+            }
+        )
+        return res.status_code == 201
+    except Exception as e:
+        print(f"Reset email error: {e}")
+        return False
 
 def send_verification_email(to_email: str, code: str) -> bool:
     try:
@@ -117,6 +137,41 @@ async def verify_code(data: dict):
         return {"status": "success"}
     
     return JSONResponse(status_code=400, content={"detail": "Invalid code"})
+
+@app.post("/api/forgot-password")
+async def forgot_password(data: dict, background_tasks: BackgroundTasks):
+    email = data.get("email", "").strip().lower()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE LOWER(email) = ?", (email,))
+    user = cursor.fetchone()
+    conn.close()
+    if user:
+        token = str(uuid.uuid4())
+        reset_tokens[token] = {"email": email, "expiry": (datetime.now() + timedelta(minutes=15)).timestamp()}
+        reset_link = f"{APP_URL}/?reset_token={token}"
+        background_tasks.add_task(send_reset_email, email, reset_link)
+    return {"status": "success"}
+
+@app.post("/api/reset-password")
+async def reset_password(data: dict):
+    token = data.get("token", "")
+    new_password = data.get("password", "")
+    token_data = reset_tokens.get(token)
+    if not token_data:
+        return JSONResponse(status_code=400, content={"detail": "Invalid or expired link"})
+    if datetime.now().timestamp() > token_data["expiry"]:
+        reset_tokens.pop(token, None)
+        return JSONResponse(status_code=400, content={"detail": "Link expired. Please request a new one."})
+    pwd_hash = hash_password(new_password)
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET password_hash = ? WHERE LOWER(email) = ?", (pwd_hash, token_data["email"]))
+    conn.commit()
+    conn.close()
+    reset_tokens.pop(token, None)
+    return {"status": "success"}
+
 class OnboardingData(BaseModel):
     user_id: int; assets: list; experience: str; frequency: str
 

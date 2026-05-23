@@ -9,7 +9,10 @@ const isNative = typeof window !== 'undefined' &&
 
 export default function App() {
   // טעינת מצב ראשוני מה-LocalStorage כדי למנוע ניתוק בריפרש
+  const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get('reset_token') || '');
+
   const [currentView, setCurrentView] = useState(() => {
+    if (new URLSearchParams(window.location.search).get('reset_token')) return 'reset_password';
     const saved = localStorage.getItem('currentView');
     const userId = localStorage.getItem('userId');
     if ((saved === 'main_app' || saved === 'onboarding') && userId) return saved;
@@ -161,6 +164,14 @@ export default function App() {
             <SignUpForm isNative={isNative} onBack={() => setCurrentView('landing')} onRegisterSuccess={handleRegisterSuccess} setErrorMessage={setErrorMessage} errorMessage={errorMessage} />
           )}
 
+          {currentView === 'forgot_password' && (
+            <ForgotPasswordForm isNative={isNative} onBack={() => setCurrentView('signin')} />
+          )}
+
+          {currentView === 'reset_password' && (
+            <ResetPasswordForm isNative={isNative} token={resetToken} onDone={() => setCurrentView('signin')} />
+          )}
+
           {currentView === 'verify' && (
             <div style={{ textAlign: 'center', color: '#fff', padding: '2rem', border: '1px solid #333', borderRadius: '24px', background: 'rgba(5,5,5,0.7)', width: '380px' }}>
               <h2 style={{ fontSize: '2rem' }}>Verify Account</h2>
@@ -221,7 +232,10 @@ export default function App() {
                       Connect to Terminal
                     </button>
                   </form>
-                  <button onClick={() => setCurrentView('signup')} style={{ marginTop: '28px', background: 'none', border: 'none', color: '#444', cursor: 'pointer', fontSize: '0.85rem', textAlign: 'center', width: '100%' }}>
+                  <button type="button" onClick={() => setCurrentView('forgot_password')} style={{ marginTop: '12px', background: 'none', border: 'none', color: '#444', cursor: 'pointer', fontSize: '0.85rem', textAlign: 'center', width: '100%' }}>
+                    Forgot password?
+                  </button>
+                  <button onClick={() => setCurrentView('signup')} style={{ marginTop: '8px', background: 'none', border: 'none', color: '#444', cursor: 'pointer', fontSize: '0.85rem', textAlign: 'center', width: '100%' }}>
                     Don't have an account? <span style={{ color: '#777' }}>Create one</span>
                   </button>
                 </div>
@@ -241,6 +255,7 @@ export default function App() {
                   <input type="text" inputMode="email" placeholder="Email Address" required style={inputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
                   <input type="password" placeholder="Password" required style={inputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
                   <button type="submit" style={{ backgroundColor: '#ff3333', color: '#fff', padding: '1rem', border: 'none', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}>Connect to Terminal</button>
+                  <button type="button" onClick={() => setCurrentView('forgot_password')} style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: '0.82rem', textAlign: 'center', marginTop: '0.25rem' }}>Forgot password?</button>
                 </form>
               </div>
             )
@@ -553,6 +568,118 @@ function SignUpForm({ isNative, onBack, onRegisterSuccess, setErrorMessage, erro
     <div style={{ width: '450px', background: 'rgba(5, 5, 5, 0.7)', padding: '2.5rem', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)', backdropFilter: 'blur(10px)' }}>
       {formContent}
     </div>
+  );
+}
+
+function ForgotPasswordForm({ isNative, onBack }) {
+  const [email, setEmail] = useState('');
+  const [sent, setSent] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true); setError('');
+    try {
+      await fetch(`${API_BASE}/api/forgot-password`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() })
+      });
+      setSent(true);
+    } catch { setError('Connection error. Please try again.'); }
+    setLoading(false);
+  };
+
+  const content = (
+    <>
+      <h3 style={{ fontSize: isNative ? '2.4rem' : '1.8rem', fontWeight: '800', marginBottom: isNative ? '6px' : '1.5rem', textAlign: isNative ? 'left' : 'center' }}>Reset Password</h3>
+      {isNative && <p style={{ color: '#555', fontSize: '0.88rem', margin: '0 0 28px' }}>Enter your account email</p>}
+      {sent ? (
+        <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>📬</div>
+          <p style={{ color: '#aaa', fontSize: '0.9rem', lineHeight: 1.7 }}>Check your inbox.<br />A reset link has been sent.</p>
+          <button onClick={onBack} style={{ marginTop: '1.5rem', background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: '0.85rem' }}>← Back to Sign In</button>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {error && <div style={{ color: '#ff3333', background: 'rgba(255,51,51,0.1)', padding: '0.75rem', borderRadius: '8px', fontSize: '0.9rem', textAlign: 'center' }}>{error}</div>}
+          <input type="email" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} required style={isNative ? mobileInputStyle : inputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
+          <button type="submit" disabled={loading} style={{ backgroundColor: '#ff3333', color: '#fff', padding: '1rem', border: 'none', borderRadius: isNative ? '14px' : '12px', fontWeight: '600', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}>
+            {loading ? 'Sending…' : 'Send Reset Link'}
+          </button>
+          <button type="button" onClick={onBack} style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: '0.85rem', textAlign: 'center' }}>← Back to Sign In</button>
+        </form>
+      )}
+    </>
+  );
+
+  return isNative ? (
+    <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', background: '#020202' }}>
+      <button onClick={onBack} style={{ position: 'absolute', top: '56px', left: '24px', background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: '1.5rem', zIndex: 10, padding: '4px 8px', lineHeight: 1 }}>←</button>
+      <div style={{ flex: 1, padding: '100px 28px 48px', display: 'flex', flexDirection: 'column' }}>{content}</div>
+    </div>
+  ) : (
+    <div style={{ width: '400px', background: 'rgba(5,5,5,0.7)', padding: '2.5rem', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)', backdropFilter: 'blur(10px)' }}>{content}</div>
+  );
+}
+
+function ResetPasswordForm({ isNative, token, onDone }) {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+
+  const strong = (pwd) => pwd.length >= 8 && /[A-Z]/.test(pwd) && /[!@#$%^&*(),.?":{}|<>_+\-[\]/\\]/.test(pwd);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (password !== confirm) { setError('Passwords do not match'); return; }
+    if (!strong(password)) { setError('Min 8 chars, one uppercase, one special character'); return; }
+    setLoading(true); setError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/reset-password`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, password })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setDone(true);
+        window.history.replaceState({}, document.title, '/');
+        setTimeout(onDone, 2000);
+      } else { setError(data.detail || 'Invalid or expired link'); }
+    } catch { setError('Connection error. Please try again.'); }
+    setLoading(false);
+  };
+
+  const content = (
+    <>
+      <h3 style={{ fontSize: isNative ? '2.4rem' : '1.8rem', fontWeight: '800', marginBottom: isNative ? '6px' : '1.5rem', textAlign: isNative ? 'left' : 'center' }}>New Password</h3>
+      {isNative && <p style={{ color: '#555', fontSize: '0.88rem', margin: '0 0 28px' }}>Choose a strong password</p>}
+      {done ? (
+        <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>✓</div>
+          <p style={{ color: '#44cc44', fontSize: '0.9rem' }}>Password updated. Redirecting…</p>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {error && <div style={{ color: '#ff3333', background: 'rgba(255,51,51,0.1)', padding: '0.75rem', borderRadius: '8px', fontSize: '0.9rem', textAlign: 'center' }}>{error}</div>}
+          <input type="password" placeholder="New Password" value={password} onChange={e => setPassword(e.target.value)} required style={isNative ? mobileInputStyle : inputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
+          <input type="password" placeholder="Confirm Password" value={confirm} onChange={e => setConfirm(e.target.value)} required style={isNative ? mobileInputStyle : inputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
+          <button type="submit" disabled={loading} style={{ backgroundColor: '#ff3333', color: '#fff', padding: '1rem', border: 'none', borderRadius: isNative ? '14px' : '12px', fontWeight: '600', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1, marginTop: '0.5rem' }}>
+            {loading ? 'Saving…' : 'Set New Password'}
+          </button>
+        </form>
+      )}
+    </>
+  );
+
+  return isNative ? (
+    <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', background: '#020202' }}>
+      <div style={{ flex: 1, padding: '100px 28px 48px', display: 'flex', flexDirection: 'column' }}>{content}</div>
+    </div>
+  ) : (
+    <div style={{ width: '400px', background: 'rgba(5,5,5,0.7)', padding: '2.5rem', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)', backdropFilter: 'blur(10px)' }}>{content}</div>
   );
 }
 
