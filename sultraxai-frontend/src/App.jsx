@@ -369,6 +369,17 @@ function SignUpForm({ onRegisterSuccess, setErrorMessage, errorMessage }) {
           I agree to the Terms of Service & Privacy Policy
         </label>
         
+        {!isFormValid && (firstName || fullName || email || phone || password) && (
+          <div style={{ fontSize: '0.8rem', color: '#888', background: '#111', padding: '0.75rem', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            {!firstName.trim() && <span>• First name is required</span>}
+            {!fullName.trim() && <span>• Full name is required</span>}
+            {email && !isEmailValid(email) && <span>• Invalid email format</span>}
+            {!phone.trim() && <span>• Phone number is required</span>}
+            {!pwdCriteria.isValid && <span>• Password doesn't meet requirements</span>}
+            {password && confirmPassword && password !== confirmPassword && <span>• Passwords do not match</span>}
+            {!agreeTerms && <span>• You must agree to the Terms of Service</span>}
+          </div>
+        )}
         <button type="submit" disabled={!isFormValid} style={{ backgroundColor: isFormValid ? '#ff3333' : '#331111', color: isFormValid ? '#fff' : '#666', padding: '1rem', border: 'none', borderRadius: '12px', fontWeight: '600', cursor: isFormValid ? 'pointer' : 'not-allowed', marginTop: '0.5rem', transition: '0.3s' }}>
           Register & Continue
         </button>

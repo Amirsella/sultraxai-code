@@ -22,7 +22,9 @@ def send_verification_email(to_email: str, code: str) -> bool:
     msg["From"] = GMAIL_USER
     msg["To"] = to_email
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.ehlo()
+            server.starttls()
             server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
             server.sendmail(GMAIL_USER, to_email, msg.as_string())
         return True
