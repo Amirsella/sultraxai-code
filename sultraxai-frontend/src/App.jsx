@@ -301,14 +301,18 @@ function SignUpForm({ onRegisterSuccess, setErrorMessage, errorMessage }) {
   const pwdCriteria = isPasswordStrong(password);
   const isEmailValid = (em) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em);
 
-  const isFormValid = 
+  const isFormValid =
     firstName.trim() !== '' && fullName.trim() !== '' &&
     isEmailValid(email) && phone.trim() !== '' &&
     pwdCriteria.isValid && password === confirmPassword && agreeTerms;
 
+  const [showValidationErrors, setShowValidationErrors] = useState(false);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!isFormValid) return;
+    console.log('handleSubmit called', { firstName, fullName, email, phone, pwdCriteria, passwordMatch: password === confirmPassword, agreeTerms, isFormValid });
+    if (!isFormValid) { setShowValidationErrors(true); return; }
+    setShowValidationErrors(false);
     setErrorMessage('');
 
     try {
@@ -369,7 +373,7 @@ function SignUpForm({ onRegisterSuccess, setErrorMessage, errorMessage }) {
           I agree to the Terms of Service & Privacy Policy
         </label>
         
-        {!isFormValid && (firstName || fullName || email || phone || password) && (
+        {(!isFormValid && (showValidationErrors || firstName || fullName || email || phone || password)) && (
           <div style={{ fontSize: '0.8rem', color: '#888', background: '#111', padding: '0.75rem', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
             {!firstName.trim() && <span>• First name is required</span>}
             {!fullName.trim() && <span>• Full name is required</span>}
@@ -380,7 +384,7 @@ function SignUpForm({ onRegisterSuccess, setErrorMessage, errorMessage }) {
             {!agreeTerms && <span>• You must agree to the Terms of Service</span>}
           </div>
         )}
-        <button type="submit" disabled={!isFormValid} style={{ backgroundColor: isFormValid ? '#ff3333' : '#331111', color: isFormValid ? '#fff' : '#666', padding: '1rem', border: 'none', borderRadius: '12px', fontWeight: '600', cursor: isFormValid ? 'pointer' : 'not-allowed', marginTop: '0.5rem', transition: '0.3s' }}>
+        <button type="submit" style={{ backgroundColor: isFormValid ? '#ff3333' : '#331111', color: isFormValid ? '#fff' : '#666', padding: '1rem', border: 'none', borderRadius: '12px', fontWeight: '600', cursor: 'pointer', marginTop: '0.5rem', transition: '0.3s' }}>
           Register & Continue
         </button>
       </form>
