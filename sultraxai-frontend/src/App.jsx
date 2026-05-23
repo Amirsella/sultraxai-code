@@ -307,25 +307,17 @@ function SignUpForm({ onRegisterSuccess, setErrorMessage, errorMessage }) {
     pwdCriteria.isValid && password === confirmPassword && agreeTerms;
 
   const [showValidationErrors, setShowValidationErrors] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log('=== FORM DEBUG ===');
-    console.log('firstName ok:', firstName.trim() !== '');
-    console.log('fullName ok:', fullName.trim() !== '');
-    console.log('email ok:', isEmailValid(email));
-    console.log('phone ok:', phone.trim() !== '');
-    console.log('pwdCriteria:', pwdCriteria);
-    console.log('passwordMatch:', password === confirmPassword);
-    console.log('agreeTerms:', agreeTerms);
-    console.log('isFormValid:', isFormValid);
     if (!isFormValid) { setShowValidationErrors(true); return; }
-    console.log('>>> Sending fetch request...');
     setShowValidationErrors(false);
     setErrorMessage('');
+    setIsLoading(true);
 
     try {
-      const res = await fetch('http://38.180.137.122:8000/api/register',{
+      const res = await fetch('http://38.180.137.122:8000/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -336,14 +328,13 @@ function SignUpForm({ onRegisterSuccess, setErrorMessage, errorMessage }) {
           password: password
         })
       });
-      console.log('Response status:', res.status);
       const data = await res.json();
-      console.log('Response data:', data);
       if (res.ok) onRegisterSuccess(data.user_id, email);
       else setErrorMessage(data.detail);
     } catch (err) {
-      console.log('Fetch error:', err.message);
-      setErrorMessage("Registration connection error. Check server.");
+      setErrorMessage("Connection error. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -398,8 +389,8 @@ function SignUpForm({ onRegisterSuccess, setErrorMessage, errorMessage }) {
             {!agreeTerms && <span>• You must agree to the Terms of Service</span>}
           </div>
         )}
-        <button type="submit" style={{ backgroundColor: isFormValid ? '#ff3333' : '#331111', color: isFormValid ? '#fff' : '#666', padding: '1rem', border: 'none', borderRadius: '12px', fontWeight: '600', cursor: 'pointer', marginTop: '0.5rem', transition: '0.3s' }}>
-          Register & Continue
+        <button type="submit" disabled={isLoading} style={{ backgroundColor: isFormValid && !isLoading ? '#ff3333' : '#331111', color: isFormValid && !isLoading ? '#fff' : '#666', padding: '1rem', border: 'none', borderRadius: '12px', fontWeight: '600', cursor: isLoading ? 'not-allowed' : 'pointer', marginTop: '0.5rem', transition: '0.3s' }}>
+          {isLoading ? 'Creating account...' : 'Register & Continue'}
         </button>
       </form>
     </div>

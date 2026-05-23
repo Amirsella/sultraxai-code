@@ -4,7 +4,7 @@ import os
 import smtplib
 import random
 from email.mime.text import MIMEText
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -95,17 +95,17 @@ def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 @app.post("/api/register")
-async def register(user: UserRegister):
+async def register(user: UserRegister, background_tasks: BackgroundTasks):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT id FROM users WHERE email = ? OR phone = ?", (user.email.strip(), user.phone.strip()))
     if cursor.fetchone():
         conn.close()
         return JSONResponse(status_code=400, content={"detail": "User already exists"})
-    
+
     code = str(random.randint(100000, 999999))
     verification_codes[user.email.strip()] = code
-    send_verification_email(user.email.strip(), code)
+    background_tasks.add_task(send_verification_email, user.email.strip(), code)
 
     pwd_hash = hash_password(user.password)
     cursor.execute("INSERT INTO users (first_name, full_name, email, phone, password_hash) VALUES (?, ?, ?, ?, ?)",
