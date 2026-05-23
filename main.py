@@ -27,7 +27,7 @@ def send_reset_email(to_email: str, reset_link: str) -> bool:
             "https://api.brevo.com/v3/smtp/email",
             headers={"api-key": BREVO_API_KEY, "Content-Type": "application/json"},
             json={
-                "sender": {"name": "SultraxAI", "email": "sultraxai@gmail.com"},
+                "sender": {"name": "SultraxAI", "email": "support@sultraxai.com"},
                 "to": [{"email": to_email}],
                 "subject": "SultraxAI - Reset Your Password",
                 "htmlContent": f"<p>Click the link below to reset your SultraxAI password:</p><p><a href='{reset_link}' style='background:#ff3333;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block;margin:16px 0'>Reset Password</a></p><p style='color:#888;font-size:12px'>This link expires in 15 minutes. If you didn't request this, ignore this email.</p>"
@@ -44,7 +44,7 @@ def send_verification_email(to_email: str, code: str) -> bool:
             "https://api.brevo.com/v3/smtp/email",
             headers={"api-key": BREVO_API_KEY, "Content-Type": "application/json"},
             json={
-                "sender": {"name": "SultraxAI", "email": "sultraxai@gmail.com"},
+                "sender": {"name": "SultraxAI", "email": "support@sultraxai.com"},
                 "to": [{"email": to_email}],
                 "subject": "SultraxAI - Verification Code",
                 "htmlContent": f"<p>Your SultraxAI verification code is:</p><h2 style='letter-spacing:6px'>{code}</h2><p>Valid for 15 minutes.</p>"
