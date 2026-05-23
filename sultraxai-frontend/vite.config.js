@@ -3,12 +3,16 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  base: './',
+  build: {
+    outDir: 'dist',
+  },
   server: {
     host: true,
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000', // שינוי ל-localhost פותר בעיות ניתוב פנימיות
+        target: 'http://localhost:8000',
         changeOrigin: true,
         secure: false,
       }
