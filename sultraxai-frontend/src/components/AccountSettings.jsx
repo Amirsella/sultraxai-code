@@ -2,17 +2,17 @@ import React, { useState, useEffect } from 'react';
 
 const API_BASE = 'http://38.180.137.122:8000';
 const SYS_FONT = '-apple-system, BlinkMacSystemFont, system-ui, "Inter", sans-serif';
-const inputStyle = { padding: '0.9rem 1rem', background: '#111', border: '1px solid #222', borderRadius: '12px', color: '#fff', outline: 'none', fontFamily: SYS_FONT, fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' };
+const inputStyle = { padding: '0.9rem 1rem', background: '#0d0d0d', border: '1px solid #1e1e1e', borderRadius: '12px', color: '#fff', outline: 'none', fontFamily: SYS_FONT, fontSize: '0.9rem', width: '100%', boxSizing: 'border-box', transition: 'border-color 0.15s' };
 
 const Label = ({ children }) => (
-  <span style={{ fontSize: '0.62rem', color: '#555', fontWeight: '700', letterSpacing: '0.09em', textTransform: 'uppercase', display: 'block', marginBottom: '7px' }}>{children}</span>
+  <span style={{ fontSize: '0.62rem', color: '#444', fontWeight: '700', letterSpacing: '0.09em', textTransform: 'uppercase', display: 'block', marginBottom: '8px' }}>{children}</span>
 );
 
-const SaveBtn = ({ onClick, saving, saved, disabled, label = 'Save Changes', savedLabel = '✓ Saved' }) => (
-  <button onClick={onClick} disabled={saving || disabled}
-    style={{ padding: '0.9rem', background: disabled ? '#1a1a1a' : '#ff3333', border: 'none', borderRadius: '12px', color: disabled ? '#444' : '#fff', fontWeight: '700', cursor: disabled ? 'not-allowed' : 'pointer', fontSize: '0.88rem', marginTop: '8px', opacity: saving ? 0.7 : 1, width: '100%', transition: 'background 0.2s' }}>
-    {saved ? savedLabel : saving ? 'Saving…' : label}
-  </button>
+const Field = ({ label, children }) => (
+  <div style={{ display: 'flex', flexDirection: 'column' }}>
+    <Label>{label}</Label>
+    {children}
+  </div>
 );
 
 export default function AccountSettings({ userId, onBack, onSignOut, isNative, onProfileUpdate }) {
@@ -25,6 +25,8 @@ export default function AccountSettings({ userId, onBack, onSignOut, isNative, o
   const [phone, setPhone] = useState('');
   const [experience, setExperience] = useState('Beginner (0-1 yrs)');
   const [frequency, setFrequency] = useState('Daily');
+  const [original, setOriginal] = useState({});
+
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
 
@@ -42,16 +44,27 @@ export default function AccountSettings({ userId, onBack, onSignOut, isNative, o
     fetch(`${API_BASE}/api/user/${userId}`)
       .then(r => r.json())
       .then(data => {
+        const snap = {
+          firstName: data.first_name || '',
+          fullName: data.full_name || '',
+          phone: data.phone || '',
+          experience: data.experience || 'Beginner (0-1 yrs)',
+          frequency: data.frequency || 'Daily',
+        };
         setUser(data);
-        setFirstName(data.first_name || '');
-        setFullName(data.full_name || '');
-        setPhone(data.phone || '');
-        setExperience(data.experience || 'Beginner (0-1 yrs)');
-        setFrequency(data.frequency || 'Daily');
+        setFirstName(snap.firstName);
+        setFullName(snap.fullName);
+        setPhone(snap.phone);
+        setExperience(snap.experience);
+        setFrequency(snap.frequency);
+        setOriginal(snap);
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, [userId]);
+
+  const profileDirty = firstName !== original.firstName || fullName !== original.fullName || phone !== original.phone;
+  const prefsDirty = experience !== original.experience || frequency !== original.frequency;
 
   const pwdCriteria = {
     hasMinLength: newPwd.length >= 8,
@@ -68,9 +81,10 @@ export default function AccountSettings({ userId, onBack, onSignOut, isNative, o
         body: JSON.stringify({ user_id: parseInt(userId), first_name: firstName, full_name: fullName, phone, experience, frequency })
       });
       if (res.ok) {
+        setOriginal(prev => ({ ...prev, firstName, fullName, phone, experience, frequency }));
         setProfileSaved(true);
         onProfileUpdate && onProfileUpdate(firstName);
-        setTimeout(() => setProfileSaved(false), 2500);
+        setTimeout(() => setProfileSaved(false), 2000);
       }
     } catch {}
     setProfileSaving(false);
@@ -90,7 +104,7 @@ export default function AccountSettings({ userId, onBack, onSignOut, isNative, o
       if (res.ok) {
         setPwdSaved(true);
         setCurrentPwd(''); setNewPwd(''); setConfirmPwd('');
-        setTimeout(() => setPwdSaved(false), 2500);
+        setTimeout(() => setPwdSaved(false), 2000);
       } else {
         setPwdError(data.detail || 'Failed to update password');
       }
@@ -114,143 +128,148 @@ export default function AccountSettings({ userId, onBack, onSignOut, isNative, o
     { id: 'danger', label: 'DANGER ZONE', red: true },
   ];
 
+  const SaveBtn = ({ onClick, saving, saved, dirty, label = 'Save Changes', savedLabel = '✓ Saved', type = 'button' }) => (
+    <button type={type} onClick={onClick} disabled={saving || !dirty}
+      style={{ padding: '0.9rem', background: dirty ? '#ff3333' : '#111', border: `1px solid ${dirty ? '#ff333360' : '#1a1a1a'}`, borderRadius: '12px', color: dirty ? '#fff' : '#333', fontWeight: '700', cursor: dirty ? 'pointer' : 'default', fontSize: '0.88rem', marginTop: '4px', opacity: saving ? 0.7 : 1, width: '100%', transition: 'all 0.2s', letterSpacing: '0.03em' }}>
+      {saved ? savedLabel : saving ? 'Saving…' : label}
+    </button>
+  );
+
   const containerStyle = isNative
-    ? { position: 'fixed', inset: 0, background: '#020202', display: 'flex', flexDirection: 'column', overflow: 'hidden' }
-    : { width: '100%', minHeight: '100vh', background: '#020202', padding: '0 2rem 4rem', color: '#fff' };
+    ? { position: 'fixed', inset: 0, background: '#020202', display: 'flex', flexDirection: 'column', overflow: 'hidden', color: '#fff' }
+    : { width: '100%', minHeight: '100vh', background: '#020202', color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center' };
+
+  const innerWidth = isNative ? '100%' : '520px';
 
   return (
     <div style={containerStyle}>
       <style>{`
         ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#1a1a1a;border-radius:2px}
+        input:focus, select:focus { border-color: #333 !important; }
       `}</style>
 
-      {/* Header */}
-      <div style={{ paddingTop: isNative ? '56px' : '1.5rem', paddingBottom: '16px', paddingLeft: isNative ? '20px' : 0, paddingRight: isNative ? '20px' : 0, borderBottom: '1px solid #0f0f0f', flexShrink: 0 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '900', letterSpacing: '0.07em', background: 'linear-gradient(to right,#fff 40%,#555)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>ACCOUNT</h2>
-            {user && <p style={{ margin: '2px 0 0', fontSize: '0.6rem', color: '#2a2a2a' }}>{user.email}</p>}
+      <div style={{ width: innerWidth, display: 'flex', flexDirection: 'column', flex: isNative ? 1 : undefined, overflow: isNative ? 'hidden' : undefined, padding: isNative ? '0' : '0' }}>
+
+        {/* Header */}
+        <div style={{ paddingTop: isNative ? '56px' : '2.5rem', paddingBottom: '18px', paddingLeft: isNative ? '20px' : 0, paddingRight: isNative ? '20px' : 0, borderBottom: '1px solid #0f0f0f', flexShrink: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.3rem', fontWeight: '900', letterSpacing: '0.07em', background: 'linear-gradient(to right,#fff 40%,#555)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>ACCOUNT</h2>
+              {user && <p style={{ margin: '3px 0 0', fontSize: '0.62rem', color: '#333' }}>{user.email}</p>}
+            </div>
+            <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid #1e1e1e', color: '#555', padding: '7px 16px', borderRadius: '10px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: '600', letterSpacing: '0.04em' }}>← BACK</button>
           </div>
-          <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid #1e1e1e', color: '#666', padding: '7px 14px', borderRadius: '10px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: '600' }}>← BACK</button>
+
+          <div style={{ display: 'flex', gap: '4px', marginTop: '18px' }}>
+            {TABS.map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                style={{ padding: '6px 16px', borderRadius: '8px', border: `1px solid ${tab === t.id ? (t.red ? '#ff3333' : '#ff333540') : '#1a1a1a'}`, background: tab === t.id ? (t.red ? 'rgba(255,51,51,0.1)' : 'rgba(255,51,51,0.05)') : 'transparent', color: tab === t.id ? (t.red ? '#ff4444' : '#cc6666') : '#3a3a3a', cursor: 'pointer', fontSize: '0.62rem', fontWeight: '700', whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.07em', transition: 'all 0.15s' }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '4px', marginTop: '16px', overflowX: 'auto', paddingBottom: '2px' }}>
-          {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              style={{ padding: '5px 14px', borderRadius: '8px', border: `1px solid ${tab === t.id ? (t.red ? '#ff3333' : '#ff333355') : '#1a1a1a'}`, background: tab === t.id ? (t.red ? 'rgba(255,51,51,0.12)' : 'rgba(255,51,51,0.06)') : 'transparent', color: tab === t.id ? (t.red ? '#ff4444' : '#ff7777') : '#444', cursor: 'pointer', fontSize: '0.62rem', fontWeight: '700', whiteSpace: 'nowrap', flexShrink: 0, letterSpacing: '0.06em' }}>
-              {t.label}
-            </button>
-          ))}
-        </div>
+        {/* Content */}
+        {loading ? (
+          <div style={{ padding: '4rem', textAlign: 'center', color: '#2a2a2a', fontSize: '0.8rem' }}>Loading…</div>
+        ) : (
+          <div style={{ flex: 1, overflowY: 'auto', padding: isNative ? '24px 20px 60px' : '28px 0 60px' }}>
+
+            {/* PROFILE */}
+            {tab === 'profile' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                  <Field label="First Name">
+                    <input value={firstName} onChange={e => setFirstName(e.target.value)} style={inputStyle} autoCorrect="off" spellCheck={false} />
+                  </Field>
+                  <Field label="Full Name">
+                    <input value={fullName} onChange={e => setFullName(e.target.value)} style={inputStyle} autoCorrect="off" spellCheck={false} />
+                  </Field>
+                </div>
+                <Field label="Email Address">
+                  <input value={user?.email || ''} disabled style={{ ...inputStyle, color: '#2a2a2a', cursor: 'not-allowed', border: '1px solid #141414' }} />
+                  <span style={{ fontSize: '0.6rem', color: '#252525', marginTop: '5px' }}>Email address cannot be changed</span>
+                </Field>
+                <Field label="Phone Number">
+                  <input value={phone} onChange={e => setPhone(e.target.value)} style={inputStyle} />
+                </Field>
+                <SaveBtn onClick={saveProfile} saving={profileSaving} saved={profileSaved} dirty={profileDirty} />
+              </div>
+            )}
+
+            {/* SECURITY */}
+            {tab === 'security' && (
+              <form onSubmit={changePassword} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                {pwdError && (
+                  <div style={{ color: '#fff', background: '#9a0000', padding: '0.85rem 1rem', borderRadius: '10px', fontSize: '0.85rem', fontWeight: '600', border: '1px solid #cc000060' }}>{pwdError}</div>
+                )}
+                <Field label="Current Password">
+                  <input type="password" value={currentPwd} onChange={e => setCurrentPwd(e.target.value)} required style={inputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
+                </Field>
+                <Field label="New Password">
+                  <input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)} required style={inputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
+                  {newPwd && (
+                    <div style={{ fontSize: '0.74rem', display: 'flex', flexDirection: 'column', gap: '4px', paddingLeft: '2px', marginTop: '9px' }}>
+                      <span style={{ color: pwdCriteria.hasMinLength ? '#44cc44' : '#555' }}>✓ Minimum 8 characters</span>
+                      <span style={{ color: pwdCriteria.hasUppercase ? '#44cc44' : '#555' }}>✓ At least one uppercase letter</span>
+                      <span style={{ color: pwdCriteria.hasSpecialChar ? '#44cc44' : '#555' }}>✓ At least one special character</span>
+                    </div>
+                  )}
+                </Field>
+                <Field label="Confirm New Password">
+                  <input type="password" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} required style={inputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
+                  {newPwd && confirmPwd && newPwd !== confirmPwd && (
+                    <span style={{ fontSize: '0.74rem', color: '#ff4444', marginTop: '5px' }}>Passwords do not match</span>
+                  )}
+                </Field>
+                <SaveBtn type="submit" saving={pwdSaving} saved={pwdSaved} dirty={isPwdStrong && !!currentPwd} label="Update Password" savedLabel="✓ Password Updated" />
+              </form>
+            )}
+
+            {/* PREFERENCES */}
+            {tab === 'preferences' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                <Field label="Experience Level">
+                  <select value={experience} onChange={e => setExperience(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
+                    <option>Beginner (0-1 yrs)</option>
+                    <option>Intermediate (1-3 yrs)</option>
+                    <option>Professional (3+ yrs)</option>
+                  </select>
+                </Field>
+                <Field label="Market Check Frequency">
+                  <select value={frequency} onChange={e => setFrequency(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
+                    <option>Every Hour</option>
+                    <option>Daily</option>
+                    <option>Weekly</option>
+                  </select>
+                </Field>
+                <SaveBtn onClick={saveProfile} saving={profileSaving} saved={profileSaved} dirty={prefsDirty} label="Save Preferences" />
+              </div>
+            )}
+
+            {/* DANGER ZONE */}
+            {tab === 'danger' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ padding: '22px', borderRadius: '16px', background: 'rgba(255,30,30,0.03)', border: '1px solid rgba(255,51,51,0.1)' }}>
+                  <h3 style={{ margin: '0 0 10px', fontSize: '0.95rem', fontWeight: '700', color: '#cc3333' }}>Delete Account</h3>
+                  <p style={{ margin: '0 0 22px', fontSize: '0.8rem', color: '#444', lineHeight: 1.75 }}>
+                    This will permanently delete your account, watchlist, and all associated data. This action cannot be undone.
+                  </p>
+                  <Label>Type <span style={{ color: '#ff4444' }}>DELETE</span> to confirm</Label>
+                  <input value={deleteConfirm} onChange={e => setDeleteConfirm(e.target.value)}
+                    placeholder="DELETE" style={{ ...inputStyle, border: '1px solid rgba(255,51,51,0.15)', marginBottom: '14px' }}
+                    autoCorrect="off" autoCapitalize="none" spellCheck={false} />
+                  <button onClick={deleteAccount} disabled={deleteConfirm !== 'DELETE' || deleting}
+                    style={{ width: '100%', padding: '0.9rem', background: deleteConfirm === 'DELETE' ? '#9a0000' : '#111', border: `1px solid ${deleteConfirm === 'DELETE' ? '#cc000060' : '#1a1a1a'}`, borderRadius: '12px', color: deleteConfirm === 'DELETE' ? '#fff' : '#333', fontWeight: '700', cursor: deleteConfirm === 'DELETE' ? 'pointer' : 'default', fontSize: '0.88rem', opacity: deleting ? 0.7 : 1, transition: 'all 0.2s' }}>
+                    {deleting ? 'Deleting…' : 'Delete Account Forever'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
-
-      {loading ? (
-        <div style={{ padding: '3rem', textAlign: 'center', color: '#2a2a2a', fontSize: '0.8rem' }}>Loading…</div>
-      ) : (
-        <div style={{ flex: 1, overflowY: 'auto', padding: isNative ? '20px 20px 60px' : '24px 0 60px', maxWidth: isNative ? undefined : '480px' }}>
-
-          {/* PROFILE */}
-          {tab === 'profile' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div>
-                <Label>First Name</Label>
-                <input value={firstName} onChange={e => setFirstName(e.target.value)} style={inputStyle} />
-              </div>
-              <div>
-                <Label>Full Name</Label>
-                <input value={fullName} onChange={e => setFullName(e.target.value)} style={inputStyle} />
-              </div>
-              <div>
-                <Label>Email</Label>
-                <input value={user?.email || ''} disabled style={{ ...inputStyle, color: '#3a3a3a', cursor: 'not-allowed', border: '1px solid #1a1a1a' }} />
-                <p style={{ fontSize: '0.62rem', color: '#2a2a2a', margin: '5px 0 0' }}>Email address cannot be changed</p>
-              </div>
-              <div>
-                <Label>Phone</Label>
-                <input value={phone} onChange={e => setPhone(e.target.value)} style={inputStyle} />
-              </div>
-              <SaveBtn onClick={saveProfile} saving={profileSaving} saved={profileSaved} />
-            </div>
-          )}
-
-          {/* SECURITY */}
-          {tab === 'security' && (
-            <form onSubmit={changePassword} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {pwdError && (
-                <div style={{ color: '#fff', background: '#cc0000', padding: '0.85rem', borderRadius: '10px', fontSize: '0.85rem', fontWeight: '600' }}>{pwdError}</div>
-              )}
-              <div>
-                <Label>Current Password</Label>
-                <input type="password" value={currentPwd} onChange={e => setCurrentPwd(e.target.value)} required style={inputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
-              </div>
-              <div>
-                <Label>New Password</Label>
-                <input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)} required style={inputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
-                {newPwd && (
-                  <div style={{ fontSize: '0.75rem', display: 'flex', flexDirection: 'column', gap: '3px', paddingLeft: '2px', marginTop: '8px' }}>
-                    <span style={{ color: pwdCriteria.hasMinLength ? '#44ff44' : '#ff4444' }}>✓ Minimum 8 characters</span>
-                    <span style={{ color: pwdCriteria.hasUppercase ? '#44ff44' : '#ff4444' }}>✓ At least one uppercase letter</span>
-                    <span style={{ color: pwdCriteria.hasSpecialChar ? '#44ff44' : '#ff4444' }}>✓ At least one special character</span>
-                  </div>
-                )}
-              </div>
-              <div>
-                <Label>Confirm New Password</Label>
-                <input type="password" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} required style={inputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
-                {newPwd && confirmPwd && newPwd !== confirmPwd && (
-                  <span style={{ fontSize: '0.75rem', color: '#ff4444', marginTop: '5px', display: 'block' }}>Passwords do not match</span>
-                )}
-              </div>
-              <SaveBtn onClick={null} saving={pwdSaving} saved={pwdSaved} disabled={!isPwdStrong || !currentPwd} label="Update Password" savedLabel="✓ Password Updated" />
-            </form>
-          )}
-
-          {/* PREFERENCES */}
-          {tab === 'preferences' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div>
-                <Label>Experience Level</Label>
-                <select value={experience} onChange={e => setExperience(e.target.value)}
-                  style={{ ...inputStyle, cursor: 'pointer' }}>
-                  <option>Beginner (0-1 yrs)</option>
-                  <option>Intermediate (1-3 yrs)</option>
-                  <option>Professional (3+ yrs)</option>
-                </select>
-              </div>
-              <div>
-                <Label>Market Check Frequency</Label>
-                <select value={frequency} onChange={e => setFrequency(e.target.value)}
-                  style={{ ...inputStyle, cursor: 'pointer' }}>
-                  <option>Every Hour</option>
-                  <option>Daily</option>
-                  <option>Weekly</option>
-                </select>
-              </div>
-              <SaveBtn onClick={saveProfile} saving={profileSaving} saved={profileSaved} label="Save Preferences" />
-            </div>
-          )}
-
-          {/* DANGER ZONE */}
-          {tab === 'danger' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div style={{ padding: '20px', borderRadius: '14px', background: 'rgba(255,51,51,0.04)', border: '1px solid rgba(255,51,51,0.12)' }}>
-                <h3 style={{ margin: '0 0 8px', fontSize: '0.92rem', fontWeight: '700', color: '#ff4444' }}>Delete Account</h3>
-                <p style={{ margin: '0 0 20px', fontSize: '0.78rem', color: '#555', lineHeight: 1.7 }}>
-                  This will permanently delete your account, watchlist, and all associated data. This action cannot be undone.
-                </p>
-                <Label>Type <span style={{ color: '#ff4444', fontStyle: 'normal' }}>DELETE</span> to confirm</Label>
-                <input value={deleteConfirm} onChange={e => setDeleteConfirm(e.target.value)}
-                  placeholder="DELETE" style={{ ...inputStyle, border: '1px solid rgba(255,51,51,0.18)', marginBottom: '14px' }}
-                  autoCorrect="off" autoCapitalize="none" spellCheck={false} />
-                <button onClick={deleteAccount} disabled={deleteConfirm !== 'DELETE' || deleting}
-                  style={{ width: '100%', padding: '0.9rem', background: deleteConfirm === 'DELETE' ? '#cc0000' : '#1a1a1a', border: `1px solid ${deleteConfirm === 'DELETE' ? '#ff3333' : '#2a2a2a'}`, borderRadius: '12px', color: deleteConfirm === 'DELETE' ? '#fff' : '#444', fontWeight: '700', cursor: deleteConfirm === 'DELETE' ? 'pointer' : 'not-allowed', fontSize: '0.88rem', opacity: deleting ? 0.7 : 1, transition: 'background 0.2s' }}>
-                  {deleting ? 'Deleting…' : 'Delete Account Forever'}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
