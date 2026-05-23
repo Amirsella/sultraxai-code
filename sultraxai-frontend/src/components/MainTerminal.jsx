@@ -576,21 +576,41 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                         );
                       })}
                     </div>
-                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                      <input
-                        type="number" min="0.1" max="50" step="0.1"
-                        placeholder="Custom %"
-                        value={customValues[sym] ?? ''}
-                        onChange={e => setCustomValues(prev => ({ ...prev, [sym]: e.target.value }))}
-                        onKeyDown={e => { if (e.key === 'Enter' && customValues[sym]) updateThreshold(sym, parseFloat(customValues[sym])); }}
-                        style={{ flex: 1, padding: '0.4rem 0.6rem', background: '#111', border: '1px solid #2a2a2a', borderRadius: '8px', color: '#fff', fontSize: '0.78rem', outline: 'none', width: '0' }}
-                      />
-                      <button
-                        onClick={() => customValues[sym] && !savingThreshold && updateThreshold(sym, parseFloat(customValues[sym]))}
-                        style={{ padding: '0.4rem 0.7rem', borderRadius: '8px', border: '1px solid #2a2a2a', background: 'transparent', color: customValues[sym] ? '#fff' : '#444', cursor: customValues[sym] ? 'pointer' : 'default', fontSize: '0.72rem', fontWeight: '600', whiteSpace: 'nowrap' }}>
-                        Set %
-                      </button>
-                    </div>
+                    {(() => {
+                      const raw = customValues[sym] ?? '';
+                      const num = parseFloat(raw);
+                      const valid = raw !== '' && !isNaN(num) && num >= 0.3 && num <= 20;
+                      const outOfRange = raw !== '' && !isNaN(num) && (num < 0.3 || num > 20);
+                      return (
+                        <>
+                          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                            <input
+                              type="number" min="0.3" max="20" step="0.1"
+                              placeholder="e.g. 1.5"
+                              value={raw}
+                              onChange={e => setCustomValues(prev => ({ ...prev, [sym]: e.target.value }))}
+                              onKeyDown={e => { if (e.key === 'Enter' && valid) updateThreshold(sym, num); }}
+                              style={{ flex: 1, padding: '0.4rem 0.6rem', background: '#111', border: `1px solid ${outOfRange ? '#ff3333' : '#2a2a2a'}`, borderRadius: '8px', color: outOfRange ? '#ff4444' : '#fff', fontSize: '0.78rem', outline: 'none', width: '0' }}
+                            />
+                            <button
+                              onClick={() => valid && !savingThreshold && updateThreshold(sym, num)}
+                              style={{ padding: '0.4rem 0.7rem', borderRadius: '8px', border: `1px solid ${valid ? '#555' : '#2a2a2a'}`, background: 'transparent', color: valid ? '#fff' : '#444', cursor: valid ? 'pointer' : 'default', fontSize: '0.72rem', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                              Set %
+                            </button>
+                          </div>
+                          {outOfRange && (
+                            <div style={{ fontSize: '0.62rem', color: '#ff4444', marginTop: '4px' }}>
+                              Range: 0.3% – 20%
+                            </div>
+                          )}
+                          {!outOfRange && (
+                            <div style={{ fontSize: '0.62rem', color: '#333', marginTop: '4px' }}>
+                              Custom range: 0.3% – 20%
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
