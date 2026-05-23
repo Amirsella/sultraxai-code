@@ -1054,10 +1054,6 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid #222', color: '#666', padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: '600' }}>
             + Watchlist
           </button>
-          <button onClick={onNavigateToZone}
-            style={{ background: 'rgba(68,136,255,0.08)', border: '1px solid rgba(68,136,255,0.2)', color: '#4488ff', padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: '700' }}>
-            THE ZONE
-          </button>
         </div>
       </div>
 

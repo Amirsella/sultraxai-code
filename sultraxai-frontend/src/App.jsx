@@ -95,11 +95,17 @@ export default function App() {
       <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: 'linear-gradient(-45deg, #020202, #0a0303, #140505, #020202)', backgroundSize: '400% 400%', zIndex: 0 }}></div>
 
       <div style={{ position: 'relative', zIndex: 1 }}>
-        {['landing', 'signup', 'signin', 'main_app'].includes(currentView) && !isNative && (
-          <nav style={{ display: 'flex', justifyContent: 'space-between', padding: '2rem 5rem', alignItems: 'center' }}>
-            <h1 onClick={() => { if (currentView !== 'main_app') setCurrentView('landing'); }} style={{ fontSize: '1.5rem', fontWeight: '800', cursor: currentView === 'main_app' ? 'default' : 'pointer' }}>SULTRAXAI</h1>
-            <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.9rem', alignItems: 'center' }}>
-              {currentView === 'main_app' ? (
+        {['landing', 'signup', 'signin', 'main_app', 'zone'].includes(currentView) && !isNative && (
+          <nav style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', padding: '1.5rem 5rem', alignItems: 'center' }}>
+            <h1 onClick={() => { if (currentView !== 'main_app' && currentView !== 'zone') setCurrentView('landing'); }} style={{ fontSize: '1.5rem', fontWeight: '800', margin: 0, cursor: (currentView === 'main_app' || currentView === 'zone') ? 'default' : 'pointer' }}>SULTRAXAI</h1>
+            {(currentView === 'main_app' || currentView === 'zone') ? (
+              <button onClick={() => setCurrentView(currentView === 'zone' ? 'main_app' : 'zone')}
+                style={{ border: `1px solid ${currentView === 'zone' ? '#4488ff' : 'rgba(68,136,255,0.35)'}`, color: '#4488ff', background: currentView === 'zone' ? 'rgba(68,136,255,0.12)' : 'rgba(68,136,255,0.05)', padding: '0.5rem 1.8rem', borderRadius: '50px', cursor: 'pointer', fontWeight: '700', fontSize: '0.82rem', letterSpacing: '0.06em' }}>
+                THE ZONE
+              </button>
+            ) : <div />}
+            <div style={{ display: 'flex', gap: '1.5rem', fontSize: '0.9rem', alignItems: 'center', justifyContent: 'flex-end' }}>
+              {(currentView === 'main_app' || currentView === 'zone') ? (
                 <button onClick={handleSignOut} style={{ border: '1px solid #ff3333', color: '#ff3333', padding: '0.5rem 1.5rem', borderRadius: '50px', background: 'transparent', cursor: 'pointer', fontWeight: '600' }}>
                   SIGN OUT
                 </button>
@@ -114,8 +120,12 @@ export default function App() {
           </nav>
         )}
 
+        {currentView === 'zone' && (
+          <TheZone selectedAssets={selectedAssets} onBack={() => setCurrentView('main_app')} isNative={isNative} />
+        )}
+
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '2rem' }}>
-          
+
           {currentView === 'landing' && (
             isNative ? (
               <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', background: '#020202', overflow: 'hidden' }}>
@@ -259,10 +269,6 @@ export default function App() {
 
          {currentView === 'main_app' && (
             <MainTerminal userId={userId} selectedAssets={selectedAssets} onSignOut={handleSignOut} onAssetsUpdate={setSelectedAssets} isNative={isNative} onNavigateToZone={() => setCurrentView('zone')} />
-          )}
-
-          {currentView === 'zone' && (
-            <TheZone selectedAssets={selectedAssets} onBack={() => setCurrentView('main_app')} isNative={isNative} />
           )}
 
         </div>
