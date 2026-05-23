@@ -258,7 +258,7 @@ function OnboardingStep1({ selectedAssets, toggleAsset, setOnboardingStep }) {
       <input
         ref={inputRef}
         type="text" placeholder="Search any stock or crypto (e.g. TSLA, BTC)..."
-        value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+        onChange={e => setSearchTerm(e.target.value)}
         style={{ width: '100%', padding: '1rem', background: '#111', border: '1px solid #333', borderRadius: '12px', color: '#fff', marginBottom: '0.5rem', outline: 'none', boxSizing: 'border-box' }}
       />
       {selectedAssets.length > 0 && (
