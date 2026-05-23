@@ -42,11 +42,19 @@ const TV_INTERVALS = [
   { label: '1M',  value: 'M' },
 ];
 
-function ChartModal({ sym, price, rvol, symAlerts, onClose }) {
+function ChartModal({ sym, price, rvol, symAlerts, onClose, onRegisterLive }) {
   const [activeInterval, setActiveInterval] = useState('5');
+  const [liveMode, setLiveMode] = useState(false);
+  const [liveReady, setLiveReady] = useState(false);
   const containerId = `tv_${sym.replace(/[^a-zA-Z0-9]/g, '_')}`;
+  const liveContainerRef = useRef(null);
+  const lwChartRef = useRef(null);
+  const candleSeriesRef = useRef(null);
+  const liveCandlesRef = useRef({});
 
+  // TradingView widget
   useEffect(() => {
+    if (liveMode) return;
     const el = document.getElementById(containerId);
     if (el) el.innerHTML = '';
 
@@ -56,33 +64,80 @@ function ChartModal({ sym, price, rvol, symAlerts, onClose }) {
         container_id: containerId,
         symbol: toTVSymbol(sym),
         interval: activeInterval,
-        theme: 'dark',
-        style: '1',
-        width: '100%',
-        height: 420,
+        theme: 'dark', style: '1',
+        width: '100%', height: 420,
         hide_side_toolbar: false,
         allow_symbol_change: false,
         save_image: false,
         locale: 'en',
         backgroundColor: '#070707',
         gridColor: 'rgba(255,255,255,0.03)',
-        hide_top_toolbar: false,
       });
     };
 
-    if (window.TradingView) {
-      init();
-    } else if (!document.getElementById('tv-script')) {
+    if (window.TradingView) { init(); }
+    else if (!document.getElementById('tv-script')) {
       const s = document.createElement('script');
-      s.id = 'tv-script';
-      s.src = 'https://s3.tradingview.com/tv.js';
-      s.async = true;
-      s.onload = init;
+      s.id = 'tv-script'; s.src = 'https://s3.tradingview.com/tv.js'; s.async = true; s.onload = init;
       document.head.appendChild(s);
     } else {
-      const wait = setInterval(() => { if (window.TradingView) { clearInterval(wait); init(); } }, 100);
+      const t = setInterval(() => { if (window.TradingView) { clearInterval(t); init(); } }, 100);
     }
-  }, [sym, activeInterval]);
+  }, [sym, activeInterval, liveMode]);
+
+  // Lightweight Charts LIVE mode
+  useEffect(() => {
+    if (!liveMode) return;
+    liveCandlesRef.current = {};
+    setLiveReady(false);
+
+    const initLW = () => {
+      if (!window.LightweightCharts || !liveContainerRef.current) return;
+      lwChartRef.current = window.LightweightCharts.createChart(liveContainerRef.current, {
+        width: liveContainerRef.current.clientWidth,
+        height: 420,
+        layout: { backgroundColor: '#070707', textColor: '#666' },
+        grid: { vertLines: { color: '#0e0e0e' }, horzLines: { color: '#0e0e0e' } },
+        rightPriceScale: { borderColor: '#1a1a1a' },
+        timeScale: { borderColor: '#1a1a1a', timeVisible: true, secondsVisible: false },
+        crosshair: { mode: 1 },
+      });
+      candleSeriesRef.current = lwChartRef.current.addCandlestickSeries({
+        upColor: '#26a69a', downColor: '#ef5350',
+        borderUpColor: '#26a69a', borderDownColor: '#ef5350',
+        wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+      });
+
+      onRegisterLive((newPrice, ts) => {
+        const minuteTs = Math.floor(ts / 60000) * 60;
+        const c = liveCandlesRef.current;
+        if (!c[minuteTs]) {
+          c[minuteTs] = { time: minuteTs, open: newPrice, high: newPrice, low: newPrice, close: newPrice };
+        } else {
+          c[minuteTs].high = Math.max(c[minuteTs].high, newPrice);
+          c[minuteTs].low = Math.min(c[minuteTs].low, newPrice);
+          c[minuteTs].close = newPrice;
+        }
+        try { candleSeriesRef.current?.update(c[minuteTs]); } catch {}
+        setLiveReady(true);
+      });
+    };
+
+    if (window.LightweightCharts) { initLW(); }
+    else {
+      const s = document.createElement('script');
+      s.src = 'https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js';
+      s.onload = initLW;
+      document.head.appendChild(s);
+    }
+
+    return () => {
+      onRegisterLive(null);
+      lwChartRef.current?.remove();
+      lwChartRef.current = null;
+      candleSeriesRef.current = null;
+    };
+  }, [liveMode, sym]);
 
   const p = price;
   const signals = (symAlerts || []).filter(a => a.type === 'signal').slice(0, 4);
@@ -112,19 +167,43 @@ function ChartModal({ sym, price, rvol, symAlerts, onClose }) {
           <button onClick={onClose} style={{ background: 'none', border: '1px solid #222', color: '#555', borderRadius: '8px', width: '32px', height: '32px', cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: '0.15s' }}>✕</button>
         </div>
 
-        {/* Interval bar */}
-        <div style={{ display: 'flex', gap: '4px', padding: '0.6rem 1.5rem', background: '#050505', borderBottom: '1px solid #0d0d0d' }}>
-          {TV_INTERVALS.map(({ label, value }) => (
+        {/* Interval bar + LIVE toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '0.6rem 1.5rem', background: '#050505', borderBottom: '1px solid #0d0d0d' }}>
+          {!liveMode && TV_INTERVALS.map(({ label, value }) => (
             <button key={value} onClick={() => setActiveInterval(value)}
               style={{ padding: '4px 16px', borderRadius: '7px', border: `1px solid ${activeInterval === value ? '#333' : '#111'}`, background: activeInterval === value ? '#1c1c1c' : 'transparent', color: activeInterval === value ? '#fff' : '#3a3a3a', cursor: 'pointer', fontSize: '0.72rem', fontWeight: activeInterval === value ? '700' : '500', transition: '0.15s' }}>
               {label}
             </button>
           ))}
+          {liveMode && (
+            <span style={{ fontSize: '0.68rem', color: '#2a2a2a' }}>1m candles · real-time feed</span>
+          )}
+          <div style={{ flex: 1 }} />
+          <button onClick={() => setLiveMode(m => !m)}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 14px', borderRadius: '7px', border: `1px solid ${liveMode ? 'rgba(68,204,68,0.3)' : '#222'}`, background: liveMode ? 'rgba(68,204,68,0.08)' : 'transparent', color: liveMode ? '#44cc44' : '#3a3a3a', cursor: 'pointer', fontSize: '0.72rem', fontWeight: '700', transition: '0.2s' }}>
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: liveMode ? '#44cc44' : '#333', display: 'inline-block', flexShrink: 0, animation: liveMode ? 'pulse 1.5s infinite' : 'none', boxShadow: liveMode ? '0 0 6px #44cc44' : 'none' }} />
+            LIVE
+          </button>
         </div>
 
-        {/* TradingView chart */}
-        <div style={{ flex: 1, minHeight: 0 }}>
-          <div id={containerId} style={{ width: '100%', height: '420px' }} />
+        {/* Chart area */}
+        <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+          {liveMode ? (
+            <>
+              <div ref={liveContainerRef} style={{ width: '100%', height: '420px' }} />
+              {!liveReady && (
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#070707' }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '1.8rem', marginBottom: '0.6rem' }}>📡</div>
+                    <div style={{ fontSize: '0.82rem', color: '#555', fontWeight: '600' }}>Waiting for first trade…</div>
+                    <div style={{ fontSize: '0.68rem', color: '#2a2a2a', marginTop: '6px' }}>Candles will appear as trades stream in</div>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div id={containerId} style={{ width: '100%', height: '420px' }} />
+          )}
         </div>
 
         {/* Recent activity */}
@@ -295,6 +374,8 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
   const [customValues, setCustomValues] = useState({});
   const [expandedSignal, setExpandedSignal] = useState(null);
   const [chartSym, setChartSym] = useState(null);
+  const chartSymRef = useRef(null);
+  const chartCallbackRef = useRef(null);
 
   const wsRef = useRef(null);
   const reconnectTimerRef = useRef(null);
@@ -313,6 +394,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
   useEffect(() => { thresholdsRef.current = thresholds; }, [thresholds]);
   useEffect(() => { pricesRef.current = prices; }, [prices]);
   useEffect(() => { avgVolumesRef.current = avgVolumes; }, [avgVolumes]);
+  useEffect(() => { chartSymRef.current = chartSym; }, [chartSym]);
 
   useEffect(() => {
     localStorage.setItem('sultrax_alerts', JSON.stringify(alerts));
@@ -416,6 +498,11 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
         tracking.vwapNum += price * vol;
         tracking.vwapDen += vol;
         const vwap = tracking.vwapDen > 0 ? tracking.vwapNum / tracking.vwapDen : price;
+
+        // Live chart feed
+        if (chartSymRef.current === sym && chartCallbackRef.current) {
+          chartCallbackRef.current(price, now);
+        }
 
         // RVOL badge
         tracking.trades5m.push({ vol, time: now });
@@ -694,7 +781,8 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
           price={prices[chartSym]}
           rvol={rvols[chartSym]}
           symAlerts={alerts.filter(a => a.symbol === chartSym)}
-          onClose={() => setChartSym(null)}
+          onClose={() => { setChartSym(null); chartCallbackRef.current = null; }}
+          onRegisterLive={cb => { chartCallbackRef.current = cb; }}
         />
       )}
 
