@@ -225,30 +225,22 @@ export default function App() {
 }
 
 function OnboardingStep1({ selectedAssets, toggleAsset, setOnboardingStep }) {
-  const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const inputRef = useRef(null);
+  const timerRef = useRef(null);
 
-  useEffect(() => { inputRef.current?.focus(); }, []);
-
-  useEffect(() => {
-    if (!searchTerm.trim()) { setSearchResults([]); return; }
-    const timer = setTimeout(async () => {
+  const handleSearch = (value) => {
+    clearTimeout(timerRef.current);
+    if (!value.trim()) { setSearchResults([]); return; }
+    timerRef.current = setTimeout(async () => {
       setSearchLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/api/search-stocks?q=${encodeURIComponent(searchTerm)}`);
+        const res = await fetch(`${API_BASE}/api/search-stocks?q=${encodeURIComponent(value)}`);
         const data = await res.json();
         setSearchResults(data.results || []);
       } catch { setSearchResults([]); }
       setSearchLoading(false);
     }, 300);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
-
-  const handleToggle = (symbol) => {
-    toggleAsset(symbol);
-    requestAnimationFrame(() => inputRef.current?.focus());
   };
 
   return (
@@ -256,15 +248,14 @@ function OnboardingStep1({ selectedAssets, toggleAsset, setOnboardingStep }) {
       <h3 style={{ fontSize: '2rem', marginBottom: '1rem' }}>Step 1: Select Assets</h3>
       <p style={{ color: '#888', marginBottom: '2rem' }}>Search and choose at least 3 assets to follow.</p>
       <input
-        ref={inputRef}
         type="text" placeholder="Search any stock or crypto (e.g. TSLA, BTC)..."
-        onChange={e => setSearchTerm(e.target.value)}
+        onChange={e => handleSearch(e.target.value)}
         style={{ width: '100%', padding: '1rem', background: '#111', border: '1px solid #333', borderRadius: '12px', color: '#fff', marginBottom: '0.5rem', outline: 'none', boxSizing: 'border-box' }}
       />
       {selectedAssets.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '0.75rem' }}>
           {selectedAssets.map(s => (
-            <div key={s} onMouseDown={e => e.preventDefault()} onClick={() => handleToggle(s)} style={{ padding: '5px 12px', borderRadius: '20px', background: 'rgba(255,51,51,0.15)', border: '1px solid #ff3333', color: '#ff3333', fontSize: '0.8rem', cursor: 'pointer' }}>
+            <div key={s} onClick={() => toggleAsset(s)} style={{ padding: '5px 12px', borderRadius: '20px', background: 'rgba(255,51,51,0.15)', border: '1px solid #ff3333', color: '#ff3333', fontSize: '0.8rem', cursor: 'pointer' }}>
               {s} ✕
             </div>
           ))}
@@ -272,14 +263,8 @@ function OnboardingStep1({ selectedAssets, toggleAsset, setOnboardingStep }) {
       )}
       <div style={{ maxHeight: '250px', overflowY: 'auto', borderRadius: '12px', border: searchResults.length > 0 ? '1px solid #222' : 'none' }}>
         {searchLoading && <div style={{ padding: '1rem', color: '#666', textAlign: 'center', fontSize: '0.85rem' }}>Searching...</div>}
-        {!searchLoading && searchTerm && searchResults.length === 0 && (
-          <div style={{ padding: '1rem', color: '#666', textAlign: 'center', fontSize: '0.85rem' }}>No results found</div>
-        )}
-        {!searchLoading && !searchTerm && (
-          <div style={{ padding: '0.75rem', color: '#555', textAlign: 'center', fontSize: '0.8rem' }}>Start typing to search stocks & crypto</div>
-        )}
         {searchResults.map(item => (
-          <div key={item.symbol} onMouseDown={e => e.preventDefault()} onClick={() => handleToggle(item.symbol)} style={{
+          <div key={item.symbol} onClick={() => toggleAsset(item.symbol)} style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid #1a1a1a',
             background: selectedAssets.includes(item.symbol) ? 'rgba(255,51,51,0.08)' : 'transparent',
