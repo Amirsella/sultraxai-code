@@ -14,7 +14,7 @@ export default function App() {
 
   const [onboardingStep, setOnboardingStep] = useState(1);
   const [errorMessage, setErrorMessage] = useState('');
-  const [pendingEmail, setPendingEmail] = useState(''); // <--- הוסף את השורה הזו כאן
+  const [pendingEmail, setPendingEmail] = useState(() => localStorage.getItem('pendingEmail') || '');
   const [assetSettings, setAssetSettings] = useState({}); 
   const [tradingProfile, setTradingProfile] = useState({ experience: 'Beginner (0-1 yrs)', frequency: 'Daily' });
   const [searchTerm, setSearchTerm] = useState('');
@@ -37,6 +37,11 @@ const filteredStocks = useMemo(() => {
     localStorage.setItem('selectedAssets', JSON.stringify(selectedAssets));
   }, [selectedAssets]);
 
+  useEffect(() => {
+    if (pendingEmail) localStorage.setItem('pendingEmail', pendingEmail);
+    else localStorage.removeItem('pendingEmail');
+  }, [pendingEmail]);
+
  const handleRegisterSuccess = (id, email) => {
     setUserId(id);
     setPendingEmail(email); // שומר את המייל
@@ -51,8 +56,9 @@ const filteredStocks = useMemo(() => {
     setAssetSettings({});
     setOnboardingStep(1);
     setErrorMessage('');
+    setPendingEmail('');
     setCurrentView('landing');
-    localStorage.clear(); // מנקה את הכל ביציאה מסודרת
+    localStorage.clear();
   };
 
   const toggleAsset = (symbol) => {
@@ -185,14 +191,14 @@ const filteredStocks = useMemo(() => {
           )}
 
           {currentView === 'verify' && (
-            <div style={{ textAlign: 'center', color: '#fff', padding: '2rem', border: '1px solid #333', borderRadius: '24px', background: 'rgba(5,5,5,0.7)' }}>
+            <div style={{ textAlign: 'center', color: '#fff', padding: '2rem', border: '1px solid #333', borderRadius: '24px', background: 'rgba(5,5,5,0.7)', width: '380px' }}>
               <h2 style={{ fontSize: '2rem' }}>Verify Account</h2>
               <p style={{ color: '#aaa', margin: '1rem 0' }}>Enter the 6-digit code sent to {pendingEmail}</p>
-              <input 
-                type="text" 
-                maxLength="6" 
-                placeholder="000000" 
-                style={{ width: '100%', padding: '1rem', background: '#000', border: '1px solid #333', color: '#fff', textAlign: 'center', fontSize: '1.5rem', letterSpacing: '0.5rem', marginBottom: '1rem', borderRadius: '12px', outline: 'none' }}
+              <input
+                type="text"
+                maxLength="6"
+                placeholder="000000"
+                style={{ width: '100%', padding: '1rem', background: '#000', border: '1px solid #333', color: '#fff', textAlign: 'center', fontSize: '1.5rem', letterSpacing: '0.5rem', marginBottom: '1rem', borderRadius: '12px', outline: 'none', boxSizing: 'border-box' }}
                 onChange={(e) => {
                   if(e.target.value.length === 6) {
                     fetch(`${API_BASE}/api/verify-code`, {
@@ -202,15 +208,19 @@ const filteredStocks = useMemo(() => {
                     })
                     .then(res => res.json())
                     .then(data => {
-                      if (data.status === 'success') { 
-                        alert("Verified! You can now sign in."); 
-                        setCurrentView('signin'); 
+                      if (data.status === 'success') {
+                        setPendingEmail('');
+                        setCurrentView('signin');
                       }
                       else alert("Invalid code, please try again.");
                     });
                   }
                 }}
               />
+              <button onClick={() => { setPendingEmail(''); setCurrentView('signin'); }}
+                style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '0.85rem', marginTop: '0.5rem' }}>
+                ← Back to Sign In
+              </button>
             </div>
           )}
 
