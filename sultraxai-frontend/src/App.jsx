@@ -22,23 +22,6 @@ export default function App() {
   const [pendingEmail, setPendingEmail] = useState(() => localStorage.getItem('pendingEmail') || '');
   const [assetSettings, setAssetSettings] = useState({}); 
   const [tradingProfile, setTradingProfile] = useState({ experience: 'Beginner (0-1 yrs)', frequency: 'Daily' });
-  const [searchTerm, setSearchTerm] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-
-  useEffect(() => {
-    if (!searchTerm.trim()) { setSearchResults([]); return; }
-    const timer = setTimeout(async () => {
-      setSearchLoading(true);
-      try {
-        const res = await fetch(`${API_BASE}/api/search-stocks?q=${encodeURIComponent(searchTerm)}`);
-        const data = await res.json();
-        setSearchResults(data.results || []);
-      } catch { setSearchResults([]); }
-      setSearchLoading(false);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
   // עדכון ה-LocalStorage בכל פעם שהערכים משתנים
   useEffect(() => {
     localStorage.setItem('currentView', currentView);
@@ -215,8 +198,6 @@ export default function App() {
                 {[1, 2, 3].map(i => <div key={i} style={{ flex: 1, height: '4px', background: onboardingStep >= i ? '#ff3333' : '#333', borderRadius: '2px' }} />)}
               </div>
               {onboardingStep === 1 && <OnboardingStep1
-                searchTerm={searchTerm} setSearchTerm={setSearchTerm}
-                searchResults={searchResults} searchLoading={searchLoading}
                 selectedAssets={selectedAssets} toggleAsset={toggleAsset}
                 setOnboardingStep={setOnboardingStep}
               />}
@@ -243,7 +224,25 @@ export default function App() {
   );
 }
 
-function OnboardingStep1({ searchTerm, setSearchTerm, searchResults, searchLoading, selectedAssets, toggleAsset, setOnboardingStep }) {
+function OnboardingStep1({ selectedAssets, toggleAsset, setOnboardingStep }) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+
+  useEffect(() => {
+    if (!searchTerm.trim()) { setSearchResults([]); return; }
+    const timer = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/search-stocks?q=${encodeURIComponent(searchTerm)}`);
+        const data = await res.json();
+        setSearchResults(data.results || []);
+      } catch { setSearchResults([]); }
+      setSearchLoading(false);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   return (
     <div style={{ textAlign: 'left' }}>
       <h3 style={{ fontSize: '2rem', marginBottom: '1rem' }}>Step 1: Select Assets</h3>
