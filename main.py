@@ -157,6 +157,41 @@ async def complete_onboarding(data: OnboardingData):
     conn.close()
     return {"status": "success"}
 
+@app.get("/api/prices")
+async def get_prices(symbols: str = ""):
+    if not symbols:
+        return {"prices": {}}
+    symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
+    try:
+        res = requests.get(
+            "https://query1.finance.yahoo.com/v7/finance/quote",
+            params={"symbols": ",".join(symbol_list)},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=10
+        )
+        quotes = res.json().get("quoteResponse", {}).get("result", [])
+        prices = {}
+        for q in quotes:
+            sym = q.get("symbol")
+            prices[sym] = {
+                "price": q.get("regularMarketPrice"),
+                "change_pct": q.get("regularMarketChangePercent"),
+                "prev_close": q.get("regularMarketPreviousClose"),
+            }
+        return {"prices": prices}
+    except Exception as e:
+        print(f"Price fetch error: {e}")
+        return {"prices": {}}
+
+@app.get("/api/user-assets/{user_id}")
+async def get_user_assets(user_id: int):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT symbol, threshold FROM user_assets WHERE user_id = ?", (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return {"assets": [{"symbol": r[0], "threshold": r[1]} for r in rows]}
+
 @app.post("/api/login")
 async def login(user: UserLogin):
     conn = sqlite3.connect(DB_PATH)

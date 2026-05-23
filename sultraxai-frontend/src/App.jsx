@@ -214,7 +214,7 @@ export default function App() {
           )}
 
          {currentView === 'main_app' && (
-            <MainTerminal selectedAssets={selectedAssets} onSignOut={handleSignOut} />
+            <MainTerminal userId={userId} selectedAssets={selectedAssets} onSignOut={handleSignOut} />
           
           )}
 
