@@ -300,7 +300,7 @@ function TopMoversTicker({ onMoverClick }) {
               <span style={{ color: '#555', transition: 'color 0.15s' }}
                 onMouseEnter={e => e.currentTarget.style.color = '#aaa'}
                 onMouseLeave={e => e.currentTarget.style.color = '#555'}
-              >{m.symbol}</span>
+              >{m.symbol.replace('-USD', '/USD')}</span>
               <span style={{ color: up ? '#44cc44' : '#ff4444', marginLeft: '5px' }}>{up ? '▲' : '▼'} {Math.abs(m.pct).toFixed(2)}%</span>
             </span>
           );

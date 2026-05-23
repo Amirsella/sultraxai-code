@@ -471,19 +471,50 @@ def _zone_yahoo(symbol: str) -> list:
     except Exception as e:
         print(f"Zone Yahoo error: {e}"); return []
 
-SCAN_UNIVERSE = [
+_SCAN_STOCKS = [
+    # Mega cap tech
     "AAPL","MSFT","NVDA","AMZN","GOOGL","META","TSLA","AVGO","ORCL","ADBE",
-    "JPM","BAC","GS","V","MA","PYPL","COIN","HOOD","SOFI",
-    "LLY","UNH","ABBV","MRK","PFE","JNJ",
-    "XOM","CVX","OXY",
-    "HD","COST","WMT","NKE","MCD",
-    "AMD","INTC","QCOM","MU","SMCI","ARM",
-    "PLTR","MSTR","RKLB","RIVN",
+    "CRM","CSCO","IBM","INTC","QCOM","AMD","MU","SMCI","ARM",
+    # Finance
+    "JPM","BAC","GS","MS","V","MA","PYPL","COIN","HOOD","SOFI","C","WFC","AXP","SCHW",
+    # Healthcare
+    "LLY","UNH","ABBV","MRK","PFE","JNJ","MRNA","AMGN","GILD","REGN",
+    # Energy
+    "XOM","CVX","OXY","COP","SLB",
+    # Consumer & Retail
+    "HD","COST","WMT","NKE","MCD","SBUX","TGT",
+    # Industrials & Transport
+    "BA","LMT","RTX","CAT","UPS","FDX",
+    # Auto & EV
+    "F","GM","NIO","RIVN",
+    # Growth / Disruptive
+    "PLTR","MSTR","RKLB","NET","SNOW","DDOG","PANW","ZS",
+    # Media & Streaming
+    "NFLX","DIS","SPOT","SNAP","RBLX","PINS",
+    # Travel & Mobility
+    "UBER","LYFT","ABNB","BKNG",
+    # Popular trading
     "GME","AMC",
-    "NFLX","DIS","SPOT","SNAP","RBLX",
-    "UBER","ABNB",
-    "SPY","QQQ","IWM","ARKK",
+    # ETFs
+    "SPY","QQQ","IWM","ARKK","GLD","SLV","TLT",
 ]
+
+_SCAN_CRYPTO = {
+    "BINANCE:BTCUSDT":  "BTC-USD",
+    "BINANCE:ETHUSDT":  "ETH-USD",
+    "BINANCE:SOLUSDT":  "SOL-USD",
+    "BINANCE:XRPUSDT":  "XRP-USD",
+    "BINANCE:BNBUSDT":  "BNB-USD",
+    "BINANCE:ADAUSDT":  "ADA-USD",
+    "BINANCE:DOGEUSDT": "DOGE-USD",
+    "BINANCE:AVAXUSDT": "AVAX-USD",
+    "BINANCE:DOTUSDT":  "DOT-USD",
+    "BINANCE:LINKUSDT": "LINK-USD",
+    "BINANCE:LTCUSDT":  "LTC-USD",
+    "BINANCE:ATOMUSDT": "ATOM-USD",
+}
+
+SCAN_UNIVERSE = _SCAN_STOCKS + list(_SCAN_CRYPTO.keys())
 
 _scanner_cache = {"movers": [], "scanned": 0, "updated": None}
 
@@ -498,8 +529,9 @@ def _fetch_quote(symbol: str):
         pct = d.get("dp", 0)
         if not price or price == 0:
             return None
+        display = _SCAN_CRYPTO.get(symbol, symbol)
         return {
-            "symbol": symbol,
+            "symbol": display,
             "price": round(price, 2),
             "change": round(d.get("d", 0), 2),
             "pct": round(pct, 2),

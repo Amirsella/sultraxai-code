@@ -24,7 +24,7 @@ function MoverRow({ m, onZone }) {
       onMouseLeave={e => e.currentTarget.style.borderColor = '#111'}
     >
       {/* Symbol */}
-      <div style={{ fontWeight: '800', fontSize: '0.88rem', color: '#ddd', letterSpacing: '0.03em' }}>{m.symbol}</div>
+      <div style={{ fontWeight: '800', fontSize: '0.88rem', color: '#ddd', letterSpacing: '0.03em' }}>{m.symbol.replace('-USD', '/USD')}</div>
 
       {/* Bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
