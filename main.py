@@ -168,9 +168,15 @@ async def reset_password(data: dict):
     cursor = conn.cursor()
     cursor.execute("UPDATE users SET password_hash = ? WHERE LOWER(email) = ?", (pwd_hash, token_data["email"]))
     conn.commit()
+    cursor.execute("SELECT id, first_name FROM users WHERE LOWER(email) = ?", (token_data["email"],))
+    user = cursor.fetchone()
+    cursor.execute("SELECT experience FROM user_profiles WHERE user_id = ?", (user[0],))
+    has_profile = cursor.fetchone() is not None
+    cursor.execute("SELECT symbol FROM user_assets WHERE user_id = ?", (user[0],))
+    assets = [r[0] for r in cursor.fetchall()]
     conn.close()
     reset_tokens.pop(token, None)
-    return {"status": "success"}
+    return {"status": "success", "user_id": user[0], "first_name": user[1], "onboarding_completed": has_profile, "assets": assets}
 
 class OnboardingData(BaseModel):
     user_id: int; assets: list; experience: str; frequency: str

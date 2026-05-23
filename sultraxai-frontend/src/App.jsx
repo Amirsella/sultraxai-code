@@ -169,7 +169,12 @@ export default function App() {
           )}
 
           {currentView === 'reset_password' && (
-            <ResetPasswordForm isNative={isNative} token={resetToken} onDone={() => setCurrentView('signin')} />
+            <ResetPasswordForm isNative={isNative} token={resetToken} onSuccess={(userData) => {
+              setUserId(userData.user_id);
+              setSelectedAssets(userData.assets || []);
+              window.history.replaceState({}, document.title, '/');
+              setCurrentView(userData.onboarding_completed ? 'main_app' : 'onboarding');
+            }} />
           )}
 
           {currentView === 'verify' && (
@@ -623,19 +628,24 @@ function ForgotPasswordForm({ isNative, onBack }) {
   );
 }
 
-function ResetPasswordForm({ isNative, token, onDone }) {
+function ResetPasswordForm({ isNative, token, onSuccess }) {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
 
-  const strong = (pwd) => pwd.length >= 8 && /[A-Z]/.test(pwd) && /[!@#$%^&*(),.?":{}|<>_+\-[\]/\\]/.test(pwd);
+  const criteria = {
+    hasMinLength: password.length >= 8,
+    hasUppercase: /[A-Z]/.test(password),
+    hasSpecialChar: /[!@#$%^&*(),.?":{}|<>_+\-[\]/\\]/.test(password),
+  };
+  const isStrong = criteria.hasMinLength && criteria.hasUppercase && criteria.hasSpecialChar;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (password !== confirm) { setError('Passwords do not match'); return; }
-    if (!strong(password)) { setError('Min 8 chars, one uppercase, one special character'); return; }
+    if (!isStrong) { setError('Password does not meet requirements'); return; }
     setLoading(true); setError('');
     try {
       const res = await fetch(`${API_BASE}/api/reset-password`, {
@@ -643,11 +653,8 @@ function ResetPasswordForm({ isNative, token, onDone }) {
         body: JSON.stringify({ token, password })
       });
       const data = await res.json();
-      if (res.ok) {
-        setDone(true);
-        window.history.replaceState({}, document.title, '/');
-        setTimeout(onDone, 2000);
-      } else { setError(data.detail || 'Invalid or expired link'); }
+      if (res.ok) { setDone(true); setTimeout(() => onSuccess(data), 1000); }
+      else { setError(data.detail || 'Invalid or expired link'); }
     } catch { setError('Connection error. Please try again.'); }
     setLoading(false);
   };
@@ -659,14 +666,22 @@ function ResetPasswordForm({ isNative, token, onDone }) {
       {done ? (
         <div style={{ textAlign: 'center', padding: '1rem 0' }}>
           <div style={{ fontSize: '2.5rem', marginBottom: '1rem' }}>✓</div>
-          <p style={{ color: '#44cc44', fontSize: '0.9rem' }}>Password updated. Redirecting…</p>
+          <p style={{ color: '#44cc44', fontSize: '0.9rem' }}>Password updated. Entering terminal…</p>
         </div>
       ) : (
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {error && <div style={{ color: '#ff3333', background: 'rgba(255,51,51,0.1)', padding: '0.75rem', borderRadius: '8px', fontSize: '0.9rem', textAlign: 'center' }}>{error}</div>}
           <input type="password" placeholder="New Password" value={password} onChange={e => setPassword(e.target.value)} required style={isNative ? mobileInputStyle : inputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
+          {password && (
+            <div style={{ fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.2rem', paddingLeft: '0.25rem' }}>
+              <span style={{ color: criteria.hasMinLength ? '#44ff44' : '#ff3333' }}>✓ Minimum 8 characters</span>
+              <span style={{ color: criteria.hasUppercase ? '#44ff44' : '#ff3333' }}>✓ At least one uppercase letter (A-Z)</span>
+              <span style={{ color: criteria.hasSpecialChar ? '#44ff44' : '#ff3333' }}>✓ At least one special character (!@#$)</span>
+            </div>
+          )}
           <input type="password" placeholder="Confirm Password" value={confirm} onChange={e => setConfirm(e.target.value)} required style={isNative ? mobileInputStyle : inputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
-          <button type="submit" disabled={loading} style={{ backgroundColor: '#ff3333', color: '#fff', padding: '1rem', border: 'none', borderRadius: isNative ? '14px' : '12px', fontWeight: '600', cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1, marginTop: '0.5rem' }}>
+          {password && confirm && password !== confirm && <span style={{ color: '#ff3333', fontSize: '0.8rem' }}>Passwords do not match</span>}
+          <button type="submit" disabled={loading || !isStrong} style={{ backgroundColor: isStrong ? '#ff3333' : '#331111', color: isStrong ? '#fff' : '#666', padding: '1rem', border: 'none', borderRadius: isNative ? '14px' : '12px', fontWeight: '600', cursor: isStrong && !loading ? 'pointer' : 'not-allowed', marginTop: '0.5rem' }}>
             {loading ? 'Saving…' : 'Set New Password'}
           </button>
         </form>
