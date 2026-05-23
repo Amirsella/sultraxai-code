@@ -295,20 +295,34 @@ function OnboardingStep1({ selectedAssets, toggleAsset, setOnboardingStep }) {
   );
 }
 
+const SENSITIVITY_LEVELS = [
+  { label: 'Major only', desc: '>5% move', value: 5.0, color: '#ff3333' },
+  { label: 'Standard', desc: '>2% move', value: 2.0, color: '#ff9900' },
+  { label: 'All signals', desc: '>1% move', value: 1.0, color: '#44cc44' },
+];
+
 function OnboardingStep2({ selectedAssets, assetSettings, setAssetSettings, setOnboardingStep }) {
+  const getLevel = (symbol) => assetSettings[symbol] ?? 2.0;
+
   return (
     <div style={{ textAlign: 'left' }}>
-      <h3 style={{ fontSize: '2rem', marginBottom: '1rem' }}>Step 2: Volatility Thresholds</h3>
-      <p style={{ color: '#888', marginBottom: '2rem' }}>Define SD (Standard Deviation) for alerts.</p>
-      <div style={{ maxHeight: '300px', overflowY: 'auto', paddingRight: '5px' }}>
+      <h3 style={{ fontSize: '2rem', marginBottom: '1rem' }}>Step 2: Alert Sensitivity</h3>
+      <p style={{ color: '#888', marginBottom: '2rem' }}>How sensitive should alerts be for each asset?</p>
+      <div style={{ maxHeight: '320px', overflowY: 'auto', paddingRight: '4px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {selectedAssets.map(s => (
-          <div key={s} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '1rem', borderRadius: '12px', marginBottom: '10px', border: '1px solid #222' }}>
-            <span>{s}</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span style={{ fontSize: '0.8rem', color: '#666' }}>SD:</span>
-              <input type="number" step="0.1" defaultValue="2.0"
-                onChange={e => setAssetSettings({ ...assetSettings, [s]: parseFloat(e.target.value) })}
-                style={{ width: '60px', background: '#000', border: '1px solid #333', color: '#fff', padding: '5px', borderRadius: '5px', textAlign: 'center', outline: 'none' }} />
+          <div key={s} style={{ background: '#111', padding: '1rem', borderRadius: '12px', border: '1px solid #222' }}>
+            <div style={{ fontWeight: '600', marginBottom: '0.6rem' }}>{s}</div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {SENSITIVITY_LEVELS.map(lvl => {
+                const selected = getLevel(s) === lvl.value;
+                return (
+                  <button key={lvl.value} onClick={() => setAssetSettings({ ...assetSettings, [s]: lvl.value })}
+                    style={{ flex: 1, padding: '0.5rem 0.25rem', borderRadius: '8px', border: `1px solid ${selected ? lvl.color : '#333'}`, background: selected ? `${lvl.color}22` : 'transparent', color: selected ? lvl.color : '#666', cursor: 'pointer', fontSize: '0.75rem', fontWeight: selected ? '700' : '400', transition: '0.15s' }}>
+                    <div>{lvl.label}</div>
+                    <div style={{ fontSize: '0.65rem', opacity: 0.8 }}>{lvl.desc}</div>
+                  </button>
+                );
+              })}
             </div>
           </div>
         ))}
