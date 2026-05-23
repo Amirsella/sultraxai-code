@@ -267,6 +267,42 @@ function Sparkline({ sym, prices }) {
   );
 }
 
+function TopMoversTicker({ onNavigateToScanner }) {
+  const [movers, setMovers] = useState([]);
+
+  useEffect(() => {
+    const load = () =>
+      fetch(`${API_BASE}/api/scanner?threshold=0.1`)
+        .then(r => r.json())
+        .then(d => setMovers((d.movers || []).slice(0, 20)))
+        .catch(() => {});
+    load();
+    const id = setInterval(load, 60000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (!movers.length) return null;
+
+  const items = [...movers, ...movers, ...movers];
+
+  return (
+    <div style={{ overflow: 'hidden', borderBottom: '1px solid #0d0d0d', padding: '8px 0', marginBottom: '1.75rem', cursor: 'pointer', position: 'relative' }} onClick={onNavigateToScanner} title="Open Scanner">
+      <div style={{ display: 'flex', width: 'max-content', animation: 'tickerScroll 50s linear infinite' }}>
+        {items.map((m, i) => {
+          const up = m.pct >= 0;
+          return (
+            <span key={i} style={{ marginRight: '2.2rem', fontSize: '0.68rem', fontWeight: '700', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
+              <span style={{ color: '#2a2a2a' }}>{m.symbol}</span>
+              <span style={{ color: up ? '#44cc44' : '#ff4444', marginLeft: '5px' }}>{up ? '▲' : '▼'} {Math.abs(m.pct).toFixed(2)}%</span>
+            </span>
+          );
+        })}
+      </div>
+      <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '60px', background: 'linear-gradient(to left, #020202, transparent)', pointerEvents: 'none' }} />
+    </div>
+  );
+}
+
 function EditPanel({ userId, selectedAssets, thresholds, onSave, onClose }) {
   const [editAssets, setEditAssets] = useState([...selectedAssets]);
   const [searchResults, setSearchResults] = useState([]);
@@ -368,7 +404,7 @@ function EditPanel({ userId, selectedAssets, thresholds, onSave, onClose }) {
   );
 }
 
-export default function MainTerminal({ userId, selectedAssets, onSignOut, onAssetsUpdate, isNative, onNavigateToZone, onNavigateToSettings }) {
+export default function MainTerminal({ userId, selectedAssets, onSignOut, onAssetsUpdate, isNative, onNavigateToZone, onNavigateToSettings, onNavigateToScanner }) {
   const [thresholds, setThresholds] = useState({});
   const [prices, setPrices] = useState({});
   const [history, setHistory] = useState({});
@@ -1034,13 +1070,16 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
       <style>{`
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
         @keyframes fadeIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes tickerScroll { 0%{transform:translateX(0)} 100%{transform:translateX(-33.333%)} }
         ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
       `}</style>
 
       {sharedModals}
 
+      <TopMoversTicker onNavigateToScanner={onNavigateToScanner} />
+
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.75rem', paddingTop: '1.5rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.75rem' }}>
         <div>
           <h2 style={{ fontSize: '1.6rem', fontWeight: '900', margin: 0, letterSpacing: '0.06em', background: 'linear-gradient(to right, #fff 50%, #555)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>TERMINAL</h2>
           <p style={{ color: '#333', margin: '0.2rem 0 0', fontSize: '0.72rem' }}>

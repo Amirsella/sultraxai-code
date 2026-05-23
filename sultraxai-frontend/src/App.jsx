@@ -334,7 +334,7 @@ export default function App() {
           )}
 
          {currentView === 'main_app' && (
-            <MainTerminal userId={userId} selectedAssets={selectedAssets} onSignOut={handleSignOut} onAssetsUpdate={setSelectedAssets} isNative={isNative} onNavigateToZone={() => setCurrentView('zone')} onNavigateToSettings={() => setCurrentView('settings')} />
+            <MainTerminal userId={userId} selectedAssets={selectedAssets} onSignOut={handleSignOut} onAssetsUpdate={setSelectedAssets} isNative={isNative} onNavigateToZone={() => setCurrentView('zone')} onNavigateToSettings={() => setCurrentView('settings')} onNavigateToScanner={() => setCurrentView('scanner')} />
           )}
 
         </div>
