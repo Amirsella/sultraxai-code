@@ -135,9 +135,9 @@ export default function App() {
             .nav-btn-label { display: none; }
           }
         `}</style>
-        {['landing', 'signup', 'signin', 'main_app', 'zone', 'settings'].includes(currentView) && !isNative && (
+        {['landing', 'signup', 'signin', 'main_app', 'zone', 'scanner', 'settings'].includes(currentView) && !isNative && (
           <nav className="sultrax-nav">
-            <h1 className="nav-logo" onClick={() => { if (!['main_app', 'zone', 'settings'].includes(currentView)) setCurrentView('landing'); }}
+            <h1 className="nav-logo" onClick={() => { if (!['main_app', 'zone', 'scanner', 'settings'].includes(currentView)) setCurrentView('landing'); }}
               style={{ cursor: ['main_app', 'zone', 'settings'].includes(currentView) ? 'default' : 'pointer' }}>SULTRAXAI</h1>
 
             {['main_app', 'zone', 'scanner', 'settings'].includes(currentView) ? (
