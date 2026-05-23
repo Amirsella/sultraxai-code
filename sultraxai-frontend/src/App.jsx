@@ -119,11 +119,6 @@ export default function App() {
             isNative ? (
               <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', background: '#020202', overflow: 'hidden' }}>
 
-                {/* Background logo — centered, large, subtle */}
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-                  <img src="./sword-logo.png" alt="" style={{ width: '88%', maxWidth: '380px', opacity: 0.12, filter: 'grayscale(20%)' }} />
-                </div>
-
                 {/* Top: logo + name */}
                 <div style={{ paddingTop: '80px', textAlign: 'center', position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                   <img src="./sword-logo.png" alt="SultraxAI" style={{ width: '180px', height: '180px', objectFit: 'contain', marginBottom: '8px' }} />
