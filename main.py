@@ -179,6 +179,24 @@ async def get_prices(symbols: str = ""):
         results = ex.map(_fetch_one, symbol_list)
     return {"prices": {sym: data for sym, data in results if data}}
 
+def _fetch_history_one(sym):
+    try:
+        hist = yf.Ticker(sym).history(period="5d", interval="5m")
+        closes = hist["Close"].dropna().tolist()
+        return sym, [round(float(p), 4) for p in closes[-30:]]
+    except Exception as e:
+        print(f"History error {sym}: {e}")
+        return sym, []
+
+@app.get("/api/history-batch")
+async def get_history_batch(symbols: str = ""):
+    if not symbols:
+        return {"history": {}}
+    symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
+    with ThreadPoolExecutor(max_workers=min(len(symbol_list), 10)) as ex:
+        results = list(ex.map(_fetch_history_one, symbol_list))
+    return {"history": {sym: prices for sym, prices in results}}
+
 @app.get("/api/user-assets/{user_id}")
 async def get_user_assets(user_id: int):
     conn = sqlite3.connect(DB_PATH)

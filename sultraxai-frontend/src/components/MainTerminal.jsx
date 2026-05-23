@@ -2,6 +2,59 @@ import React, { useState, useEffect, useRef } from 'react';
 
 const API_BASE = 'http://38.180.137.122:8000';
 
+function Sparkline({ sym, prices }) {
+  if (!prices || prices.length < 2) {
+    return (
+      <div style={{ height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ color: '#222', fontSize: '0.65rem' }}>no chart data</span>
+      </div>
+    );
+  }
+
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const range = max - min || 0.001;
+  const W = 200;
+  const H = 48;
+  const pad = 3;
+
+  const px = (i) => ((i / (prices.length - 1)) * W).toFixed(2);
+  const py = (p) => (H - pad - ((p - min) / range) * (H - pad * 2)).toFixed(2);
+
+  const linePoints = prices.map((p, i) => `${px(i)},${py(p)}`).join(' ');
+  const areaPoints = `0,${H} ` + prices.map((p, i) => `${px(i)},${py(p)}`).join(' ') + ` ${W},${H}`;
+
+  const isUp = prices[prices.length - 1] >= prices[0];
+  const color = isUp ? '#44cc44' : '#ff4444';
+  const gradId = `sg-${sym.replace(/[^a-zA-Z0-9]/g, '')}`;
+
+  return (
+    <svg
+      width="100%"
+      height={H}
+      viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="none"
+      style={{ display: 'block', overflow: 'visible' }}
+    >
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.18" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <polygon points={areaPoints} fill={`url(#${gradId})`} />
+      <polyline
+        points={linePoints}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 function EditPanel({ userId, selectedAssets, thresholds, onSave, onClose }) {
   const [editAssets, setEditAssets] = useState([...selectedAssets]);
   const [searchResults, setSearchResults] = useState([]);
@@ -46,8 +99,10 @@ function EditPanel({ userId, selectedAssets, thresholds, onSave, onClose }) {
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div style={{ background: '#0a0a0a', border: '1px solid #222', borderRadius: '20px', padding: '2rem', width: '420px', maxHeight: '80vh', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '700' }}>Manage Watchlist</h3>
@@ -110,11 +165,16 @@ function EditPanel({ userId, selectedAssets, thresholds, onSave, onClose }) {
 export default function MainTerminal({ userId, selectedAssets, onSignOut, onAssetsUpdate }) {
   const [thresholds, setThresholds] = useState({});
   const [prices, setPrices] = useState({});
+  const [history, setHistory] = useState({});
   const [alerts, setAlerts] = useState([]);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [flashing, setFlashing] = useState({});
+
   const alertedRef = useRef(new Set());
+  const prevPricesRef = useRef({});
+  const flashTimerRef = useRef(null);
 
   useEffect(() => {
     if (!userId) return;
@@ -128,6 +188,24 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
       .catch(() => {});
   }, [userId]);
 
+  const fetchHistory = async () => {
+    if (!selectedAssets.length) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/history-batch?symbols=${selectedAssets.join(',')}`);
+      const data = await res.json();
+      setHistory(data.history || {});
+    } catch (e) {
+      console.error('History fetch error:', e);
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedAssets.length) return;
+    fetchHistory();
+    const id = setInterval(fetchHistory, 5 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [selectedAssets]);
+
   const fetchPrices = async () => {
     if (!selectedAssets.length) return;
     try {
@@ -136,6 +214,23 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
       const newPrices = data.prices || {};
       const now = new Date();
 
+      // detect price changes for flash effect
+      const flashUpdates = {};
+      Object.entries(newPrices).forEach(([sym, p]) => {
+        const prev = prevPricesRef.current[sym]?.price;
+        if (prev !== undefined && Math.abs(p.price - prev) > 0.0001) {
+          flashUpdates[sym] = p.price > prev ? 'up' : 'down';
+        }
+      });
+      prevPricesRef.current = { ...newPrices };
+
+      if (Object.keys(flashUpdates).length > 0) {
+        clearTimeout(flashTimerRef.current);
+        setFlashing(flashUpdates);
+        flashTimerRef.current = setTimeout(() => setFlashing({}), 700);
+      }
+
+      // check alert thresholds
       Object.entries(newPrices).forEach(([sym, p]) => {
         const threshold = thresholds[sym] ?? 2.0;
         const absPct = Math.abs(p.change_pct || 0);
@@ -209,7 +304,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <button onClick={() => setEditing(true)}
-            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid #2a2a2a', color: '#aaa', padding: '0.45rem 1rem', borderRadius: '20px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '600' }}>
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid #2a2a2a', color: '#aaa', padding: '0.45rem 1rem', borderRadius: '20px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '600' }}>
             + Edit Watchlist
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#ff3333', fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.08em' }}>
@@ -227,22 +322,38 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
             const pct = p?.change_pct;
             const t = thresholds[sym] ?? 2.0;
             const barWidth = Math.min(100, (Math.abs(pct || 0) / t) * 100);
+            const flash = flashing[sym];
+            const flashBg = flash === 'up' ? 'rgba(68,204,68,0.09)' : flash === 'down' ? 'rgba(255,68,68,0.09)' : 'rgba(8,8,8,0.85)';
+            const priceColor = flash === 'up' ? '#44cc44' : flash === 'down' ? '#ff4444' : '#fff';
 
             return (
-              <div key={sym} style={{ background: 'rgba(8,8,8,0.85)', border: `1px solid ${status.color}28`, borderRadius: '16px', padding: '1.25rem', backdropFilter: 'blur(12px)', transition: 'border-color 0.4s', animation: 'fadeIn 0.3s ease' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+              <div key={sym} style={{
+                background: flashBg,
+                border: `1px solid ${status.color}28`,
+                borderRadius: '16px',
+                padding: '1.25rem',
+                backdropFilter: 'blur(12px)',
+                transition: 'background 0.15s ease, border-color 0.4s',
+                animation: 'fadeIn 0.3s ease',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                   <span style={{ fontWeight: '700', fontSize: '0.95rem' }}>{sym}</span>
                   <span style={{ fontSize: '0.65rem', fontWeight: '700', color: status.color, background: `${status.color}18`, padding: '3px 8px', borderRadius: '20px' }}>
                     {status.label}
                   </span>
                 </div>
-                <div style={{ fontSize: '1.5rem', fontWeight: '800', marginBottom: '0.3rem', fontVariantNumeric: 'tabular-nums' }}>
+
+                <div style={{ fontSize: '1.45rem', fontWeight: '800', fontVariantNumeric: 'tabular-nums', color: priceColor, transition: 'color 0.15s ease' }}>
                   {p ? `$${p.price?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
                 </div>
-                <div style={{ fontSize: '0.85rem', fontWeight: '600', color: pct > 0 ? '#44cc44' : pct < 0 ? '#ff4444' : '#666' }}>
+
+                <div style={{ fontSize: '0.82rem', fontWeight: '600', color: pct > 0 ? '#44cc44' : pct < 0 ? '#ff4444' : '#666', marginBottom: '0.6rem' }}>
                   {pct != null ? `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%` : '—'}
                 </div>
-                <div style={{ marginTop: '0.85rem', height: '3px', background: '#111', borderRadius: '2px', overflow: 'hidden' }}>
+
+                <Sparkline sym={sym} prices={history[sym]} />
+
+                <div style={{ marginTop: '0.75rem', height: '3px', background: '#111', borderRadius: '2px', overflow: 'hidden' }}>
                   <div style={{ width: `${barWidth}%`, height: '100%', background: status.color, borderRadius: '2px', transition: 'width 0.6s ease' }} />
                 </div>
                 <div style={{ fontSize: '0.62rem', color: '#444', marginTop: '0.35rem' }}>
