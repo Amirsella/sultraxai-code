@@ -111,7 +111,7 @@ export default function App() {
           .sultrax-nav { display: flex; justify-content: space-between; align-items: center; padding: 1.2rem 4rem; border-bottom: 1px solid #0d0d0d; }
           .nav-btn { border: 1px solid #222; color: #555; background: transparent; padding: 0.45rem 1.2rem; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 0.76rem; letter-spacing: 0.06em; font-family: inherit; transition: border-color 0.15s, color 0.15s, background 0.15s; white-space: nowrap; }
           .nav-btn:hover { border-color: #333; color: #888; }
-          .nav-btn.active { border-color: #444; color: #ddd; background: rgba(255,255,255,0.04); }
+          .nav-btn.active { border-color: #ff333355; color: #fff; background: rgba(255,51,51,0.07); box-shadow: 0 0 0 1px rgba(255,51,51,0.15); }
           .nav-btn.danger { border-color: #ff333340; color: #ff4444; }
           .nav-btn.danger:hover { border-color: #ff3333; }
           @keyframes tickerScroll { 0% { transform: translateX(0) } 100% { transform: translateX(-33.333%) } }

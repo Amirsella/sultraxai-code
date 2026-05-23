@@ -267,7 +267,7 @@ function Sparkline({ sym, prices }) {
   );
 }
 
-function TopMoversTicker({ onNavigateToScanner }) {
+function TopMoversTicker({ onMoverClick }) {
   const [movers, setMovers] = useState([]);
 
   useEffect(() => {
@@ -286,13 +286,21 @@ function TopMoversTicker({ onNavigateToScanner }) {
   const items = [...movers, ...movers, ...movers];
 
   return (
-    <div style={{ overflow: 'hidden', borderBottom: '1px solid #0d0d0d', padding: '8px 0', marginBottom: '1.75rem', cursor: 'pointer', position: 'relative' }} onClick={onNavigateToScanner} title="Open Scanner">
+    <div style={{ overflow: 'hidden', borderBottom: '1px solid #0d0d0d', padding: '8px 0', marginBottom: '1.75rem', position: 'relative' }}>
       <div style={{ display: 'flex', width: 'max-content', animation: 'tickerScroll 50s linear infinite' }}>
         {items.map((m, i) => {
           const up = m.pct >= 0;
           return (
-            <span key={i} style={{ marginRight: '2.2rem', fontSize: '0.68rem', fontWeight: '700', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
-              <span style={{ color: '#2a2a2a' }}>{m.symbol}</span>
+            <span
+              key={i}
+              onClick={() => onMoverClick(m)}
+              style={{ marginRight: '2.2rem', fontSize: '0.68rem', fontWeight: '700', letterSpacing: '0.05em', whiteSpace: 'nowrap', cursor: 'pointer' }}
+              title={`Open ${m.symbol} chart`}
+            >
+              <span style={{ color: '#555', transition: 'color 0.15s' }}
+                onMouseEnter={e => e.currentTarget.style.color = '#aaa'}
+                onMouseLeave={e => e.currentTarget.style.color = '#555'}
+              >{m.symbol}</span>
               <span style={{ color: up ? '#44cc44' : '#ff4444', marginLeft: '5px' }}>{up ? '▲' : '▼'} {Math.abs(m.pct).toFixed(2)}%</span>
             </span>
           );
@@ -1076,7 +1084,13 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
 
       {sharedModals}
 
-      <TopMoversTicker onNavigateToScanner={onNavigateToScanner} />
+      <TopMoversTicker onMoverClick={(m) => {
+        setPrices(prev => prev[m.symbol] ? prev : {
+          ...prev,
+          [m.symbol]: { price: m.price, change_pct: m.pct, prev_close: m.prev_close }
+        });
+        setChartSym(m.symbol);
+      }} />
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.75rem' }}>
