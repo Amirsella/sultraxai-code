@@ -310,8 +310,17 @@ function SignUpForm({ onRegisterSuccess, setErrorMessage, errorMessage }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log('handleSubmit called', { firstName, fullName, email, phone, pwdCriteria, passwordMatch: password === confirmPassword, agreeTerms, isFormValid });
+    console.log('=== FORM DEBUG ===');
+    console.log('firstName ok:', firstName.trim() !== '');
+    console.log('fullName ok:', fullName.trim() !== '');
+    console.log('email ok:', isEmailValid(email));
+    console.log('phone ok:', phone.trim() !== '');
+    console.log('pwdCriteria:', pwdCriteria);
+    console.log('passwordMatch:', password === confirmPassword);
+    console.log('agreeTerms:', agreeTerms);
+    console.log('isFormValid:', isFormValid);
     if (!isFormValid) { setShowValidationErrors(true); return; }
+    console.log('>>> Sending fetch request...');
     setShowValidationErrors(false);
     setErrorMessage('');
 
