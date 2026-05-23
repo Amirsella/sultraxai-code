@@ -164,6 +164,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
   const [expandedCard, setExpandedCard] = useState(null);
   const [savingThreshold, setSavingThreshold] = useState(false);
   const [savedCard, setSavedCard] = useState(null);
+  const [customValues, setCustomValues] = useState({});
 
   const wsRef = useRef(null);
   const reconnectTimerRef = useRef(null);
@@ -560,18 +561,35 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
 
                 {expandedCard === sym && (
                   <div style={{ marginTop: '0.85rem', paddingTop: '0.85rem', borderTop: '1px solid #1a1a1a' }}>
-                    <div style={{ fontSize: '0.65rem', color: '#555', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Alert sensitivity</div>
-                    <div style={{ display: 'flex', gap: '6px' }}>
+                    <div style={{ fontSize: '0.65rem', color: '#555', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                      Alert on move ≥ <span style={{ color: '#fff', fontVariantNumeric: 'tabular-nums' }}>{t}%</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', marginBottom: '0.5rem' }}>
                       {SENSITIVITY_LEVELS.map(lvl => {
                         const active = t === lvl.value;
                         return (
                           <button key={lvl.value} onClick={() => !savingThreshold && updateThreshold(sym, lvl.value)}
                             style={{ flex: 1, padding: '0.45rem 0.2rem', borderRadius: '8px', border: `1px solid ${active ? lvl.color : '#2a2a2a'}`, background: active ? `${lvl.color}20` : 'transparent', color: active ? lvl.color : '#555', cursor: savingThreshold ? 'wait' : 'pointer', fontSize: '0.68rem', fontWeight: active ? '700' : '400', transition: '0.15s' }}>
-                            <div>{savedCard === sym && active ? '✓ Saved' : lvl.label}</div>
+                            <div>{savedCard === sym && active ? '✓' : lvl.label}</div>
                             <div style={{ fontSize: '0.6rem', opacity: 0.75 }}>{lvl.desc}</div>
                           </button>
                         );
                       })}
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      <input
+                        type="number" min="0.1" max="50" step="0.1"
+                        placeholder="Custom %"
+                        value={customValues[sym] ?? ''}
+                        onChange={e => setCustomValues(prev => ({ ...prev, [sym]: e.target.value }))}
+                        onKeyDown={e => { if (e.key === 'Enter' && customValues[sym]) updateThreshold(sym, parseFloat(customValues[sym])); }}
+                        style={{ flex: 1, padding: '0.4rem 0.6rem', background: '#111', border: '1px solid #2a2a2a', borderRadius: '8px', color: '#fff', fontSize: '0.78rem', outline: 'none', width: '0' }}
+                      />
+                      <button
+                        onClick={() => customValues[sym] && !savingThreshold && updateThreshold(sym, parseFloat(customValues[sym]))}
+                        style={{ padding: '0.4rem 0.7rem', borderRadius: '8px', border: '1px solid #2a2a2a', background: 'transparent', color: customValues[sym] ? '#fff' : '#444', cursor: customValues[sym] ? 'pointer' : 'default', fontSize: '0.72rem', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                        Set %
+                      </button>
                     </div>
                   </div>
                 )}
@@ -580,74 +598,92 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
           })}
         </div>
 
-        {/* ── ALERT FEED ── */}
-        <div style={{ width: '270px', flexShrink: 0 }}>
-          <div style={{ background: 'rgba(8,8,8,0.85)', borderRadius: '16px', border: '1px solid #1a1a1a', padding: '1.25rem', backdropFilter: 'blur(12px)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ margin: 0, fontSize: '0.75rem', fontWeight: '700', color: '#555', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Signal Feed</h3>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                {alerts.length > 0 && (
-                  <span style={{ fontSize: '0.65rem', background: '#ff333322', color: '#ff3333', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>{alerts.length}</span>
-                )}
-                {alerts.length > 0 && (
-                  <button onClick={() => setAlerts([])} title="Clear all" style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.75rem', lineHeight: 1, padding: '2px' }}>✕</button>
-                )}
-              </div>
-            </div>
+        {/* ── RIGHT COLUMN: two feeds ── */}
+        <div style={{ width: '270px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-            {alerts.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '2rem 0.5rem' }}>
-                <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>📡</div>
-                <p style={{ color: '#333', fontSize: '0.78rem', margin: 0, lineHeight: 1.5 }}>
-                  Monitoring {selectedAssets.length} assets.<br />Signals will appear here.
-                </p>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '560px', overflowY: 'auto' }}>
-                {alerts.map((a, i) => {
-                  const isBuying = a.type === 'buying';
-                  const isSelling = a.type === 'selling';
-                  const isSignal = isBuying || isSelling;
-                  return (
-                    <div key={i} style={{
-                      padding: '0.7rem', borderRadius: '10px', animation: 'fadeIn 0.3s ease',
-                      background: isBuying ? 'rgba(255,153,0,0.06)' : isSelling ? 'rgba(255,50,50,0.06)' : '#0c0c0c',
-                      border: isBuying ? '1px solid rgba(255,153,0,0.2)' : isSelling ? '1px solid rgba(255,68,68,0.2)' : '1px solid #1c1c1c',
-                    }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-                        <span style={{ fontWeight: '700', color: '#fff', fontSize: '0.82rem' }}>
-                          {isBuying ? '🐋 ' : isSelling ? '🔴 ' : ''}{a.symbol}
-                        </span>
-                        <span style={{ fontSize: '0.65rem', color: '#444' }}>{a.time}</span>
-                      </div>
-
-                      {a.type === 'price' && (
-                        <>
-                          <div style={{ color: a.pct > 0 ? '#44cc44' : '#ff4444', fontSize: '0.8rem', fontWeight: '600' }}>
-                            {a.pct > 0 ? '▲' : '▼'} {Math.abs(a.pct).toFixed(2)}% move
+          {/* ── SIGNAL FEED (RVOL/VWAP unusual activity) ── */}
+          {(() => {
+            const signals = alerts.filter(a => a.type === 'buying' || a.type === 'selling');
+            return (
+              <div style={{ background: 'rgba(8,8,8,0.85)', borderRadius: '16px', border: '1px solid #1a1a1a', padding: '1.25rem', backdropFilter: 'blur(12px)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h3 style={{ margin: 0, fontSize: '0.75rem', fontWeight: '700', color: '#555', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Signal Feed</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {signals.length > 0 && <span style={{ fontSize: '0.65rem', background: '#ff990022', color: '#ff9900', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>{signals.length}</span>}
+                    {signals.length > 0 && <button onClick={() => setAlerts(prev => prev.filter(a => a.type === 'price'))} title="Clear signals" style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.75rem', lineHeight: 1, padding: '2px' }}>✕</button>}
+                  </div>
+                </div>
+                {signals.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '1.5rem 0.5rem' }}>
+                    <div style={{ fontSize: '1.3rem', marginBottom: '0.4rem' }}>📡</div>
+                    <p style={{ color: '#333', fontSize: '0.75rem', margin: 0, lineHeight: 1.5 }}>Watching for unusual<br />volume activity.</p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '260px', overflowY: 'auto' }}>
+                    {signals.map((a, i) => {
+                      const isBuying = a.type === 'buying';
+                      return (
+                        <div key={i} style={{ padding: '0.7rem', borderRadius: '10px', animation: 'fadeIn 0.3s ease', background: isBuying ? 'rgba(255,153,0,0.06)' : 'rgba(255,50,50,0.06)', border: isBuying ? '1px solid rgba(255,153,0,0.2)' : '1px solid rgba(255,68,68,0.2)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                            <span style={{ fontWeight: '700', color: '#fff', fontSize: '0.82rem' }}>{isBuying ? '🐋 ' : '🔴 '}{a.symbol}</span>
+                            <span style={{ fontSize: '0.65rem', color: '#444' }}>{a.time}</span>
                           </div>
-                          <div style={{ color: '#444', fontSize: '0.7rem', marginTop: '2px' }}>
-                            ${fmtPrice(a.price)}
-                          </div>
-                        </>
-                      )}
-
-                      {isSignal && (
-                        <>
                           <div style={{ color: isBuying ? '#ff9900' : '#ff4444', fontSize: '0.8rem', fontWeight: '600' }}>
                             {isBuying ? 'Unusual Buying' : 'Unusual Selling'} · {a.rvol}x vol
                           </div>
                           <div style={{ color: '#555', fontSize: '0.7rem', marginTop: '2px' }}>
                             ${fmtPrice(a.price)} · VWAP ${fmtPrice(a.vwap)}
                           </div>
-                        </>
-                      )}
-                    </div>
-                  );
-                })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            );
+          })()}
+
+          {/* ── PRICE ALERTS (threshold-based movements) ── */}
+          {(() => {
+            const priceAlerts = alerts.filter(a => a.type === 'price');
+            return (
+              <div style={{ background: 'rgba(8,8,8,0.85)', borderRadius: '16px', border: '1px solid #1a1a1a', padding: '1.25rem', backdropFilter: 'blur(12px)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h3 style={{ margin: 0, fontSize: '0.75rem', fontWeight: '700', color: '#555', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Price Alerts</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {priceAlerts.length > 0 && <span style={{ fontSize: '0.65rem', background: '#ff333322', color: '#ff3333', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>{priceAlerts.length}</span>}
+                    {priceAlerts.length > 0 && <button onClick={() => setAlerts(prev => prev.filter(a => a.type !== 'price'))} title="Clear price alerts" style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.75rem', lineHeight: 1, padding: '2px' }}>✕</button>}
+                  </div>
+                </div>
+                {priceAlerts.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '1.5rem 0.5rem' }}>
+                    <div style={{ fontSize: '1.3rem', marginBottom: '0.4rem' }}>🔔</div>
+                    <p style={{ color: '#333', fontSize: '0.75rem', margin: 0, lineHeight: 1.5 }}>
+                      Alerts fire when price moves<br />past your set threshold.
+                    </p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '260px', overflowY: 'auto' }}>
+                    {priceAlerts.map((a, i) => (
+                      <div key={i} style={{ padding: '0.7rem', borderRadius: '10px', animation: 'fadeIn 0.3s ease', background: '#0c0c0c', border: '1px solid #1c1c1c' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                          <span style={{ fontWeight: '700', color: '#fff', fontSize: '0.82rem' }}>{a.symbol}</span>
+                          <span style={{ fontSize: '0.65rem', color: '#444' }}>{a.time}</span>
+                        </div>
+                        <div style={{ color: a.pct > 0 ? '#44cc44' : '#ff4444', fontSize: '0.8rem', fontWeight: '600' }}>
+                          {a.pct > 0 ? '▲' : '▼'} {Math.abs(a.pct).toFixed(2)}% move
+                        </div>
+                        <div style={{ color: '#444', fontSize: '0.7rem', marginTop: '2px' }}>
+                          ${fmtPrice(a.price)} · threshold {a.threshold}%
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
         </div>
       </div>
     </div>
