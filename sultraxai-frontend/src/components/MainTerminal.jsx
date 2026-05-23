@@ -2,6 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 
 const API_BASE = 'http://38.180.137.122:8000';
 
+const SENSITIVITY_LEVELS = [
+  { label: 'Major only', desc: '>5%', value: 5.0, color: '#ff3333' },
+  { label: 'Standard',   desc: '>2%', value: 2.0, color: '#ff9900' },
+  { label: 'All signals',desc: '>1%', value: 1.0, color: '#44cc44' },
+];
+
 // Yahoo Finance format → Finnhub format
 const toFinnhubSym = (yahoo) => {
   if (yahoo.endsWith('-USD')) return `BINANCE:${yahoo.slice(0, -4)}USDT`;
@@ -156,6 +162,8 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
   const [wsStatus, setWsStatus] = useState('connecting');
   const [editing, setEditing] = useState(false);
   const [flashing, setFlashing] = useState({});
+  const [expandedCard, setExpandedCard] = useState(null);
+  const [savingThreshold, setSavingThreshold] = useState(false);
 
   // Stable refs — avoid stale closures inside WebSocket handlers
   const wsRef = useRef(null);
@@ -328,6 +336,22 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
     };
   }, [selectedAssets]);
 
+  const updateThreshold = async (sym, value) => {
+    setSavingThreshold(true);
+    const newThresholds = { ...thresholds, [sym]: value };
+    const assets = selectedAssets.map(s => ({ symbol: s, threshold: newThresholds[s] ?? 2.0 }));
+    try {
+      await fetch(`${API_BASE}/api/update-assets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, assets }),
+      });
+      setThresholds(newThresholds);
+      setExpandedCard(null);
+    } catch (e) { console.error(e); }
+    setSavingThreshold(false);
+  };
+
   const getStatus = (sym) => {
     const p = prices[sym];
     if (!p) return { label: 'LOADING', color: '#444' };
@@ -395,9 +419,17 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
               <div key={sym} style={{ background: cardBg, border: `1px solid ${status.color}28`, borderRadius: '16px', padding: '1.25rem', backdropFilter: 'blur(12px)', transition: 'background 0.15s ease, border-color 0.4s', animation: 'fadeIn 0.3s ease' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                   <span style={{ fontWeight: '700', fontSize: '0.95rem' }}>{sym}</span>
-                  <span style={{ fontSize: '0.65rem', fontWeight: '700', color: status.color, background: `${status.color}18`, padding: '3px 8px', borderRadius: '20px' }}>
-                    {status.label}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '0.65rem', fontWeight: '700', color: status.color, background: `${status.color}18`, padding: '3px 8px', borderRadius: '20px' }}>
+                      {status.label}
+                    </span>
+                    <button
+                      onClick={() => setExpandedCard(expandedCard === sym ? null : sym)}
+                      title="Alert settings"
+                      style={{ background: 'none', border: 'none', color: expandedCard === sym ? '#fff' : '#444', cursor: 'pointer', fontSize: '0.85rem', lineHeight: 1, padding: '2px' }}>
+                      ⚙
+                    </button>
+                  </div>
                 </div>
 
                 <div style={{ fontSize: '1.45rem', fontWeight: '800', fontVariantNumeric: 'tabular-nums', color: priceColor, transition: 'color 0.15s ease' }}>
@@ -416,6 +448,25 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                 <div style={{ fontSize: '0.62rem', color: '#444', marginTop: '0.35rem' }}>
                   {barWidth.toFixed(0)}% of {t}% threshold
                 </div>
+
+                {expandedCard === sym && (
+                  <div style={{ marginTop: '0.85rem', paddingTop: '0.85rem', borderTop: '1px solid #1a1a1a' }}>
+                    <div style={{ fontSize: '0.65rem', color: '#555', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Alert sensitivity</div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      {SENSITIVITY_LEVELS.map(lvl => {
+                        const active = t === lvl.value;
+                        return (
+                          <button key={lvl.value}
+                            onClick={() => !savingThreshold && updateThreshold(sym, lvl.value)}
+                            style={{ flex: 1, padding: '0.45rem 0.2rem', borderRadius: '8px', border: `1px solid ${active ? lvl.color : '#2a2a2a'}`, background: active ? `${lvl.color}20` : 'transparent', color: active ? lvl.color : '#555', cursor: savingThreshold ? 'wait' : 'pointer', fontSize: '0.68rem', fontWeight: active ? '700' : '400', transition: '0.15s' }}>
+                            <div>{lvl.label}</div>
+                            <div style={{ fontSize: '0.6rem', opacity: 0.75 }}>{lvl.desc}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
