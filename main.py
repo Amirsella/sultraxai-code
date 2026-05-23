@@ -417,6 +417,14 @@ def _zone_news(symbol: str) -> list:
     except Exception as e:
         print(f"Zone news error: {e}"); return []
 
+_BROWSER_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+}
+
 def _zone_stocktwits(symbol: str) -> list:
     try:
         if '-USD' in symbol:
@@ -425,8 +433,11 @@ def _zone_stocktwits(symbol: str) -> list:
             st_sym = symbol.split('/')[0] + '.X'
         else:
             st_sym = symbol
+        headers = {**_BROWSER_HEADERS, "Referer": "https://stocktwits.com/"}
         res = requests.get(f"https://api.stocktwits.com/api/2/streams/symbol/{st_sym}.json",
-            headers={"User-Agent": "SultraxAI/1.0"}, timeout=5)
+            headers=headers, timeout=8)
+        if res.status_code != 200:
+            print(f"Zone StockTwits HTTP {res.status_code}"); return []
         msgs = res.json().get("messages", [])[:20]
         return [{"text": m.get("body",""), "user": m.get("user",{}).get("username",""),
                  "sentiment": m.get("entities",{}).get("sentiment",{}).get("basic",""),
@@ -438,10 +449,12 @@ def _zone_stocktwits(symbol: str) -> list:
 def _zone_reddit(symbol: str) -> list:
     try:
         ticker = symbol.replace('-USD','').replace('/','').split('.')[0]
-        subs = "stocks+wallstreetbets+investing+CryptoCurrency" if '-USD' in symbol else "stocks+wallstreetbets+investing"
-        res = requests.get(f"https://www.reddit.com/r/{subs}/search.json",
-            params={"q": ticker, "sort": "new", "restrict_sr": "1", "limit": "15", "type": "link"},
-            headers={"User-Agent": "SultraxAI/1.0"}, timeout=5)
+        headers = {**_BROWSER_HEADERS, "Referer": "https://www.reddit.com/"}
+        res = requests.get("https://www.reddit.com/search.json",
+            params={"q": ticker, "sort": "new", "limit": "15", "type": "link", "t": "week"},
+            headers=headers, timeout=8)
+        if res.status_code != 200:
+            print(f"Zone Reddit HTTP {res.status_code}"); return []
         posts = res.json().get("data",{}).get("children",[])
         return [{"title": p["data"].get("title",""), "subreddit": p["data"].get("subreddit",""),
                  "score": p["data"].get("score",0), "comments": p["data"].get("num_comments",0),
