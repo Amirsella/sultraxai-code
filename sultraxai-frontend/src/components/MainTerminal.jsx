@@ -93,13 +93,14 @@ function ChartModal({ sym, price, rvol, symAlerts, onClose, onRegisterLive }) {
 
     const initLW = () => {
       if (!window.LightweightCharts || !liveContainerRef.current) return;
+      const w = liveContainerRef.current.clientWidth || 920;
       lwChartRef.current = window.LightweightCharts.createChart(liveContainerRef.current, {
-        width: liveContainerRef.current.clientWidth,
+        width: w,
         height: 420,
-        layout: { backgroundColor: '#070707', textColor: '#666' },
-        grid: { vertLines: { color: '#0e0e0e' }, horzLines: { color: '#0e0e0e' } },
+        layout: { backgroundColor: '#070707', textColor: '#888' },
+        grid: { vertLines: { color: '#0d0d0d' }, horzLines: { color: '#0d0d0d' } },
         rightPriceScale: { borderColor: '#1a1a1a' },
-        timeScale: { borderColor: '#1a1a1a', timeVisible: true, secondsVisible: false },
+        timeScale: { borderColor: '#1a1a1a', timeVisible: true, secondsVisible: true },
         crosshair: { mode: 1 },
       });
       candleSeriesRef.current = lwChartRef.current.addCandlestickSeries({
@@ -109,16 +110,19 @@ function ChartModal({ sym, price, rvol, symAlerts, onClose, onRegisterLive }) {
       });
 
       onRegisterLive((newPrice, ts) => {
-        const minuteTs = Math.floor(ts / 60000) * 60;
+        const bucketTs = Math.floor(ts / 5000) * 5; // 5-second candles
         const c = liveCandlesRef.current;
-        if (!c[minuteTs]) {
-          c[minuteTs] = { time: minuteTs, open: newPrice, high: newPrice, low: newPrice, close: newPrice };
+        if (!c[bucketTs]) {
+          c[bucketTs] = { time: bucketTs, open: newPrice, high: newPrice, low: newPrice, close: newPrice };
         } else {
-          c[minuteTs].high = Math.max(c[minuteTs].high, newPrice);
-          c[minuteTs].low = Math.min(c[minuteTs].low, newPrice);
-          c[minuteTs].close = newPrice;
+          c[bucketTs].high = Math.max(c[bucketTs].high, newPrice);
+          c[bucketTs].low = Math.min(c[bucketTs].low, newPrice);
+          c[bucketTs].close = newPrice;
         }
-        try { candleSeriesRef.current?.update(c[minuteTs]); } catch {}
+        try {
+          candleSeriesRef.current?.update(c[bucketTs]);
+          lwChartRef.current?.timeScale().scrollToRealTime();
+        } catch {}
         setLiveReady(true);
       });
     };
@@ -176,7 +180,7 @@ function ChartModal({ sym, price, rvol, symAlerts, onClose, onRegisterLive }) {
             </button>
           ))}
           {liveMode && (
-            <span style={{ fontSize: '0.68rem', color: '#2a2a2a' }}>1m candles · real-time feed</span>
+            <span style={{ fontSize: '0.68rem', color: '#2a2a2a' }}>5s candles · real-time feed</span>
           )}
           <div style={{ flex: 1 }} />
           <button onClick={() => setLiveMode(m => !m)}
