@@ -58,7 +58,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut }) {
   useEffect(() => {
     if (!selectedAssets.length) return;
     fetchPrices();
-    const id = setInterval(fetchPrices, 30000);
+    const id = setInterval(fetchPrices, 5000);
     return () => clearInterval(id);
   }, [selectedAssets, thresholds]);
 

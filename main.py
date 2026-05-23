@@ -4,6 +4,7 @@ import os
 import random
 import requests
 import yfinance as yf
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
@@ -158,26 +159,25 @@ async def complete_onboarding(data: OnboardingData):
     conn.close()
     return {"status": "success"}
 
+def _fetch_one(sym):
+    try:
+        fi = yf.Ticker(sym).fast_info
+        price = fi.last_price
+        prev = fi.previous_close
+        change_pct = ((price - prev) / prev * 100) if prev else 0
+        return sym, {"price": round(float(price), 4), "change_pct": round(float(change_pct), 4), "prev_close": round(float(prev), 4)}
+    except Exception as e:
+        print(f"yfinance error {sym}: {e}")
+        return sym, None
+
 @app.get("/api/prices")
 async def get_prices(symbols: str = ""):
     if not symbols:
         return {"prices": {}}
     symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
-    prices = {}
-    for sym in symbol_list:
-        try:
-            fi = yf.Ticker(sym).fast_info
-            price = fi.last_price
-            prev = fi.previous_close
-            change_pct = ((price - prev) / prev * 100) if prev else 0
-            prices[sym] = {
-                "price": round(float(price), 4),
-                "change_pct": round(float(change_pct), 4),
-                "prev_close": round(float(prev), 4),
-            }
-        except Exception as e:
-            print(f"yfinance error {sym}: {e}")
-    return {"prices": prices}
+    with ThreadPoolExecutor(max_workers=len(symbol_list)) as ex:
+        results = ex.map(_fetch_one, symbol_list)
+    return {"prices": {sym: data for sym, data in results if data}}
 
 @app.get("/api/user-assets/{user_id}")
 async def get_user_assets(user_id: int):
