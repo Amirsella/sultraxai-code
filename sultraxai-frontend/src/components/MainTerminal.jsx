@@ -188,16 +188,17 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
     localStorage.setItem('sultrax_alerts', JSON.stringify(alerts));
   }, [alerts]);
 
-  // Init volume tracking struct for each symbol
   useEffect(() => {
     selectedAssets.forEach(sym => {
       if (!volumeTrackingRef.current[sym]) {
         volumeTrackingRef.current[sym] = {
-          trades5m: [],    // [{vol, time}] rolling 5-min window
-          vwapNum: 0,      // sum(price × vol) from session start
-          vwapDen: 0,      // sum(vol) from session start
-          tickHistory: [], // last 20 tick directions
+          emaVol: 0, emaVolSq: 0, tradeCount: 0,
+          vwapNum: 0, vwapDen: 0,
+          flowWindow: [],
+          lastPrice: null,
+          pendingConfirmation: null,
           lastSignalTime: 0,
+          trades5m: [],
         };
       }
     });
@@ -263,40 +264,139 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
       const msg = JSON.parse(e.data);
       if (msg.type !== 'trade' || !msg.data?.length) return;
 
-      // Accumulate all trades in this message per symbol (latest price, total volume)
-      const latestBySymbol = {};
-      msg.data.forEach(trade => {
-        if (!latestBySymbol[trade.s]) latestBySymbol[trade.s] = { price: trade.p, vol: 0 };
-        latestBySymbol[trade.s].price = trade.p;
-        latestBySymbol[trade.s].vol += (trade.v || 0);
-      });
-
       const now = Date.now();
-      const priceUpdates = {};
-      const flashUpdates = {};
+      const latestPriceByFinnhub = {};
       const newAlerts = [];
       const rvolUpdates = {};
 
-      Object.entries(latestBySymbol).forEach(([finnhubSym, { price: newPrice, vol: tradeVol }]) => {
+      // ── PROCESS EACH TRADE INDIVIDUALLY ──
+      msg.data.forEach(trade => {
+        const sym = fromFinnhubSym(trade.s, watchlistRef.current);
+        if (!sym) return;
+
+        const price = trade.p;
+        const vol = trade.v || 0;
+
+        latestPriceByFinnhub[trade.s] = price;
+
+        const tracking = volumeTrackingRef.current[sym];
+        if (!tracking || vol <= 0) return;
+
+        // VWAP
+        tracking.vwapNum += price * vol;
+        tracking.vwapDen += vol;
+        const vwap = tracking.vwapDen > 0 ? tracking.vwapNum / tracking.vwapDen : price;
+
+        // RVOL badge
+        tracking.trades5m.push({ vol, time: now });
+        tracking.trades5m = tracking.trades5m.filter(t => now - t.time < 5 * 60 * 1000);
+        const avgVol = avgVolumesRef.current[sym];
+        if (avgVol > 0) {
+          const avgVol5m = (avgVol / (sym.endsWith('-USD') ? 1440 : 390)) * 5;
+          const cur5m = tracking.trades5m.reduce((s, t) => s + t.vol, 0);
+          rvolUpdates[sym] = parseFloat((avgVol5m > 0 ? cur5m / avgVol5m : 0).toFixed(2));
+        }
+
+        // Trade direction
+        const dir = tracking.lastPrice !== null
+          ? (price >= tracking.lastPrice ? 'buy' : 'sell') : 'buy';
+        tracking.lastPrice = price;
+
+        // Order flow window (rolling 30s)
+        tracking.flowWindow.push({ dir, time: now });
+        tracking.flowWindow = tracking.flowWindow.filter(t => now - t.time < 30000);
+
+        // Z-score EMA (α=0.1 → ~10 trade window)
+        const α = 0.1;
+        if (tracking.tradeCount === 0) {
+          tracking.emaVol = vol;
+          tracking.emaVolSq = vol * vol;
+        } else {
+          tracking.emaVol = α * vol + (1 - α) * tracking.emaVol;
+          tracking.emaVolSq = α * vol * vol + (1 - α) * tracking.emaVolSq;
+        }
+        tracking.tradeCount++;
+
+        // Signal detection
+        if (tracking.tradeCount < 20) return;
+        if (now - tracking.lastSignalTime < 3 * 60 * 1000) return;
+
+        const variance = Math.max(0, tracking.emaVolSq - tracking.emaVol * tracking.emaVol);
+        const std = Math.sqrt(variance);
+        if (std < 0.001) return;
+
+        const z = (vol - tracking.emaVol) / std;
+        if (z < 2.5) return;
+
+        // ── CONVICTION SCORE ──
+        let score = 0;
+
+        // Z-score component (max 40)
+        if (z >= 5.0) score += 40;
+        else if (z >= 3.5) score += 30;
+        else score += 20;
+
+        // Order flow component (max 30)
+        const buyCount = tracking.flowWindow.filter(t => t.dir === 'buy').length;
+        const flowRatio = tracking.flowWindow.length > 3
+          ? buyCount / tracking.flowWindow.length : 0.5;
+        const isBuy = dir === 'buy';
+        if (isBuy && flowRatio >= 0.65) score += 30;
+        else if (!isBuy && flowRatio <= 0.35) score += 30;
+        else if (isBuy && flowRatio >= 0.55) score += 15;
+        else if (!isBuy && flowRatio <= 0.45) score += 15;
+
+        // VWAP alignment (max 20, -10 counter-VWAP penalty)
+        if (isBuy && price >= vwap) score += 20;
+        else if (!isBuy && price <= vwap) score += 20;
+        else score = Math.max(0, score - 10);
+
+        if (score < 40) return;
+
+        tracking.lastSignalTime = now;
+        const alertId = `${sym}-${now}`;
+        const strengthLabel = score >= 80
+          ? (isBuy ? 'STRONG BUY' : 'STRONG SELL')
+          : score >= 60 ? (isBuy ? 'BUY' : 'SELL') : 'NOTABLE';
+
+        newAlerts.push({
+          type: 'signal', id: alertId,
+          symbol: sym, dir: isBuy ? 'buy' : 'sell',
+          score, strengthLabel,
+          z: parseFloat(z.toFixed(1)),
+          flowRatio: parseFloat(flowRatio.toFixed(2)),
+          price, vwap: parseFloat(vwap.toFixed(2)),
+          time: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          confirmed: null, priceImpact: null,
+        });
+
+        tracking.pendingConfirmation = {
+          alertId, entryPrice: price,
+          dir: isBuy ? 'buy' : 'sell',
+          deadline: now + 30000,
+        };
+      });
+
+      // ── PRICE UPDATES + PRICE ALERTS ──
+      const priceUpdates = {};
+      const flashUpdates = {};
+      Object.entries(latestPriceByFinnhub).forEach(([finnhubSym, newPrice]) => {
         const sym = fromFinnhubSym(finnhubSym, watchlistRef.current);
         if (!sym) return;
 
         const prev = pricesRef.current[sym];
         const prevClose = prev?.prev_close ?? newPrice;
         const changePct = prevClose ? ((newPrice - prevClose) / prevClose) * 100 : 0;
-
         priceUpdates[sym] = {
           price: newPrice,
           change_pct: parseFloat(changePct.toFixed(4)),
           prev_close: prevClose,
         };
 
-        // Flash on price change
         if (prev?.price !== undefined && Math.abs(newPrice - prev.price) > 0.0001) {
           flashUpdates[sym] = newPrice > prev.price ? 'up' : 'down';
         }
 
-        // Price threshold alert (moving baseline)
         const priceThreshold = thresholdsRef.current[sym] ?? 2.0;
         const baseline = baselinePricesRef.current[sym] ?? newPrice;
         const moveFromBaseline = baseline ? ((newPrice - baseline) / baseline) * 100 : 0;
@@ -305,74 +405,15 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
           baselinePricesRef.current[sym] = newPrice;
           lastAlertTimeRef.current[sym] = now;
           newAlerts.push({
-            type: 'price',
-            symbol: sym, pct: moveFromBaseline, price: newPrice,
+            type: 'price', symbol: sym,
+            pct: moveFromBaseline, price: newPrice,
             time: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
             threshold: priceThreshold,
           });
         }
-
-        // ── VOLUME ANALYSIS ──────────────────────────────────────
-        const tracking = volumeTrackingRef.current[sym];
-        if (!tracking) return;
-
-        // Update VWAP (session-running from page load)
-        if (tradeVol > 0) {
-          tracking.vwapNum += newPrice * tradeVol;
-          tracking.vwapDen += tradeVol;
-          tracking.trades5m.push({ vol: tradeVol, time: now });
-        }
-
-        // Track tick direction (up/down vs previous price)
-        if (prev?.price !== undefined && Math.abs(newPrice - prev.price) > 0.0001) {
-          tracking.tickHistory.push(newPrice > prev.price ? 'up' : 'down');
-          if (tracking.tickHistory.length > 20) tracking.tickHistory.shift();
-        }
-
-        // Clean trades older than 5 minutes
-        tracking.trades5m = tracking.trades5m.filter(t => now - t.time < 5 * 60 * 1000);
-
-        // RVOL: compare current 5-min pace to historical average
-        const avgVol = avgVolumesRef.current[sym];
-        if (avgVol > 0) {
-          const isCrypto = sym.endsWith('-USD');
-          const tradingMinutes = isCrypto ? 1440 : 390;
-          const avgVol5m = (avgVol / tradingMinutes) * 5;
-          const currentVol5m = tracking.trades5m.reduce((s, t) => s + t.vol, 0);
-          const rvol = avgVol5m > 0 ? currentVol5m / avgVol5m : 0;
-          rvolUpdates[sym] = parseFloat(rvol.toFixed(2));
-
-          // Unusual activity: RVOL ≥ 3 + VWAP position + tick momentum
-          const vwap = tracking.vwapDen > 0 ? tracking.vwapNum / tracking.vwapDen : newPrice;
-          const upTicks = tracking.tickHistory.filter(d => d === 'up').length;
-          const tickRatio = tracking.tickHistory.length >= 10
-            ? upTicks / tracking.tickHistory.length : null;
-          const signalCooldown = 5 * 60 * 1000;
-
-          if (rvol >= 3.0 && tickRatio !== null && (now - tracking.lastSignalTime) > signalCooldown) {
-            if (tickRatio >= 0.65 && newPrice >= vwap) {
-              tracking.lastSignalTime = now;
-              newAlerts.push({
-                type: 'buying',
-                symbol: sym, rvol: parseFloat(rvol.toFixed(1)),
-                price: newPrice, vwap: parseFloat(vwap.toFixed(2)),
-                time: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-              });
-            } else if (tickRatio <= 0.35 && newPrice <= vwap) {
-              tracking.lastSignalTime = now;
-              newAlerts.push({
-                type: 'selling',
-                symbol: sym, rvol: parseFloat(rvol.toFixed(1)),
-                price: newPrice, vwap: parseFloat(vwap.toFixed(2)),
-                time: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-              });
-            }
-          }
-        }
       });
 
       if (!Object.keys(priceUpdates).length) return;
-
       setPrices(prev => ({ ...prev, ...priceUpdates }));
       pricesRef.current = { ...pricesRef.current, ...priceUpdates };
       Object.entries(flashUpdates).forEach(([sym, dir]) => triggerFlash(sym, dir));
@@ -380,7 +421,6 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
       setLastUpdate(new Date(now));
       setLoading(false);
 
-      // RVOL state update throttled to once per 5s to avoid excessive re-renders
       if (Object.keys(rvolUpdates).length > 0 && now - lastRvolUpdateRef.current > 5000) {
         lastRvolUpdateRef.current = now;
         setRvols(prev => ({ ...prev, ...rvolUpdates }));
@@ -397,6 +437,37 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
       }
     };
   };
+
+  // Price impact confirmation: 30s after signal, check if price moved in signal direction
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const updates = {};
+      Object.entries(volumeTrackingRef.current).forEach(([sym, tracking]) => {
+        if (!tracking.pendingConfirmation) return;
+        const { alertId, entryPrice, dir, deadline } = tracking.pendingConfirmation;
+        if (now < deadline) return;
+        tracking.pendingConfirmation = null;
+        const currentPrice = pricesRef.current[sym]?.price;
+        if (!currentPrice) return;
+        const impact = ((currentPrice - entryPrice) / entryPrice) * 100;
+        const directedImpact = dir === 'buy' ? impact : -impact;
+        updates[alertId] = {
+          priceImpact: parseFloat(impact.toFixed(3)),
+          confirmed: directedImpact >= 0.05,
+          bonus: directedImpact >= 0.1 ? 10 : directedImpact >= 0.05 ? 5 : 0,
+        };
+      });
+      if (Object.keys(updates).length > 0) {
+        setAlerts(prev => prev.map(a => {
+          const u = updates[a.id];
+          if (!u) return a;
+          return { ...a, priceImpact: u.priceImpact, confirmed: u.confirmed, score: Math.min(100, (a.score || 0) + u.bonus) };
+        }));
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (!selectedAssets.length) return;
@@ -623,37 +694,56 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
 
           {/* ── SIGNAL FEED (RVOL/VWAP unusual activity) ── */}
           {(() => {
-            const signals = alerts.filter(a => a.type === 'buying' || a.type === 'selling');
+            const signals = alerts.filter(a => a.type === 'signal');
             return (
               <div style={{ background: 'rgba(8,8,8,0.85)', borderRadius: '16px', border: '1px solid #1a1a1a', padding: '1.25rem', backdropFilter: 'blur(12px)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                   <h3 style={{ margin: 0, fontSize: '0.75rem', fontWeight: '700', color: '#555', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Signal Feed</h3>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     {signals.length > 0 && <span style={{ fontSize: '0.65rem', background: '#ff990022', color: '#ff9900', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>{signals.length}</span>}
-                    {signals.length > 0 && <button onClick={() => setAlerts(prev => prev.filter(a => a.type === 'price'))} title="Clear signals" style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.75rem', lineHeight: 1, padding: '2px' }}>✕</button>}
+                    {signals.length > 0 && <button onClick={() => setAlerts(prev => prev.filter(a => a.type !== 'signal'))} title="Clear signals" style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.75rem', lineHeight: 1, padding: '2px' }}>✕</button>}
                   </div>
                 </div>
                 {signals.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '1.5rem 0.5rem' }}>
                     <div style={{ fontSize: '1.3rem', marginBottom: '0.4rem' }}>📡</div>
-                    <p style={{ color: '#333', fontSize: '0.75rem', margin: 0, lineHeight: 1.5 }}>Watching for unusual<br />volume activity.</p>
+                    <p style={{ color: '#333', fontSize: '0.75rem', margin: 0, lineHeight: 1.5 }}>
+                      Scanning for anomalous<br />order flow activity.
+                    </p>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '260px', overflowY: 'auto' }}>
                     {signals.map((a, i) => {
-                      const isBuying = a.type === 'buying';
+                      const isBuy = a.dir === 'buy';
+                      const score = a.score || 0;
+                      const accent = isBuy ? '#ff9900' : '#ff4444';
+                      const borderOpacity = score >= 80 ? '55' : score >= 60 ? '33' : '1a';
                       return (
-                        <div key={i} style={{ padding: '0.7rem', borderRadius: '10px', animation: 'fadeIn 0.3s ease', background: isBuying ? 'rgba(255,153,0,0.06)' : 'rgba(255,50,50,0.06)', border: isBuying ? '1px solid rgba(255,153,0,0.2)' : '1px solid rgba(255,68,68,0.2)' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-                            <span style={{ fontWeight: '700', color: '#fff', fontSize: '0.82rem' }}>{isBuying ? '🐋 ' : '🔴 '}{a.symbol}</span>
-                            <span style={{ fontSize: '0.65rem', color: '#444' }}>{a.time}</span>
+                        <div key={i} style={{ padding: '0.75rem', borderRadius: '10px', animation: 'fadeIn 0.3s ease', background: isBuy ? 'rgba(255,153,0,0.05)' : 'rgba(255,50,50,0.05)', border: `1px solid ${accent}${borderOpacity}` }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                            <span style={{ fontWeight: '700', color: '#fff', fontSize: '0.85rem' }}>
+                              {isBuy ? '🐋 ' : '🔴 '}{a.symbol}
+                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                              <span style={{ fontSize: '0.65rem', fontWeight: '800', color: accent, background: `${accent}22`, padding: '2px 7px', borderRadius: '6px' }}>
+                                {score}/100
+                              </span>
+                            </div>
                           </div>
-                          <div style={{ color: isBuying ? '#ff9900' : '#ff4444', fontSize: '0.8rem', fontWeight: '600' }}>
-                            {isBuying ? 'Unusual Buying' : 'Unusual Selling'} · {a.rvol}x vol
+                          <div style={{ color: accent, fontSize: '0.78rem', fontWeight: '700', marginBottom: '4px' }}>
+                            {a.strengthLabel}
                           </div>
-                          <div style={{ color: '#555', fontSize: '0.7rem', marginTop: '2px' }}>
-                            ${fmtPrice(a.price)} · VWAP ${fmtPrice(a.vwap)}
+                          <div style={{ color: '#555', fontSize: '0.68rem', lineHeight: 1.7 }}>
+                            <span style={{ color: '#666' }}>{a.z}σ anomaly</span> · <span style={{ color: '#666' }}>{Math.round(a.flowRatio * 100)}% buy flow</span><br />
+                            <span>${fmtPrice(a.price)}</span> · <span>VWAP ${fmtPrice(a.vwap)}</span><br />
+                            {a.confirmed === null
+                              ? <span style={{ color: '#333' }}>⏳ Awaiting confirmation…</span>
+                              : a.confirmed
+                              ? <span style={{ color: '#44cc44' }}>✓ Confirmed {a.priceImpact > 0 ? '+' : ''}{a.priceImpact?.toFixed(2)}%</span>
+                              : <span style={{ color: '#444' }}>↔ No follow-through {a.priceImpact?.toFixed(2)}%</span>
+                            }
                           </div>
+                          <div style={{ fontSize: '0.6rem', color: '#333', marginTop: '3px', textAlign: 'right' }}>{a.time}</div>
                         </div>
                       );
                     })}
