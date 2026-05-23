@@ -95,6 +95,13 @@ def init_db():
             FOREIGN KEY(user_id) REFERENCES users(id)
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS reset_tokens (
+            token TEXT PRIMARY KEY,
+            email TEXT,
+            expiry REAL
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -145,37 +152,45 @@ async def forgot_password(data: dict, background_tasks: BackgroundTasks):
     cursor = conn.cursor()
     cursor.execute("SELECT id FROM users WHERE LOWER(email) = ?", (email,))
     user = cursor.fetchone()
-    conn.close()
     if user:
         token = str(uuid.uuid4())
-        reset_tokens[token] = {"email": email, "expiry": (datetime.now() + timedelta(minutes=15)).timestamp()}
+        expiry = (datetime.now() + timedelta(minutes=15)).timestamp()
+        cursor.execute("DELETE FROM reset_tokens WHERE email = ?", (email,))
+        cursor.execute("INSERT INTO reset_tokens (token, email, expiry) VALUES (?, ?, ?)", (token, email, expiry))
+        conn.commit()
         reset_link = f"{APP_URL}/?reset_token={token}"
         background_tasks.add_task(send_reset_email, email, reset_link)
+    conn.close()
     return {"status": "success"}
 
 @app.post("/api/reset-password")
 async def reset_password(data: dict):
     token = data.get("token", "")
     new_password = data.get("password", "")
-    token_data = reset_tokens.get(token)
-    if not token_data:
-        return JSONResponse(status_code=400, content={"detail": "Invalid or expired link"})
-    if datetime.now().timestamp() > token_data["expiry"]:
-        reset_tokens.pop(token, None)
-        return JSONResponse(status_code=400, content={"detail": "Link expired. Please request a new one."})
-    pwd_hash = hash_password(new_password)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("UPDATE users SET password_hash = ? WHERE LOWER(email) = ?", (pwd_hash, token_data["email"]))
+    cursor.execute("SELECT email, expiry FROM reset_tokens WHERE token = ?", (token,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return JSONResponse(status_code=400, content={"detail": "Invalid or expired link"})
+    email, expiry = row
+    if datetime.now().timestamp() > expiry:
+        cursor.execute("DELETE FROM reset_tokens WHERE token = ?", (token,))
+        conn.commit()
+        conn.close()
+        return JSONResponse(status_code=400, content={"detail": "Link expired. Please request a new one."})
+    pwd_hash = hash_password(new_password)
+    cursor.execute("UPDATE users SET password_hash = ? WHERE LOWER(email) = ?", (pwd_hash, email))
+    cursor.execute("DELETE FROM reset_tokens WHERE token = ?", (token,))
     conn.commit()
-    cursor.execute("SELECT id, first_name FROM users WHERE LOWER(email) = ?", (token_data["email"],))
+    cursor.execute("SELECT id, first_name FROM users WHERE LOWER(email) = ?", (email,))
     user = cursor.fetchone()
     cursor.execute("SELECT experience FROM user_profiles WHERE user_id = ?", (user[0],))
     has_profile = cursor.fetchone() is not None
     cursor.execute("SELECT symbol FROM user_assets WHERE user_id = ?", (user[0],))
     assets = [r[0] for r in cursor.fetchall()]
     conn.close()
-    reset_tokens.pop(token, None)
     return {"status": "success", "user_id": user[0], "first_name": user[1], "onboarding_completed": has_profile, "assets": assets}
 
 class OnboardingData(BaseModel):
