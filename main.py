@@ -1,9 +1,8 @@
 import sqlite3
 import hashlib
 import os
-import smtplib
 import random
-from email.mime.text import MIMEText
+import resend
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
@@ -11,22 +10,21 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 import uvicorn
 
-GMAIL_USER = "sultraxai@gmail.com"
-GMAIL_APP_PASSWORD = "gfzd sgvn ktik hfkg"
+RESEND_API_KEY = "YOUR_RESEND_API_KEY"
+SENDER_EMAIL = "SultraxAI <onboarding@resend.dev>"
 
 verification_codes = {}
 
 def send_verification_email(to_email: str, code: str) -> bool:
-    msg = MIMEText(f"Your SultraxAI verification code is: <strong>{code}</strong><br>Valid for 15 minutes.", "html")
-    msg["Subject"] = "SultraxAI - Verification Code"
-    msg["From"] = GMAIL_USER
-    msg["To"] = to_email
     try:
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
-            server.ehlo()
-            server.starttls()
-            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-            server.sendmail(GMAIL_USER, to_email, msg.as_string())
+        resend.api_key = RESEND_API_KEY
+        resend.Emails.send({
+            "from": SENDER_EMAIL,
+            "to": [to_email],
+            "subject": "SultraxAI - Verification Code",
+            "html": f"<p>Your SultraxAI verification code is: <strong style='font-size:24px;letter-spacing:4px'>{code}</strong></p><p>Valid for 15 minutes.</p>"
+        })
+        print(f"Verification email sent to {to_email}")
         return True
     except Exception as e:
         print(f"Email error: {e}")
