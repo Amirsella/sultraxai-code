@@ -165,6 +165,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
   const [savingThreshold, setSavingThreshold] = useState(false);
   const [savedCard, setSavedCard] = useState(null);
   const [customValues, setCustomValues] = useState({});
+  const [expandedSignal, setExpandedSignal] = useState(null);
 
   const wsRef = useRef(null);
   const reconnectTimerRef = useRef(null);
@@ -712,68 +713,88 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                     </p>
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '260px', overflowY: 'auto' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', maxHeight: '320px', overflowY: 'auto' }}>
                     {signals.map((a, i) => {
                       const isBuy = a.dir === 'buy';
                       const score = a.score || 0;
                       const accent = isBuy ? '#ff9900' : '#ff4444';
-                      const aboveBelow = a.price >= a.vwap ? 'above' : 'below';
-                      const borderColor = score >= 80 ? `${accent}55` : score >= 60 ? `${accent}30` : `${accent}18`;
+                      const isExpanded = expandedSignal === i;
+                      const confirmIcon = a.confirmed === null ? '⏳' : a.confirmed ? '✓' : '↔';
+                      const confirmColor = a.confirmed === null ? '#333' : a.confirmed ? '#44cc44' : '#444';
+
                       return (
-                        <div key={i} style={{ borderRadius: '12px', overflow: 'hidden', border: `1px solid ${borderColor}`, animation: 'fadeIn 0.3s ease', background: isBuy ? 'rgba(255,153,0,0.04)' : 'rgba(255,50,50,0.04)' }}>
+                        <div key={i} style={{ borderRadius: '10px', overflow: 'hidden', border: `1px solid ${isExpanded ? accent + '40' : '#1a1a1a'}`, animation: i === 0 ? 'fadeIn 0.3s ease' : 'none', background: isExpanded ? (isBuy ? 'rgba(255,153,0,0.05)' : 'rgba(255,50,50,0.05)') : 'transparent', transition: 'border-color 0.15s, background 0.15s' }}>
 
-                          {/* Header row */}
-                          <div style={{ padding: '0.7rem 0.75rem 0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span style={{ fontSize: '1rem' }}>{isBuy ? '🐋' : '🔴'}</span>
-                              <span style={{ fontWeight: '800', color: '#fff', fontSize: '0.9rem', letterSpacing: '0.03em' }}>{a.symbol}</span>
-                            </div>
-                            <span style={{ fontSize: '0.65rem', color: '#444' }}>{a.time}</span>
-                          </div>
+                          {/* Compact row */}
+                          <div onClick={() => setExpandedSignal(isExpanded ? null : i)}
+                            style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto auto', alignItems: 'center', gap: '8px', padding: '0.5rem 0.7rem', cursor: 'pointer', userSelect: 'none' }}>
 
-                          {/* Strength label */}
-                          <div style={{ padding: '0 0.75rem 0.55rem' }}>
-                            <span style={{ fontSize: '0.72rem', fontWeight: '800', color: accent, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                            {/* Symbol */}
+                            <span style={{ fontWeight: '700', color: '#fff', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
+                              {isBuy ? '🐋' : '🔴'} {a.symbol}
+                            </span>
+
+                            {/* Strength label */}
+                            <span style={{ fontSize: '0.65rem', fontWeight: '700', color: accent, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               {a.strengthLabel}
                             </span>
-                          </div>
 
-                          {/* Score bar */}
-                          <div style={{ padding: '0 0.75rem 0.65rem' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                              <span style={{ fontSize: '0.6rem', color: '#444', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Conviction</span>
-                              <span style={{ fontSize: '0.65rem', fontWeight: '700', color: accent }}>{score}/100</span>
-                            </div>
-                            <div style={{ height: '4px', background: '#111', borderRadius: '2px', overflow: 'hidden' }}>
-                              <div style={{ width: `${score}%`, height: '100%', background: `linear-gradient(to right, ${accent}88, ${accent})`, borderRadius: '2px', transition: 'width 0.5s ease' }} />
-                            </div>
-                          </div>
+                            {/* Multiplier */}
+                            <span style={{ fontSize: '0.65rem', color: '#555', whiteSpace: 'nowrap' }}>×{a.volMultiplier}</span>
 
-                          {/* Stats */}
-                          <div style={{ padding: '0 0.75rem 0.65rem', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <span style={{ fontSize: '0.68rem', color: '#555' }}>Volume spike</span>
-                              <span style={{ fontSize: '0.68rem', color: '#aaa', fontWeight: '600' }}>×{a.volMultiplier} larger than usual</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <span style={{ fontSize: '0.68rem', color: '#555' }}>Buyers</span>
-                              <span style={{ fontSize: '0.68rem', color: isBuy && a.flowRatio >= 0.65 ? accent : '#aaa', fontWeight: '600' }}>{Math.round(a.flowRatio * 100)}%</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <span style={{ fontSize: '0.68rem', color: '#555' }}>Price</span>
-                              <span style={{ fontSize: '0.68rem', color: '#aaa', fontWeight: '600' }}>${fmtPrice(a.price)} <span style={{ color: a.price >= a.vwap ? '#44cc44' : '#ff4444', fontSize: '0.6rem' }}>({aboveBelow} avg)</span></span>
+                            {/* Score badge */}
+                            <span style={{ fontSize: '0.6rem', fontWeight: '800', color: accent, background: `${accent}18`, padding: '2px 5px', borderRadius: '5px', whiteSpace: 'nowrap' }}>
+                              {score}
+                            </span>
+
+                            {/* Confirm + time */}
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '1px' }}>
+                              <span style={{ fontSize: '0.65rem', color: confirmColor }}>{confirmIcon}</span>
+                              <span style={{ fontSize: '0.58rem', color: '#333' }}>{a.time}</span>
                             </div>
                           </div>
 
-                          {/* Confirmation badge */}
-                          <div style={{ borderTop: `1px solid ${borderColor}`, padding: '0.45rem 0.75rem', background: 'rgba(0,0,0,0.2)' }}>
-                            {a.confirmed === null
-                              ? <span style={{ fontSize: '0.65rem', color: '#333' }}>⏳ Confirming in 30s…</span>
-                              : a.confirmed
-                              ? <span style={{ fontSize: '0.65rem', color: '#44cc44', fontWeight: '600' }}>✓ Confirmed {a.priceImpact > 0 ? '+' : ''}{a.priceImpact?.toFixed(2)}%</span>
-                              : <span style={{ fontSize: '0.65rem', color: '#444' }}>↔ No follow-through ({a.priceImpact?.toFixed(2)}%)</span>
-                            }
-                          </div>
+                          {/* Expanded detail */}
+                          {isExpanded && (
+                            <div style={{ padding: '0 0.7rem 0.65rem', borderTop: `1px solid ${accent}20` }}>
+                              {/* Score bar */}
+                              <div style={{ marginTop: '0.6rem', marginBottom: '0.6rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                  <span style={{ fontSize: '0.6rem', color: '#444', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Conviction</span>
+                                  <span style={{ fontSize: '0.62rem', fontWeight: '700', color: accent }}>{score}/100</span>
+                                </div>
+                                <div style={{ height: '3px', background: '#111', borderRadius: '2px', overflow: 'hidden' }}>
+                                  <div style={{ width: `${score}%`, height: '100%', background: `linear-gradient(to right, ${accent}88, ${accent})`, borderRadius: '2px' }} />
+                                </div>
+                              </div>
+
+                              {/* Stats grid */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                  <span style={{ fontSize: '0.65rem', color: '#555' }}>Volume spike</span>
+                                  <span style={{ fontSize: '0.65rem', color: '#aaa', fontWeight: '600' }}>×{a.volMultiplier} larger than usual</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                  <span style={{ fontSize: '0.65rem', color: '#555' }}>Buyers</span>
+                                  <span style={{ fontSize: '0.65rem', fontWeight: '600', color: isBuy && a.flowRatio >= 0.65 ? accent : '#aaa' }}>{Math.round(a.flowRatio * 100)}%</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                  <span style={{ fontSize: '0.65rem', color: '#555' }}>Price</span>
+                                  <span style={{ fontSize: '0.65rem', color: '#aaa', fontWeight: '600' }}>
+                                    ${fmtPrice(a.price)} <span style={{ color: a.price >= a.vwap ? '#44cc44' : '#ff4444', fontSize: '0.6rem' }}>({a.price >= a.vwap ? 'above' : 'below'} avg)</span>
+                                  </span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px', paddingTop: '6px', borderTop: `1px solid ${accent}18` }}>
+                                  <span style={{ fontSize: '0.65rem', color: '#555' }}>Result</span>
+                                  <span style={{ fontSize: '0.65rem', fontWeight: '600', color: confirmColor }}>
+                                    {a.confirmed === null ? '⏳ Confirming in 30s…'
+                                      : a.confirmed ? `✓ Confirmed ${a.priceImpact > 0 ? '+' : ''}${a.priceImpact?.toFixed(2)}%`
+                                      : `↔ No follow-through (${a.priceImpact?.toFixed(2)}%)`}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
