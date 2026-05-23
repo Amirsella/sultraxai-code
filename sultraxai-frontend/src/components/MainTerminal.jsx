@@ -2,11 +2,26 @@ import React, { useState, useEffect, useRef } from 'react';
 
 const API_BASE = 'http://38.180.137.122:8000';
 
+// Yahoo Finance format → Finnhub format
+const toFinnhubSym = (yahoo) => {
+  if (yahoo.endsWith('-USD')) return `BINANCE:${yahoo.slice(0, -4)}USDT`;
+  return yahoo;
+};
+
+// Finnhub format → Yahoo Finance format (null if not in watchlist)
+const fromFinnhubSym = (finnhub, watchlist) => {
+  if (finnhub.startsWith('BINANCE:') && finnhub.endsWith('USDT')) {
+    const yahoo = `${finnhub.slice(8, -4)}-USD`;
+    return watchlist.includes(yahoo) ? yahoo : null;
+  }
+  return watchlist.includes(finnhub) ? finnhub : null;
+};
+
 function Sparkline({ sym, prices }) {
   if (!prices || prices.length < 2) {
     return (
       <div style={{ height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ color: '#222', fontSize: '0.65rem' }}>no chart data</span>
+        <span style={{ color: '#1e1e1e', fontSize: '0.65rem' }}>no data</span>
       </div>
     );
   }
@@ -14,9 +29,7 @@ function Sparkline({ sym, prices }) {
   const min = Math.min(...prices);
   const max = Math.max(...prices);
   const range = max - min || 0.001;
-  const W = 200;
-  const H = 48;
-  const pad = 3;
+  const W = 200, H = 48, pad = 3;
 
   const px = (i) => ((i / (prices.length - 1)) * W).toFixed(2);
   const py = (p) => (H - pad - ((p - min) / range) * (H - pad * 2)).toFixed(2);
@@ -29,13 +42,7 @@ function Sparkline({ sym, prices }) {
   const gradId = `sg-${sym.replace(/[^a-zA-Z0-9]/g, '')}`;
 
   return (
-    <svg
-      width="100%"
-      height={H}
-      viewBox={`0 0 ${W} ${H}`}
-      preserveAspectRatio="none"
-      style={{ display: 'block', overflow: 'visible' }}
-    >
+    <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ display: 'block', overflow: 'visible' }}>
       <defs>
         <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.18" />
@@ -43,14 +50,7 @@ function Sparkline({ sym, prices }) {
         </linearGradient>
       </defs>
       <polygon points={areaPoints} fill={`url(#${gradId})`} />
-      <polyline
-        points={linePoints}
-        fill="none"
-        stroke={color}
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
+      <polyline points={linePoints} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   );
 }
@@ -76,11 +76,8 @@ function EditPanel({ userId, selectedAssets, thresholds, onSave, onClose }) {
     }, 300);
   };
 
-  const toggle = (sym) => {
-    setEditAssets(prev =>
-      prev.includes(sym) ? prev.filter(s => s !== sym) : [...prev, sym]
-    );
-  };
+  const toggle = (sym) =>
+    setEditAssets(prev => prev.includes(sym) ? prev.filter(s => s !== sym) : [...prev, sym]);
 
   const save = async () => {
     setSaving(true);
@@ -92,30 +89,21 @@ function EditPanel({ userId, selectedAssets, thresholds, onSave, onClose }) {
         body: JSON.stringify({ user_id: userId, assets }),
       });
       onSave(editAssets);
-    } catch (e) {
-      console.error(e);
-    }
+    } catch (e) { console.error(e); }
     setSaving(false);
   };
 
   return (
-    <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{ background: '#0a0a0a', border: '1px solid #222', borderRadius: '20px', padding: '2rem', width: '420px', maxHeight: '80vh', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '700' }}>Manage Watchlist</h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', fontSize: '1.2rem', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#666', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
         </div>
-
         <div style={{ position: 'relative' }}>
-          <input
-            type="text"
-            placeholder="Search stock or crypto..."
-            onChange={e => handleSearch(e.target.value)}
-            style={{ width: '100%', padding: '0.85rem 1rem', background: '#111', border: '1px solid #2a2a2a', borderRadius: '12px', color: '#fff', outline: 'none', boxSizing: 'border-box', fontSize: '0.9rem' }}
-          />
+          <input type="text" placeholder="Search stock or crypto..." onChange={e => handleSearch(e.target.value)}
+            style={{ width: '100%', padding: '0.85rem 1rem', background: '#111', border: '1px solid #2a2a2a', borderRadius: '12px', color: '#fff', outline: 'none', boxSizing: 'border-box', fontSize: '0.9rem' }} />
           {(searchLoading || searchResults.length > 0) && (
             <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, background: '#111', border: '1px solid #2a2a2a', borderRadius: '12px', maxHeight: '200px', overflowY: 'auto', zIndex: 10 }}>
               {searchLoading && <div style={{ padding: '0.75rem 1rem', color: '#555', fontSize: '0.82rem' }}>Searching...</div>}
@@ -134,25 +122,21 @@ function EditPanel({ userId, selectedAssets, thresholds, onSave, onClose }) {
             </div>
           )}
         </div>
-
         <div style={{ overflowY: 'auto', flex: 1 }}>
           <div style={{ fontSize: '0.72rem', color: '#444', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
             Your Watchlist ({editAssets.length})
           </div>
-          {editAssets.length === 0 ? (
-            <p style={{ color: '#333', fontSize: '0.82rem', textAlign: 'center', padding: '1.5rem 0' }}>No assets selected</p>
-          ) : (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              {editAssets.map(s => (
-                <div key={s} onClick={() => toggle(s)}
-                  style={{ padding: '5px 12px', borderRadius: '20px', background: 'rgba(255,51,51,0.12)', border: '1px solid #ff333355', color: '#ff5555', fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {s} <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>✕</span>
-                </div>
-              ))}
-            </div>
-          )}
+          {editAssets.length === 0
+            ? <p style={{ color: '#333', fontSize: '0.82rem', textAlign: 'center', padding: '1.5rem 0' }}>No assets selected</p>
+            : <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {editAssets.map(s => (
+                  <div key={s} onClick={() => toggle(s)} style={{ padding: '5px 12px', borderRadius: '20px', background: 'rgba(255,51,51,0.12)', border: '1px solid #ff333355', color: '#ff5555', fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {s} <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>✕</span>
+                  </div>
+                ))}
+              </div>
+          }
         </div>
-
         <button onClick={save} disabled={saving || editAssets.length < 1}
           style={{ padding: '0.9rem', background: editAssets.length >= 1 ? '#ff3333' : '#1a1a1a', border: 'none', borderRadius: '12px', color: editAssets.length >= 1 ? '#fff' : '#444', fontWeight: '700', cursor: editAssets.length >= 1 ? 'pointer' : 'not-allowed', fontSize: '0.9rem' }}>
           {saving ? 'Saving...' : 'Save Changes'}
@@ -169,13 +153,25 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
   const [alerts, setAlerts] = useState([]);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [wsStatus, setWsStatus] = useState('connecting');
   const [editing, setEditing] = useState(false);
   const [flashing, setFlashing] = useState({});
 
+  // Stable refs — avoid stale closures inside WebSocket handlers
+  const wsRef = useRef(null);
+  const reconnectTimerRef = useRef(null);
+  const reconnectCountRef = useRef(0);
+  const flashTimersRef = useRef({});
   const alertedRef = useRef(new Set());
-  const prevPricesRef = useRef({});
-  const flashTimerRef = useRef(null);
+  const watchlistRef = useRef(selectedAssets);
+  const thresholdsRef = useRef(thresholds);
+  const pricesRef = useRef(prices);
 
+  useEffect(() => { watchlistRef.current = selectedAssets; }, [selectedAssets]);
+  useEffect(() => { thresholdsRef.current = thresholds; }, [thresholds]);
+  useEffect(() => { pricesRef.current = prices; }, [prices]);
+
+  // Load user thresholds
   useEffect(() => {
     if (!userId) return;
     fetch(`${API_BASE}/api/user-assets/${userId}`)
@@ -188,78 +184,149 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
       .catch(() => {});
   }, [userId]);
 
-  const fetchHistory = async () => {
-    if (!selectedAssets.length) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/history-batch?symbols=${selectedAssets.join(',')}`);
-      const data = await res.json();
-      setHistory(data.history || {});
-    } catch (e) {
-      console.error('History fetch error:', e);
-    }
-  };
-
+  // Load sparkline history every 5 minutes
   useEffect(() => {
     if (!selectedAssets.length) return;
-    fetchHistory();
-    const id = setInterval(fetchHistory, 5 * 60 * 1000);
+    const load = () =>
+      fetch(`${API_BASE}/api/history-batch?symbols=${selectedAssets.join(',')}`)
+        .then(r => r.json())
+        .then(data => setHistory(data.history || {}))
+        .catch(() => {});
+    load();
+    const id = setInterval(load, 5 * 60 * 1000);
     return () => clearInterval(id);
   }, [selectedAssets]);
 
-  const fetchPrices = async () => {
-    if (!selectedAssets.length) return;
-    try {
-      const res = await fetch(`${API_BASE}/api/prices?symbols=${selectedAssets.join(',')}`);
-      const data = await res.json();
-      const newPrices = data.prices || {};
-      const now = new Date();
-
-      // detect price changes for flash effect
-      const flashUpdates = {};
-      Object.entries(newPrices).forEach(([sym, p]) => {
-        const prev = prevPricesRef.current[sym]?.price;
-        if (prev !== undefined && Math.abs(p.price - prev) > 0.0001) {
-          flashUpdates[sym] = p.price > prev ? 'up' : 'down';
-        }
-      });
-      prevPricesRef.current = { ...newPrices };
-
-      if (Object.keys(flashUpdates).length > 0) {
-        clearTimeout(flashTimerRef.current);
-        setFlashing(flashUpdates);
-        flashTimerRef.current = setTimeout(() => setFlashing({}), 700);
-      }
-
-      // check alert thresholds
-      Object.entries(newPrices).forEach(([sym, p]) => {
-        const threshold = thresholds[sym] ?? 2.0;
-        const absPct = Math.abs(p.change_pct || 0);
-        const windowKey = `${sym}-${Math.floor(now.getTime() / (5 * 60 * 1000))}`;
-        if (absPct >= threshold && !alertedRef.current.has(windowKey)) {
-          alertedRef.current.add(windowKey);
-          setAlerts(prev => [{
-            symbol: sym, pct: p.change_pct, price: p.price,
-            time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            threshold,
-          }, ...prev].slice(0, 50));
-        }
-      });
-
-      setPrices(newPrices);
-      setLastUpdate(now);
-      setLoading(false);
-    } catch (e) {
-      console.error('Price fetch error:', e);
-      setLoading(false);
-    }
+  // Flash a single card for 700ms, ignoring re-triggers while active
+  const triggerFlash = (sym, dir) => {
+    if (flashTimersRef.current[sym]) return;
+    setFlashing(prev => ({ ...prev, [sym]: dir }));
+    flashTimersRef.current[sym] = setTimeout(() => {
+      delete flashTimersRef.current[sym];
+      setFlashing(prev => { const n = { ...prev }; delete n[sym]; return n; });
+    }, 700);
   };
 
+  // Connect Finnhub WebSocket
+  const connectWS = (key, symbols) => {
+    clearTimeout(reconnectTimerRef.current);
+    if (wsRef.current) {
+      wsRef.current.onclose = null;
+      wsRef.current.close();
+    }
+
+    setWsStatus('connecting');
+    const ws = new WebSocket(`wss://ws.finnhub.io?token=${key}`);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      reconnectCountRef.current = 0;
+      setWsStatus('live');
+      symbols.forEach(sym => ws.send(JSON.stringify({ type: 'subscribe', symbol: toFinnhubSym(sym) })));
+    };
+
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      if (msg.type !== 'trade' || !msg.data?.length) return;
+
+      // Keep only the latest trade price per symbol
+      const latestBySymbol = {};
+      msg.data.forEach(trade => { latestBySymbol[trade.s] = trade.p; });
+
+      const now = new Date();
+      const priceUpdates = {};
+      const flashUpdates = {};
+      const newAlerts = [];
+
+      Object.entries(latestBySymbol).forEach(([finnhubSym, newPrice]) => {
+        const sym = fromFinnhubSym(finnhubSym, watchlistRef.current);
+        if (!sym) return;
+
+        const prev = pricesRef.current[sym];
+        const prevClose = prev?.prev_close ?? newPrice;
+        const changePct = prevClose ? ((newPrice - prevClose) / prevClose) * 100 : 0;
+
+        priceUpdates[sym] = {
+          price: newPrice,
+          change_pct: parseFloat(changePct.toFixed(4)),
+          prev_close: prevClose,
+        };
+
+        // Flash if price changed
+        if (prev?.price !== undefined && Math.abs(newPrice - prev.price) > 0.0001) {
+          flashUpdates[sym] = newPrice > prev.price ? 'up' : 'down';
+        }
+
+        // Alert if threshold crossed
+        const threshold = thresholdsRef.current[sym] ?? 2.0;
+        const windowKey = `${sym}-${Math.floor(now.getTime() / (5 * 60 * 1000))}`;
+        if (Math.abs(changePct) >= threshold && !alertedRef.current.has(windowKey)) {
+          alertedRef.current.add(windowKey);
+          newAlerts.push({
+            symbol: sym, pct: changePct, price: newPrice,
+            time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            threshold,
+          });
+        }
+      });
+
+      if (!Object.keys(priceUpdates).length) return;
+
+      setPrices(prev => ({ ...prev, ...priceUpdates }));
+      pricesRef.current = { ...pricesRef.current, ...priceUpdates };
+      Object.entries(flashUpdates).forEach(([sym, dir]) => triggerFlash(sym, dir));
+      if (newAlerts.length) setAlerts(prev => [...newAlerts, ...prev].slice(0, 50));
+      setLastUpdate(now);
+      setLoading(false);
+    };
+
+    ws.onerror = () => ws.close();
+
+    ws.onclose = () => {
+      setWsStatus('reconnecting');
+      if (reconnectCountRef.current < 10) {
+        reconnectCountRef.current++;
+        const delay = Math.min(3000 * reconnectCountRef.current, 30000);
+        reconnectTimerRef.current = setTimeout(() => connectWS(key, watchlistRef.current), delay);
+      }
+    };
+  };
+
+  // Fetch initial prices (for prev_close baseline), then connect WebSocket
   useEffect(() => {
     if (!selectedAssets.length) return;
-    fetchPrices();
-    const id = setInterval(fetchPrices, 5000);
-    return () => clearInterval(id);
-  }, [selectedAssets, thresholds]);
+
+    let cancelled = false;
+
+    fetch(`${API_BASE}/api/config`)
+      .then(r => r.json())
+      .then(cfg => {
+        if (cancelled) return;
+        return fetch(`${API_BASE}/api/prices?symbols=${selectedAssets.join(',')}`)
+          .then(r => r.json())
+          .then(data => {
+            if (cancelled) return;
+            const initial = data.prices || {};
+            pricesRef.current = initial;
+            setPrices(initial);
+            setLoading(false);
+            connectWS(cfg.finnhub_key, selectedAssets);
+          });
+      })
+      .catch(err => { console.error('Init error:', err); setLoading(false); });
+
+    return () => {
+      cancelled = true;
+      clearTimeout(reconnectTimerRef.current);
+      Object.values(flashTimersRef.current).forEach(clearTimeout);
+      flashTimersRef.current = {};
+      if (wsRef.current) {
+        wsRef.current.onclose = null;
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
+  }, [selectedAssets]);
 
   const getStatus = (sym) => {
     const p = prices[sym];
@@ -271,10 +338,8 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
     return { label: 'CALM', color: '#44cc44' };
   };
 
-  const handleSave = (newAssets) => {
-    onAssetsUpdate(newAssets);
-    setEditing(false);
-  };
+  const statusDot = wsStatus === 'live' ? '#44cc44' : wsStatus === 'reconnecting' ? '#ff9900' : '#555';
+  const statusLabel = wsStatus === 'live' ? 'LIVE' : wsStatus === 'reconnecting' ? 'RECONNECTING' : 'CONNECTING';
 
   return (
     <div style={{ width: '100%', maxWidth: '1400px', padding: '0 2rem 4rem', margin: '0 auto', color: '#fff' }}>
@@ -288,7 +353,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
           userId={userId}
           selectedAssets={selectedAssets}
           thresholds={thresholds}
-          onSave={handleSave}
+          onSave={(newAssets) => { onAssetsUpdate(newAssets); setEditing(false); }}
           onClose={() => setEditing(false)}
         />
       )}
@@ -299,7 +364,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
             TERMINAL
           </h2>
           <p style={{ color: '#444', margin: '0.2rem 0 0', fontSize: '0.75rem' }}>
-            {loading ? 'Connecting...' : lastUpdate ? `Updated ${lastUpdate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : ''}
+            {loading ? 'Loading initial prices...' : lastUpdate ? `Last trade: ${lastUpdate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : 'Waiting for trades...'}
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -307,9 +372,9 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid #2a2a2a', color: '#aaa', padding: '0.45rem 1rem', borderRadius: '20px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '600' }}>
             + Edit Watchlist
           </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#ff3333', fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.08em' }}>
-            <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#ff3333', animation: 'pulse 2s infinite' }} />
-            LIVE · {selectedAssets.length} ASSETS
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: statusDot, fontSize: '0.72rem', fontWeight: '700', letterSpacing: '0.08em' }}>
+            <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: statusDot, animation: wsStatus === 'live' ? 'pulse 2s infinite' : 'none' }} />
+            {statusLabel} · {selectedAssets.length} ASSETS
           </div>
         </div>
       </div>
@@ -323,19 +388,11 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
             const t = thresholds[sym] ?? 2.0;
             const barWidth = Math.min(100, (Math.abs(pct || 0) / t) * 100);
             const flash = flashing[sym];
-            const flashBg = flash === 'up' ? 'rgba(68,204,68,0.09)' : flash === 'down' ? 'rgba(255,68,68,0.09)' : 'rgba(8,8,8,0.85)';
+            const cardBg = flash === 'up' ? 'rgba(68,204,68,0.09)' : flash === 'down' ? 'rgba(255,68,68,0.09)' : 'rgba(8,8,8,0.85)';
             const priceColor = flash === 'up' ? '#44cc44' : flash === 'down' ? '#ff4444' : '#fff';
 
             return (
-              <div key={sym} style={{
-                background: flashBg,
-                border: `1px solid ${status.color}28`,
-                borderRadius: '16px',
-                padding: '1.25rem',
-                backdropFilter: 'blur(12px)',
-                transition: 'background 0.15s ease, border-color 0.4s',
-                animation: 'fadeIn 0.3s ease',
-              }}>
+              <div key={sym} style={{ background: cardBg, border: `1px solid ${status.color}28`, borderRadius: '16px', padding: '1.25rem', backdropFilter: 'blur(12px)', transition: 'background 0.15s ease, border-color 0.4s', animation: 'fadeIn 0.3s ease' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                   <span style={{ fontWeight: '700', fontSize: '0.95rem' }}>{sym}</span>
                   <span style={{ fontSize: '0.65rem', fontWeight: '700', color: status.color, background: `${status.color}18`, padding: '3px 8px', borderRadius: '20px' }}>
@@ -354,7 +411,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                 <Sparkline sym={sym} prices={history[sym]} />
 
                 <div style={{ marginTop: '0.75rem', height: '3px', background: '#111', borderRadius: '2px', overflow: 'hidden' }}>
-                  <div style={{ width: `${barWidth}%`, height: '100%', background: status.color, borderRadius: '2px', transition: 'width 0.6s ease' }} />
+                  <div style={{ width: `${barWidth}%`, height: '100%', background: status.color, borderRadius: '2px', transition: 'width 0.4s ease' }} />
                 </div>
                 <div style={{ fontSize: '0.62rem', color: '#444', marginTop: '0.35rem' }}>
                   {barWidth.toFixed(0)}% of {t}% threshold
@@ -369,17 +426,13 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 style={{ margin: 0, fontSize: '0.75rem', fontWeight: '700', color: '#555', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Alert Feed</h3>
               {alerts.length > 0 && (
-                <span style={{ fontSize: '0.65rem', background: '#ff333322', color: '#ff3333', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>
-                  {alerts.length}
-                </span>
+                <span style={{ fontSize: '0.65rem', background: '#ff333322', color: '#ff3333', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>{alerts.length}</span>
               )}
             </div>
             {alerts.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '2rem 0.5rem' }}>
                 <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>🔍</div>
-                <p style={{ color: '#333', fontSize: '0.78rem', margin: 0, lineHeight: 1.5 }}>
-                  No alerts yet.<br />Watching {selectedAssets.length} assets.
-                </p>
+                <p style={{ color: '#333', fontSize: '0.78rem', margin: 0, lineHeight: 1.5 }}>No alerts yet.<br />Watching {selectedAssets.length} assets.</p>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '520px', overflowY: 'auto' }}>

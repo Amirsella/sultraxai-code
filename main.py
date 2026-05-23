@@ -13,6 +13,7 @@ from pydantic import BaseModel, EmailStr
 import uvicorn
 
 BREVO_API_KEY = "YOUR_BREVO_API_KEY"
+FINNHUB_KEY = "FINNHUB_API_KEY"
 
 verification_codes = {}
 
@@ -80,6 +81,10 @@ init_db()
 
 class UserRegister(BaseModel):
     first_name: str; full_name: str; email: EmailStr; phone: str; password: str
+
+@app.get("/api/config")
+async def get_config():
+    return {"finnhub_key": FINNHUB_KEY}
 
 @app.get("/api/search-stocks")
 async def search_stocks(q: str = ""):
