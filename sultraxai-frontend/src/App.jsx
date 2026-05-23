@@ -314,7 +314,7 @@ function SignUpForm({ onRegisterSuccess, setErrorMessage, errorMessage }) {
         })
       });
       const data = await res.json();
-      if (res.ok) onRegisterSuccess(data.user_id);
+      if (res.ok) onRegisterSuccess(data.user_id, email);
       else setErrorMessage(data.detail);
     } catch (err) { setErrorMessage("Registration connection error."); }
   };

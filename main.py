@@ -1,16 +1,34 @@
 import sqlite3
 import hashlib
 import os
+import smtplib
+import random
+from email.mime.text import MIMEText
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 import uvicorn
-import resend
-import random
-resend.api_key = "re_ATcLAiAb_EevVxJgGwMaT81tFvTj8AAER"
+
+GMAIL_USER = "sultraxai@gmail.com"
+GMAIL_APP_PASSWORD = "gfzd sgvn ktik hfkg"
+
 verification_codes = {}
+
+def send_verification_email(to_email: str, code: str) -> bool:
+    msg = MIMEText(f"Your SultraxAI verification code is: <strong>{code}</strong><br>Valid for 15 minutes.", "html")
+    msg["Subject"] = "SultraxAI - Verification Code"
+    msg["From"] = GMAIL_USER
+    msg["To"] = to_email
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.sendmail(GMAIL_USER, to_email, msg.as_string())
+        return True
+    except Exception as e:
+        print(f"Email error: {e}")
+        return False
 dist_path = "/root/sultraxai/sultraxai-frontend/dist"
 app = FastAPI()
 
@@ -85,15 +103,7 @@ async def register(user: UserRegister):
     
     code = str(random.randint(100000, 999999))
     verification_codes[user.email.strip()] = code
-    try:
-        resend.Emails.send({
-            "from": "onboarding@resend.dev",
-            "to": user.email.strip(),
-            "subject": "Your Verification Code",
-            "html": f"Your code is: <strong>{code}</strong>"
-        })
-    except Exception as e:
-        print(f"Email error: {e}")
+    send_verification_email(user.email.strip(), code)
 
     pwd_hash = hash_password(user.password)
     cursor.execute("INSERT INTO users (first_name, full_name, email, phone, password_hash) VALUES (?, ?, ?, ?, ?)",
@@ -102,15 +112,6 @@ async def register(user: UserRegister):
     conn.commit()
     conn.close()
     return {"status": "success", "user_id": user_id}
-@app.post("/api/verify-code")
-async def verify_code(data: dict):
-    email = data.get('email')
-    code = data.get('code')
-    if verification_codes.get(email) == code:
-        del verification_codes[email]
-        return {"status": "success"}
-    return JSONResponse(status_code=400, content={"detail": "Invalid code"})
-
 @app.post("/api/complete-onboarding")
 async def complete_onboarding(data: OnboardingData):
     conn = sqlite3.connect(DB_PATH)
