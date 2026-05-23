@@ -18,10 +18,21 @@ export default function App() {
   const [assetSettings, setAssetSettings] = useState({}); 
   const [tradingProfile, setTradingProfile] = useState({ experience: 'Beginner (0-1 yrs)', frequency: 'Daily' });
   const [searchTerm, setSearchTerm] = useState('');
-const filteredStocks = useMemo(() => {
-    return MOCK_STOCKS.filter(stock => 
-      stock.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+
+  useEffect(() => {
+    if (!searchTerm.trim()) { setSearchResults([]); return; }
+    const timer = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/search-stocks?q=${encodeURIComponent(searchTerm)}`);
+        const data = await res.json();
+        setSearchResults(data.results || []);
+      } catch { setSearchResults([]); }
+      setSearchLoading(false);
+    }, 400);
+    return () => clearTimeout(timer);
   }, [searchTerm]);
   // עדכון ה-LocalStorage בכל פעם שהערכים משתנים
   useEffect(() => {
@@ -90,25 +101,49 @@ const filteredStocks = useMemo(() => {
   const OnboardingStep1 = () => (
     <div style={{ textAlign: 'left' }}>
       <h3 style={{ fontSize: '2rem', marginBottom: '1rem' }}>Step 1: Select Assets</h3>
-      <p style={{ color: '#888', marginBottom: '2rem' }}>Choose at least 3 assets to follow in your terminal.</p>
-      <input 
-        type="text" placeholder="Search Symbol (e.g. BTC, TSLA)..." 
+      <p style={{ color: '#888', marginBottom: '2rem' }}>Search and choose at least 3 assets to follow.</p>
+      <input
+        type="text" placeholder="Search any stock or crypto (e.g. TSLA, BTC)..."
         value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-        style={{ width: '100%', padding: '1rem', background: '#111', border: '1px solid #333', borderRadius: '12px', color: '#fff', marginBottom: '1rem', outline: 'none' }}
+        style={{ width: '100%', padding: '1rem', background: '#111', border: '1px solid #333', borderRadius: '12px', color: '#fff', marginBottom: '0.5rem', outline: 'none', boxSizing: 'border-box' }}
       />
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '10px', maxHeight: '250px', overflowY: 'auto', padding: '10px' }}>
-        {filteredStocks?.map(s => (
-          <div key={s} onClick={() => toggleAsset(s)} style={{ 
-            padding: '10px', borderRadius: '8px', cursor: 'pointer', textAlign: 'center', fontSize: '0.8rem', border: '1px solid',
-            borderColor: selectedAssets.includes(s) ? '#ff3333' : '#333',
-            background: selectedAssets.includes(s) ? 'rgba(255,51,51,0.1)' : 'transparent',
-            transition: '0.2s'
-          }}>{s}</div>
+      {selectedAssets.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '0.75rem' }}>
+          {selectedAssets.map(s => (
+            <div key={s} onClick={() => toggleAsset(s)} style={{ padding: '5px 12px', borderRadius: '20px', background: 'rgba(255,51,51,0.15)', border: '1px solid #ff3333', color: '#ff3333', fontSize: '0.8rem', cursor: 'pointer' }}>
+              {s} ✕
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ maxHeight: '250px', overflowY: 'auto', borderRadius: '12px', border: searchResults.length > 0 ? '1px solid #222' : 'none' }}>
+        {searchLoading && <div style={{ padding: '1rem', color: '#666', textAlign: 'center', fontSize: '0.85rem' }}>Searching...</div>}
+        {!searchLoading && searchTerm && searchResults.length === 0 && (
+          <div style={{ padding: '1rem', color: '#666', textAlign: 'center', fontSize: '0.85rem' }}>No results found</div>
+        )}
+        {!searchLoading && !searchTerm && (
+          <div style={{ padding: '0.75rem', color: '#555', textAlign: 'center', fontSize: '0.8rem' }}>Start typing to search stocks & crypto</div>
+        )}
+        {searchResults.map(item => (
+          <div key={item.symbol} onClick={() => toggleAsset(item.symbol)} style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid #1a1a1a',
+            background: selectedAssets.includes(item.symbol) ? 'rgba(255,51,51,0.08)' : 'transparent',
+            transition: '0.15s'
+          }}>
+            <div>
+              <span style={{ fontWeight: '600', color: '#fff' }}>{item.symbol}</span>
+              <span style={{ marginLeft: '10px', color: '#666', fontSize: '0.8rem' }}>{item.name}</span>
+            </div>
+            {selectedAssets.includes(item.symbol)
+              ? <span style={{ color: '#ff3333', fontSize: '0.8rem' }}>✓ Added</span>
+              : <span style={{ color: '#444', fontSize: '0.8rem' }}>+ Add</span>}
+          </div>
         ))}
       </div>
-      <button disabled={selectedAssets.length < 3} onClick={() => setOnboardingStep(2)} 
-        style={{ marginTop: '2rem', width: '100%', padding: '1rem', background: selectedAssets.length >= 3 ? '#ff3333' : '#222', border: 'none', borderRadius: '12px', color: '#fff', cursor: selectedAssets.length >= 3 ? 'pointer' : 'not-allowed', fontWeight: '600' }}>
-        Continue ({selectedAssets.length}/3)
+      <button disabled={selectedAssets.length < 3} onClick={() => setOnboardingStep(2)}
+        style={{ marginTop: '1.5rem', width: '100%', padding: '1rem', background: selectedAssets.length >= 3 ? '#ff3333' : '#222', border: 'none', borderRadius: '12px', color: selectedAssets.length >= 3 ? '#fff' : '#555', cursor: selectedAssets.length >= 3 ? 'pointer' : 'not-allowed', fontWeight: '600' }}>
+        Continue ({selectedAssets.length}/3 selected)
       </button>
     </div>
   );

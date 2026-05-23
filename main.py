@@ -79,6 +79,27 @@ init_db()
 class UserRegister(BaseModel):
     first_name: str; full_name: str; email: EmailStr; phone: str; password: str
 
+@app.get("/api/search-stocks")
+async def search_stocks(q: str = ""):
+    if not q or len(q) < 1:
+        return {"results": []}
+    try:
+        res = requests.get(
+            "https://query1.finance.yahoo.com/v1/finance/search",
+            params={"q": q, "quotesCount": 10, "newsCount": 0, "enableFuzzyQuery": False},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=5
+        )
+        quotes = res.json().get("quotes", [])
+        results = [
+            {"symbol": item["symbol"], "name": item.get("longname") or item.get("shortname", "")}
+            for item in quotes if item.get("symbol") and item.get("quoteType") in ("EQUITY", "CRYPTOCURRENCY", "ETF")
+        ]
+        return {"results": results}
+    except Exception as e:
+        print(f"Stock search error: {e}")
+        return {"results": []}
+
 @app.post("/api/verify-code")
 async def verify_code(data: dict):
     email = data.get('email')
