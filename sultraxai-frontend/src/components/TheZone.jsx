@@ -22,7 +22,7 @@ const toTs = (val) => {
 const SOURCE_META = {
   finnhub:    { label: 'FINNHUB',    color: '#4488ff', bg: 'rgba(68,136,255,0.1)' },
   stocktwits: { label: 'STOCKTWITS', color: '#44cc44', bg: 'rgba(68,204,68,0.1)'  },
-  reddit:     { label: 'REDDIT',     color: '#e05a1e', bg: 'rgba(224,90,30,0.1)'  },
+  yahoo:      { label: 'YAHOO',      color: '#aa44ff', bg: 'rgba(170,68,255,0.1)' },
 };
 
 function SourceBadge({ type }) {
@@ -54,9 +54,9 @@ function FeedItem({ item }) {
           </>
         )}
 
-        {/* Reddit: subreddit */}
-        {item.type === 'reddit' && (
-          <span style={{ fontSize: '0.62rem', color: '#e05a1e', fontWeight: '600' }}>r/{item.subreddit}</span>
+        {/* Yahoo: source */}
+        {item.type === 'yahoo' && item.source && (
+          <span style={{ fontSize: '0.62rem', color: '#aa44ff', fontWeight: '600' }}>{item.source}</span>
         )}
 
         {/* News: source name */}
@@ -79,13 +79,6 @@ function FeedItem({ item }) {
         </p>
       )}
 
-      {/* Row 4: reddit stats */}
-      {item.type === 'reddit' && (
-        <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-          <span style={{ fontSize: '0.62rem', color: '#333' }}>▲ {(item.score || 0).toLocaleString()}</span>
-          <span style={{ fontSize: '0.62rem', color: '#333' }}>💬 {item.comments || 0}</span>
-        </div>
-      )}
 
       {/* Row 4: stocktwits likes */}
       {item.type === 'stocktwits' && item.likes > 0 && (
@@ -100,11 +93,11 @@ function FeedItem({ item }) {
 }
 
 function buildFeed(data) {
-  const { news = [], stocktwits = [], reddit = [] } = data;
+  const { news = [], stocktwits = [], yahoo = [] } = data;
   const items = [
     ...news.map(n => ({ type: 'finnhub',    content: n.headline, summary: n.summary, source: n.source, url: n.url, time: n.time })),
     ...stocktwits.map(t => ({ type: 'stocktwits', content: t.text, user: t.user, sentiment: t.sentiment, likes: t.likes, time: t.time })),
-    ...reddit.map(r => ({ type: 'reddit',    content: r.title, subreddit: r.subreddit, score: r.score, comments: r.comments, url: r.url, time: r.time })),
+    ...yahoo.map(y => ({ type: 'yahoo', content: y.headline, summary: y.summary, source: y.source, url: y.url, time: y.time })),
   ];
   return items.sort((a, b) => toTs(b.time) - toTs(a.time));
 }
@@ -112,7 +105,7 @@ function buildFeed(data) {
 export default function TheZone({ selectedAssets, onBack, isNative }) {
   const [activeAsset, setActiveAsset] = useState(selectedAssets[0] || '');
   const [feed, setFeed] = useState([]);
-  const [counts, setCounts] = useState({ finnhub: 0, stocktwits: 0, reddit: 0 });
+  const [counts, setCounts] = useState({ finnhub: 0, stocktwits: 0, yahoo: 0 });
   const [sentiment, setSentiment] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -126,9 +119,9 @@ export default function TheZone({ selectedAssets, onBack, isNative }) {
       const res = await fetch(`${API_BASE}/api/zone/all?symbol=${encodeURIComponent(sym)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      const { news = [], stocktwits = [], reddit = [] } = data;
+      const { news = [], stocktwits = [], yahoo = [] } = data;
       setFeed(buildFeed(data));
-      setCounts({ finnhub: news.length, stocktwits: stocktwits.length, reddit: reddit.length });
+      setCounts({ finnhub: news.length, stocktwits: stocktwits.length, yahoo: yahoo.length });
       setSentiment(data.sentiment || null);
       setLastUpdate(new Date());
     } catch (e) {
@@ -147,13 +140,13 @@ export default function TheZone({ selectedAssets, onBack, isNative }) {
   const bull = sentiment?.pct ?? 50;
   const bear = 100 - bull;
   const hasSentiment = (sentiment?.bull ?? 0) + (sentiment?.bear ?? 0) > 0;
-  const total = counts.finnhub + counts.stocktwits + counts.reddit;
+  const total = counts.finnhub + counts.stocktwits + counts.yahoo;
 
   const FILTERS = [
     { id: 'all',        label: 'ALL',        count: total },
-    { id: 'finnhub',    label: 'NEWS',       count: counts.finnhub },
+    { id: 'finnhub',    label: 'FINNHUB',    count: counts.finnhub },
     { id: 'stocktwits', label: 'STOCKTWITS', count: counts.stocktwits },
-    { id: 'reddit',     label: 'REDDIT',     count: counts.reddit },
+    { id: 'yahoo',      label: 'YAHOO',      count: counts.yahoo },
   ];
 
   const containerStyle = isNative

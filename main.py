@@ -4,6 +4,10 @@ import os
 import random
 import uuid
 import requests
+import urllib.request
+import xml.etree.ElementTree as ET
+import email.utils
+import json as _json
 import yfinance as yf
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
@@ -417,14 +421,6 @@ def _zone_news(symbol: str) -> list:
     except Exception as e:
         print(f"Zone news error: {e}"); return []
 
-_BROWSER_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-}
-
 def _zone_stocktwits(symbol: str) -> list:
     try:
         if '-USD' in symbol:
@@ -433,12 +429,15 @@ def _zone_stocktwits(symbol: str) -> list:
             st_sym = symbol.split('/')[0] + '.X'
         else:
             st_sym = symbol
-        headers = {**_BROWSER_HEADERS, "Referer": "https://stocktwits.com/"}
-        res = requests.get(f"https://api.stocktwits.com/api/2/streams/symbol/{st_sym}.json",
-            headers=headers, timeout=8)
-        if res.status_code != 200:
-            print(f"Zone StockTwits HTTP {res.status_code}"); return []
-        msgs = res.json().get("messages", [])[:20]
+        url = f"https://api.stocktwits.com/api/2/streams/symbol/{st_sym}.json"
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+            "Referer": "https://stocktwits.com/",
+        })
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = _json.loads(resp.read().decode("utf-8"))
+        msgs = data.get("messages", [])[:20]
         return [{"text": m.get("body",""), "user": m.get("user",{}).get("username",""),
                  "sentiment": m.get("entities",{}).get("sentiment",{}).get("basic",""),
                  "likes": m.get("likes",{}).get("total",0), "time": m.get("created_at","")}
@@ -446,35 +445,42 @@ def _zone_stocktwits(symbol: str) -> list:
     except Exception as e:
         print(f"Zone StockTwits error: {e}"); return []
 
-def _zone_reddit(symbol: str) -> list:
+def _zone_yahoo(symbol: str) -> list:
     try:
         ticker = symbol.replace('-USD','').replace('/','').split('.')[0]
-        headers = {**_BROWSER_HEADERS, "Referer": "https://www.reddit.com/"}
-        res = requests.get("https://www.reddit.com/search.json",
-            params={"q": ticker, "sort": "new", "limit": "15", "type": "link", "t": "week"},
-            headers=headers, timeout=8)
-        if res.status_code != 200:
-            print(f"Zone Reddit HTTP {res.status_code}"); return []
-        posts = res.json().get("data",{}).get("children",[])
-        return [{"title": p["data"].get("title",""), "subreddit": p["data"].get("subreddit",""),
-                 "score": p["data"].get("score",0), "comments": p["data"].get("num_comments",0),
-                 "url": "https://reddit.com" + p["data"].get("permalink",""),
-                 "time": p["data"].get("created_utc",0)}
-                for p in posts if p.get("data",{}).get("title")][:12]
+        url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "application/rss+xml, application/xml, text/xml",
+        })
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            root = ET.fromstring(resp.read())
+        result = []
+        for item in root.findall('.//item')[:15]:
+            title = (item.findtext('title') or '').strip()
+            link = item.findtext('link') or ''
+            pub_date = item.findtext('pubDate') or ''
+            try:
+                ts = email.utils.parsedate_to_datetime(pub_date).timestamp()
+            except Exception:
+                ts = 0
+            if title:
+                result.append({"headline": title, "summary": "", "source": "Yahoo Finance", "url": link, "time": ts})
+        return result
     except Exception as e:
-        print(f"Zone Reddit error: {e}"); return []
+        print(f"Zone Yahoo error: {e}"); return []
 
 @app.get("/api/zone/all")
 async def get_zone_all(symbol: str):
     with ThreadPoolExecutor(max_workers=3) as ex:
         nf = ex.submit(_zone_news, symbol)
         sf = ex.submit(_zone_stocktwits, symbol)
-        rf = ex.submit(_zone_reddit, symbol)
-        news, twits, reddit = nf.result(), sf.result(), rf.result()
+        yf_fut = ex.submit(_zone_yahoo, symbol)
+        news, twits, yahoo = nf.result(), sf.result(), yf_fut.result()
     bull = sum(1 for m in twits if m.get("sentiment") == "Bullish")
     bear = sum(1 for m in twits if m.get("sentiment") == "Bearish")
     total = bull + bear
-    return {"symbol": symbol, "news": news, "stocktwits": twits, "reddit": reddit,
+    return {"symbol": symbol, "news": news, "stocktwits": twits, "yahoo": yahoo,
             "sentiment": {"bull": bull, "bear": bear, "pct": round(bull/total*100) if total else 50}}
 
 @app.post("/api/login")
