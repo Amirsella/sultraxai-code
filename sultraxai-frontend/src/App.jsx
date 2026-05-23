@@ -343,7 +343,7 @@ function SignUpForm({ onRegisterSuccess, setErrorMessage, errorMessage }) {
       <h3 style={{ fontSize: '1.8rem', fontWeight: '800', marginBottom: '1.5rem', textAlign: 'center' }}>Create Account</h3>
       {errorMessage && <div style={{ color: '#ff3333', backgroundColor: 'rgba(255,51,51,0.1)', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.9rem', textAlign: 'center', border: '1px solid rgba(255,51,51,0.2)' }}>{errorMessage}</div>}
       
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', textAlign: 'left' }}>
+      <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '1rem', textAlign: 'left' }}>
         <input type="text" placeholder="First Name" value={firstName} onChange={e => setFirstName(e.target.value)} style={inputStyle} required />
         <input type="text" placeholder="Full Name" value={fullName} onChange={e => setFullName(e.target.value)} style={inputStyle} required />
         <input type="email" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} required />
@@ -378,14 +378,14 @@ function SignUpForm({ onRegisterSuccess, setErrorMessage, errorMessage }) {
           I agree to the Terms of Service & Privacy Policy
         </label>
         
-        {(!isFormValid && (showValidationErrors || firstName || fullName || email || phone || password)) && (
-          <div style={{ fontSize: '0.8rem', color: '#888', background: '#111', padding: '0.75rem', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+        {!isFormValid && showValidationErrors && (
+          <div style={{ fontSize: '0.85rem', color: '#ff6666', background: 'rgba(255,51,51,0.08)', border: '1px solid rgba(255,51,51,0.3)', padding: '0.75rem', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
             {!firstName.trim() && <span>• First name is required</span>}
             {!fullName.trim() && <span>• Full name is required</span>}
-            {email && !isEmailValid(email) && <span>• Invalid email format</span>}
+            {!isEmailValid(email) && <span>• Valid email is required</span>}
             {!phone.trim() && <span>• Phone number is required</span>}
             {!pwdCriteria.isValid && <span>• Password doesn't meet requirements</span>}
-            {password && confirmPassword && password !== confirmPassword && <span>• Passwords do not match</span>}
+            {password !== confirmPassword && <span>• Passwords do not match</span>}
             {!agreeTerms && <span>• You must agree to the Terms of Service</span>}
           </div>
         )}
