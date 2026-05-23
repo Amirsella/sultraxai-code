@@ -8,13 +8,11 @@ const SENSITIVITY_LEVELS = [
   { label: 'All signals',desc: '>1%', value: 1.0, color: '#44cc44' },
 ];
 
-// Yahoo Finance format → Finnhub format
 const toFinnhubSym = (yahoo) => {
   if (yahoo.endsWith('-USD')) return `BINANCE:${yahoo.slice(0, -4)}USDT`;
   return yahoo;
 };
 
-// Finnhub format → Yahoo Finance format (null if not in watchlist)
 const fromFinnhubSym = (finnhub, watchlist) => {
   if (finnhub.startsWith('BINANCE:') && finnhub.endsWith('USDT')) {
     const yahoo = `${finnhub.slice(8, -4)}-USD`;
@@ -22,6 +20,9 @@ const fromFinnhubSym = (finnhub, watchlist) => {
   }
   return watchlist.includes(finnhub) ? finnhub : null;
 };
+
+const fmtPrice = (p) =>
+  p?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? '—';
 
 function Sparkline({ sym, prices }) {
   if (!prices || prices.length < 2) {
@@ -31,22 +32,16 @@ function Sparkline({ sym, prices }) {
       </div>
     );
   }
-
-  const min = Math.min(...prices);
-  const max = Math.max(...prices);
+  const min = Math.min(...prices), max = Math.max(...prices);
   const range = max - min || 0.001;
   const W = 200, H = 48, pad = 3;
-
   const px = (i) => ((i / (prices.length - 1)) * W).toFixed(2);
   const py = (p) => (H - pad - ((p - min) / range) * (H - pad * 2)).toFixed(2);
-
   const linePoints = prices.map((p, i) => `${px(i)},${py(p)}`).join(' ');
   const areaPoints = `0,${H} ` + prices.map((p, i) => `${px(i)},${py(p)}`).join(' ') + ` ${W},${H}`;
-
   const isUp = prices[prices.length - 1] >= prices[0];
   const color = isUp ? '#44cc44' : '#ff4444';
   const gradId = `sg-${sym.replace(/[^a-zA-Z0-9]/g, '')}`;
-
   return (
     <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ display: 'block', overflow: 'visible' }}>
       <defs>
@@ -90,9 +85,8 @@ function EditPanel({ userId, selectedAssets, thresholds, onSave, onClose }) {
     const assets = editAssets.map(s => ({ symbol: s, threshold: thresholds[s] ?? 2.0 }));
     try {
       await fetch(`${API_BASE}/api/update-assets`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, assets }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: parseInt(userId), assets }),
       });
       onSave(editAssets);
     } catch (e) { console.error(e); }
@@ -156,6 +150,8 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
   const [thresholds, setThresholds] = useState({});
   const [prices, setPrices] = useState({});
   const [history, setHistory] = useState({});
+  const [avgVolumes, setAvgVolumes] = useState({});
+  const [rvols, setRvols] = useState({});
   const [alerts, setAlerts] = useState(() => {
     try { return JSON.parse(localStorage.getItem('sultrax_alerts') || '[]'); }
     catch { return []; }
@@ -169,7 +165,6 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
   const [savingThreshold, setSavingThreshold] = useState(false);
   const [savedCard, setSavedCard] = useState(null);
 
-  // Stable refs — avoid stale closures inside WebSocket handlers
   const wsRef = useRef(null);
   const reconnectTimerRef = useRef(null);
   const reconnectCountRef = useRef(0);
@@ -179,16 +174,34 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
   const watchlistRef = useRef(selectedAssets);
   const thresholdsRef = useRef(thresholds);
   const pricesRef = useRef(prices);
+  const avgVolumesRef = useRef({});
+  const volumeTrackingRef = useRef({});
+  const lastRvolUpdateRef = useRef(0);
+
+  useEffect(() => { watchlistRef.current = selectedAssets; }, [selectedAssets]);
+  useEffect(() => { thresholdsRef.current = thresholds; }, [thresholds]);
+  useEffect(() => { pricesRef.current = prices; }, [prices]);
+  useEffect(() => { avgVolumesRef.current = avgVolumes; }, [avgVolumes]);
 
   useEffect(() => {
     localStorage.setItem('sultrax_alerts', JSON.stringify(alerts));
   }, [alerts]);
 
-  useEffect(() => { watchlistRef.current = selectedAssets; }, [selectedAssets]);
-  useEffect(() => { thresholdsRef.current = thresholds; }, [thresholds]);
-  useEffect(() => { pricesRef.current = prices; }, [prices]);
+  // Init volume tracking struct for each symbol
+  useEffect(() => {
+    selectedAssets.forEach(sym => {
+      if (!volumeTrackingRef.current[sym]) {
+        volumeTrackingRef.current[sym] = {
+          trades5m: [],    // [{vol, time}] rolling 5-min window
+          vwapNum: 0,      // sum(price × vol) from session start
+          vwapDen: 0,      // sum(vol) from session start
+          tickHistory: [], // last 20 tick directions
+          lastSignalTime: 0,
+        };
+      }
+    });
+  }, [selectedAssets]);
 
-  // Load user thresholds
   useEffect(() => {
     if (!userId) return;
     fetch(`${API_BASE}/api/user-assets/${userId}`)
@@ -201,7 +214,6 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
       .catch(() => {});
   }, [userId]);
 
-  // Load sparkline history every 5 minutes
   useEffect(() => {
     if (!selectedAssets.length) return;
     const load = () =>
@@ -214,7 +226,15 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
     return () => clearInterval(id);
   }, [selectedAssets]);
 
-  // Flash a single card for 700ms, ignoring re-triggers while active
+  // Load historical average volumes for RVOL calculation
+  useEffect(() => {
+    if (!selectedAssets.length) return;
+    fetch(`${API_BASE}/api/avg-volume?symbols=${selectedAssets.join(',')}`)
+      .then(r => r.json())
+      .then(data => setAvgVolumes(data.volumes || {}))
+      .catch(() => {});
+  }, [selectedAssets]);
+
   const triggerFlash = (sym, dir) => {
     if (flashTimersRef.current[sym]) return;
     setFlashing(prev => ({ ...prev, [sym]: dir }));
@@ -224,13 +244,9 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
     }, 700);
   };
 
-  // Connect Finnhub WebSocket
   const connectWS = (key, symbols) => {
     clearTimeout(reconnectTimerRef.current);
-    if (wsRef.current) {
-      wsRef.current.onclose = null;
-      wsRef.current.close();
-    }
+    if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); }
 
     setWsStatus('connecting');
     const ws = new WebSocket(`wss://ws.finnhub.io?token=${key}`);
@@ -246,16 +262,21 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
       const msg = JSON.parse(e.data);
       if (msg.type !== 'trade' || !msg.data?.length) return;
 
-      // Keep only the latest trade price per symbol
+      // Accumulate all trades in this message per symbol (latest price, total volume)
       const latestBySymbol = {};
-      msg.data.forEach(trade => { latestBySymbol[trade.s] = trade.p; });
+      msg.data.forEach(trade => {
+        if (!latestBySymbol[trade.s]) latestBySymbol[trade.s] = { price: trade.p, vol: 0 };
+        latestBySymbol[trade.s].price = trade.p;
+        latestBySymbol[trade.s].vol += (trade.v || 0);
+      });
 
-      const now = new Date();
+      const now = Date.now();
       const priceUpdates = {};
       const flashUpdates = {};
       const newAlerts = [];
+      const rvolUpdates = {};
 
-      Object.entries(latestBySymbol).forEach(([finnhubSym, newPrice]) => {
+      Object.entries(latestBySymbol).forEach(([finnhubSym, { price: newPrice, vol: tradeVol }]) => {
         const sym = fromFinnhubSym(finnhubSym, watchlistRef.current);
         if (!sym) return;
 
@@ -269,24 +290,83 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
           prev_close: prevClose,
         };
 
-        // Flash if price changed
+        // Flash on price change
         if (prev?.price !== undefined && Math.abs(newPrice - prev.price) > 0.0001) {
           flashUpdates[sym] = newPrice > prev.price ? 'up' : 'down';
         }
 
-        // Alert when price moves X% from the last alert baseline
-        const threshold = thresholdsRef.current[sym] ?? 2.0;
+        // Price threshold alert (moving baseline)
+        const priceThreshold = thresholdsRef.current[sym] ?? 2.0;
         const baseline = baselinePricesRef.current[sym] ?? newPrice;
         const moveFromBaseline = baseline ? ((newPrice - baseline) / baseline) * 100 : 0;
         const lastAlertTime = lastAlertTimeRef.current[sym] ?? 0;
-        if (Math.abs(moveFromBaseline) >= threshold && (now.getTime() - lastAlertTime) > 30000) {
+        if (Math.abs(moveFromBaseline) >= priceThreshold && (now - lastAlertTime) > 30000) {
           baselinePricesRef.current[sym] = newPrice;
-          lastAlertTimeRef.current[sym] = now.getTime();
+          lastAlertTimeRef.current[sym] = now;
           newAlerts.push({
+            type: 'price',
             symbol: sym, pct: moveFromBaseline, price: newPrice,
-            time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-            threshold,
+            time: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            threshold: priceThreshold,
           });
+        }
+
+        // ── VOLUME ANALYSIS ──────────────────────────────────────
+        const tracking = volumeTrackingRef.current[sym];
+        if (!tracking) return;
+
+        // Update VWAP (session-running from page load)
+        if (tradeVol > 0) {
+          tracking.vwapNum += newPrice * tradeVol;
+          tracking.vwapDen += tradeVol;
+          tracking.trades5m.push({ vol: tradeVol, time: now });
+        }
+
+        // Track tick direction (up/down vs previous price)
+        if (prev?.price !== undefined && Math.abs(newPrice - prev.price) > 0.0001) {
+          tracking.tickHistory.push(newPrice > prev.price ? 'up' : 'down');
+          if (tracking.tickHistory.length > 20) tracking.tickHistory.shift();
+        }
+
+        // Clean trades older than 5 minutes
+        tracking.trades5m = tracking.trades5m.filter(t => now - t.time < 5 * 60 * 1000);
+
+        // RVOL: compare current 5-min pace to historical average
+        const avgVol = avgVolumesRef.current[sym];
+        if (avgVol > 0) {
+          const isCrypto = sym.endsWith('-USD');
+          const tradingMinutes = isCrypto ? 1440 : 390;
+          const avgVol5m = (avgVol / tradingMinutes) * 5;
+          const currentVol5m = tracking.trades5m.reduce((s, t) => s + t.vol, 0);
+          const rvol = avgVol5m > 0 ? currentVol5m / avgVol5m : 0;
+          rvolUpdates[sym] = parseFloat(rvol.toFixed(2));
+
+          // Unusual activity: RVOL ≥ 3 + VWAP position + tick momentum
+          const vwap = tracking.vwapDen > 0 ? tracking.vwapNum / tracking.vwapDen : newPrice;
+          const upTicks = tracking.tickHistory.filter(d => d === 'up').length;
+          const tickRatio = tracking.tickHistory.length >= 10
+            ? upTicks / tracking.tickHistory.length : null;
+          const signalCooldown = 5 * 60 * 1000;
+
+          if (rvol >= 3.0 && tickRatio !== null && (now - tracking.lastSignalTime) > signalCooldown) {
+            if (tickRatio >= 0.65 && newPrice >= vwap) {
+              tracking.lastSignalTime = now;
+              newAlerts.push({
+                type: 'buying',
+                symbol: sym, rvol: parseFloat(rvol.toFixed(1)),
+                price: newPrice, vwap: parseFloat(vwap.toFixed(2)),
+                time: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+              });
+            } else if (tickRatio <= 0.35 && newPrice <= vwap) {
+              tracking.lastSignalTime = now;
+              newAlerts.push({
+                type: 'selling',
+                symbol: sym, rvol: parseFloat(rvol.toFixed(1)),
+                price: newPrice, vwap: parseFloat(vwap.toFixed(2)),
+                time: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+              });
+            }
+          }
         }
       });
 
@@ -295,13 +375,18 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
       setPrices(prev => ({ ...prev, ...priceUpdates }));
       pricesRef.current = { ...pricesRef.current, ...priceUpdates };
       Object.entries(flashUpdates).forEach(([sym, dir]) => triggerFlash(sym, dir));
-      if (newAlerts.length) setAlerts(prev => [...newAlerts, ...prev].slice(0, 50));
-      setLastUpdate(now);
+      if (newAlerts.length) setAlerts(prev => [...newAlerts, ...prev].slice(0, 100));
+      setLastUpdate(new Date(now));
       setLoading(false);
+
+      // RVOL state update throttled to once per 5s to avoid excessive re-renders
+      if (Object.keys(rvolUpdates).length > 0 && now - lastRvolUpdateRef.current > 5000) {
+        lastRvolUpdateRef.current = now;
+        setRvols(prev => ({ ...prev, ...rvolUpdates }));
+      }
     };
 
     ws.onerror = () => ws.close();
-
     ws.onclose = () => {
       setWsStatus('reconnecting');
       if (reconnectCountRef.current < 10) {
@@ -312,33 +397,28 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
     };
   };
 
-  // Fetch initial prices (for prev_close baseline), then connect WebSocket
   useEffect(() => {
     if (!selectedAssets.length) return;
-
     let cancelled = false;
 
     fetch(`${API_BASE}/api/config`)
       .then(r => r.json())
-      .then(cfg => {
-        if (cancelled) return;
-        return fetch(`${API_BASE}/api/prices?symbols=${selectedAssets.join(',')}`)
-          .then(r => r.json())
-          .then(data => {
-            if (cancelled) return;
-            const initial = data.prices || {};
-            pricesRef.current = initial;
-            // Use prev_close as baseline so alerts fire from daily open, not page-load price
-            Object.entries(initial).forEach(([sym, p]) => {
-              if (baselinePricesRef.current[sym] === undefined && p.prev_close) {
-                baselinePricesRef.current[sym] = p.prev_close;
-              }
-            });
-            setPrices(initial);
-            setLoading(false);
-            connectWS(cfg.finnhub_key, selectedAssets);
+      .then(cfg => fetch(`${API_BASE}/api/prices?symbols=${selectedAssets.join(',')}`)
+        .then(r => r.json())
+        .then(data => {
+          if (cancelled) return;
+          const initial = data.prices || {};
+          pricesRef.current = initial;
+          Object.entries(initial).forEach(([sym, p]) => {
+            if (baselinePricesRef.current[sym] === undefined && p.prev_close) {
+              baselinePricesRef.current[sym] = p.prev_close;
+            }
           });
-      })
+          setPrices(initial);
+          setLoading(false);
+          connectWS(cfg.finnhub_key, selectedAssets);
+        })
+      )
       .catch(err => { console.error('Init error:', err); setLoading(false); });
 
     return () => {
@@ -346,11 +426,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
       clearTimeout(reconnectTimerRef.current);
       Object.values(flashTimersRef.current).forEach(clearTimeout);
       flashTimersRef.current = {};
-      if (wsRef.current) {
-        wsRef.current.onclose = null;
-        wsRef.current.close();
-        wsRef.current = null;
-      }
+      if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); wsRef.current = null; }
     };
   }, [selectedAssets]);
 
@@ -360,8 +436,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
     const assets = selectedAssets.map(s => ({ symbol: s, threshold: newThresholds[s] ?? 2.0 }));
     try {
       const res = await fetch(`${API_BASE}/api/update-assets`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: parseInt(userId), assets }),
       });
       if (!res.ok) throw new Error(`Server error ${res.status}`);
@@ -385,6 +460,13 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
     return { label: 'CALM', color: '#44cc44' };
   };
 
+  const getRvolStyle = (rvol) => {
+    if (!rvol || rvol < 1.5) return null;
+    if (rvol >= 5) return { color: '#ff6600', bg: 'rgba(255,102,0,0.1)', border: 'rgba(255,102,0,0.3)', icon: '🔥' };
+    if (rvol >= 3) return { color: '#ff9900', bg: 'rgba(255,153,0,0.1)', border: 'rgba(255,153,0,0.25)', icon: '⚡' };
+    return { color: '#666', bg: 'transparent', border: 'transparent', icon: '' };
+  };
+
   const statusDot = wsStatus === 'live' ? '#44cc44' : wsStatus === 'reconnecting' ? '#ff9900' : '#555';
   const statusLabel = wsStatus === 'live' ? 'LIVE' : wsStatus === 'reconnecting' ? 'RECONNECTING' : 'CONNECTING';
 
@@ -397,9 +479,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
 
       {editing && (
         <EditPanel
-          userId={userId}
-          selectedAssets={selectedAssets}
-          thresholds={thresholds}
+          userId={userId} selectedAssets={selectedAssets} thresholds={thresholds}
           onSave={(newAssets) => { onAssetsUpdate(newAssets); setEditing(false); }}
           onClose={() => setEditing(false)}
         />
@@ -411,7 +491,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
             TERMINAL
           </h2>
           <p style={{ color: '#444', margin: '0.2rem 0 0', fontSize: '0.75rem' }}>
-            {loading ? 'Loading initial prices...' : lastUpdate ? `Last trade: ${lastUpdate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : 'Waiting for trades...'}
+            {loading ? 'Loading...' : lastUpdate ? `Last trade: ${lastUpdate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : 'Waiting for trades...'}
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -427,6 +507,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
       </div>
 
       <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
+        {/* ── WATCHLIST ── */}
         <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: '14px' }}>
           {selectedAssets.map(sym => {
             const p = prices[sym];
@@ -437,28 +518,33 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
             const flash = flashing[sym];
             const cardBg = flash === 'up' ? 'rgba(68,204,68,0.09)' : flash === 'down' ? 'rgba(255,68,68,0.09)' : 'rgba(8,8,8,0.85)';
             const priceColor = flash === 'up' ? '#44cc44' : flash === 'down' ? '#ff4444' : '#fff';
+            const rvolStyle = getRvolStyle(rvols[sym]);
 
             return (
               <div key={sym} style={{ background: cardBg, border: `1px solid ${status.color}28`, borderRadius: '16px', padding: '1.25rem', backdropFilter: 'blur(12px)', transition: 'background 0.15s ease, border-color 0.4s', animation: 'fadeIn 0.3s ease' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
                   <span style={{ fontWeight: '700', fontSize: '0.95rem' }}>{sym}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <span style={{ fontSize: '0.65rem', fontWeight: '700', color: status.color, background: `${status.color}18`, padding: '3px 8px', borderRadius: '20px' }}>
                       {status.label}
                     </span>
-                    <button
-                      onClick={() => setExpandedCard(expandedCard === sym ? null : sym)}
-                      title="Alert settings"
+                    <button onClick={() => setExpandedCard(expandedCard === sym ? null : sym)}
                       style={{ background: 'none', border: 'none', color: expandedCard === sym ? '#fff' : '#444', cursor: 'pointer', fontSize: '0.85rem', lineHeight: 1, padding: '2px' }}>
                       ⚙
                     </button>
                   </div>
                 </div>
 
-                <div style={{ fontSize: '1.45rem', fontWeight: '800', fontVariantNumeric: 'tabular-nums', color: priceColor, transition: 'color 0.15s ease' }}>
-                  {p ? `$${p.price?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
-                </div>
+                {/* RVOL badge */}
+                {rvolStyle && (
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '0.6rem', fontWeight: '700', color: rvolStyle.color, background: rvolStyle.bg, border: `1px solid ${rvolStyle.border}`, padding: '2px 7px', borderRadius: '8px', marginBottom: '0.4rem' }}>
+                    {rvolStyle.icon} {rvols[sym].toFixed(1)}x VOL
+                  </div>
+                )}
 
+                <div style={{ fontSize: '1.45rem', fontWeight: '800', fontVariantNumeric: 'tabular-nums', color: priceColor, transition: 'color 0.15s ease' }}>
+                  {p ? `$${fmtPrice(p.price)}` : '—'}
+                </div>
                 <div style={{ fontSize: '0.82rem', fontWeight: '600', color: pct > 0 ? '#44cc44' : pct < 0 ? '#ff4444' : '#666', marginBottom: '0.6rem' }}>
                   {pct != null ? `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%` : '—'}
                 </div>
@@ -479,8 +565,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                       {SENSITIVITY_LEVELS.map(lvl => {
                         const active = t === lvl.value;
                         return (
-                          <button key={lvl.value}
-                            onClick={() => !savingThreshold && updateThreshold(sym, lvl.value)}
+                          <button key={lvl.value} onClick={() => !savingThreshold && updateThreshold(sym, lvl.value)}
                             style={{ flex: 1, padding: '0.45rem 0.2rem', borderRadius: '8px', border: `1px solid ${active ? lvl.color : '#2a2a2a'}`, background: active ? `${lvl.color}20` : 'transparent', color: active ? lvl.color : '#555', cursor: savingThreshold ? 'wait' : 'pointer', fontSize: '0.68rem', fontWeight: active ? '700' : '400', transition: '0.15s' }}>
                             <div>{savedCard === sym && active ? '✓ Saved' : lvl.label}</div>
                             <div style={{ fontSize: '0.6rem', opacity: 0.75 }}>{lvl.desc}</div>
@@ -495,10 +580,11 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
           })}
         </div>
 
-        <div style={{ width: '260px', flexShrink: 0 }}>
+        {/* ── ALERT FEED ── */}
+        <div style={{ width: '270px', flexShrink: 0 }}>
           <div style={{ background: 'rgba(8,8,8,0.85)', borderRadius: '16px', border: '1px solid #1a1a1a', padding: '1.25rem', backdropFilter: 'blur(12px)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ margin: 0, fontSize: '0.75rem', fontWeight: '700', color: '#555', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Alert Feed</h3>
+              <h3 style={{ margin: 0, fontSize: '0.75rem', fontWeight: '700', color: '#555', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Signal Feed</h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 {alerts.length > 0 && (
                   <span style={{ fontSize: '0.65rem', background: '#ff333322', color: '#ff3333', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>{alerts.length}</span>
@@ -508,27 +594,57 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                 )}
               </div>
             </div>
+
             {alerts.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '2rem 0.5rem' }}>
-                <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>🔍</div>
-                <p style={{ color: '#333', fontSize: '0.78rem', margin: 0, lineHeight: 1.5 }}>No alerts yet.<br />Watching {selectedAssets.length} assets.</p>
+                <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>📡</div>
+                <p style={{ color: '#333', fontSize: '0.78rem', margin: 0, lineHeight: 1.5 }}>
+                  Monitoring {selectedAssets.length} assets.<br />Signals will appear here.
+                </p>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '520px', overflowY: 'auto' }}>
-                {alerts.map((a, i) => (
-                  <div key={i} style={{ padding: '0.7rem', borderRadius: '10px', background: '#0c0c0c', border: '1px solid #1c1c1c', animation: 'fadeIn 0.3s ease' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
-                      <span style={{ fontWeight: '700', color: '#fff', fontSize: '0.82rem' }}>{a.symbol}</span>
-                      <span style={{ fontSize: '0.65rem', color: '#444' }}>{a.time}</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '560px', overflowY: 'auto' }}>
+                {alerts.map((a, i) => {
+                  const isBuying = a.type === 'buying';
+                  const isSelling = a.type === 'selling';
+                  const isSignal = isBuying || isSelling;
+                  return (
+                    <div key={i} style={{
+                      padding: '0.7rem', borderRadius: '10px', animation: 'fadeIn 0.3s ease',
+                      background: isBuying ? 'rgba(255,153,0,0.06)' : isSelling ? 'rgba(255,50,50,0.06)' : '#0c0c0c',
+                      border: isBuying ? '1px solid rgba(255,153,0,0.2)' : isSelling ? '1px solid rgba(255,68,68,0.2)' : '1px solid #1c1c1c',
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                        <span style={{ fontWeight: '700', color: '#fff', fontSize: '0.82rem' }}>
+                          {isBuying ? '🐋 ' : isSelling ? '🔴 ' : ''}{a.symbol}
+                        </span>
+                        <span style={{ fontSize: '0.65rem', color: '#444' }}>{a.time}</span>
+                      </div>
+
+                      {a.type === 'price' && (
+                        <>
+                          <div style={{ color: a.pct > 0 ? '#44cc44' : '#ff4444', fontSize: '0.8rem', fontWeight: '600' }}>
+                            {a.pct > 0 ? '▲' : '▼'} {Math.abs(a.pct).toFixed(2)}% move
+                          </div>
+                          <div style={{ color: '#444', fontSize: '0.7rem', marginTop: '2px' }}>
+                            ${fmtPrice(a.price)}
+                          </div>
+                        </>
+                      )}
+
+                      {isSignal && (
+                        <>
+                          <div style={{ color: isBuying ? '#ff9900' : '#ff4444', fontSize: '0.8rem', fontWeight: '600' }}>
+                            {isBuying ? 'Unusual Buying' : 'Unusual Selling'} · {a.rvol}x vol
+                          </div>
+                          <div style={{ color: '#555', fontSize: '0.7rem', marginTop: '2px' }}>
+                            ${fmtPrice(a.price)} · VWAP ${fmtPrice(a.vwap)}
+                          </div>
+                        </>
+                      )}
                     </div>
-                    <div style={{ color: a.pct > 0 ? '#44cc44' : '#ff4444', fontSize: '0.8rem', fontWeight: '600' }}>
-                      {a.pct > 0 ? '▲' : '▼'} {Math.abs(a.pct).toFixed(2)}% — threshold crossed
-                    </div>
-                    <div style={{ color: '#444', fontSize: '0.7rem', marginTop: '2px' }}>
-                      ${a.price?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

@@ -184,6 +184,26 @@ async def get_prices(symbols: str = ""):
         results = ex.map(_fetch_one, symbol_list)
     return {"prices": {sym: data for sym, data in results if data}}
 
+def _fetch_avg_volume_one(sym):
+    try:
+        hist = yf.Ticker(sym).history(period="20d", interval="1d")
+        volumes = hist["Volume"].dropna().tolist()
+        if not volumes:
+            return sym, None
+        return sym, round(float(sum(volumes) / len(volumes)))
+    except Exception as e:
+        print(f"Avg volume error {sym}: {e}")
+        return sym, None
+
+@app.get("/api/avg-volume")
+async def get_avg_volume(symbols: str = ""):
+    if not symbols:
+        return {"volumes": {}}
+    symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
+    with ThreadPoolExecutor(max_workers=min(len(symbol_list), 10)) as ex:
+        results = list(ex.map(_fetch_avg_volume_one, symbol_list))
+    return {"volumes": {sym: vol for sym, vol in results if vol is not None}}
+
 def _fetch_history_one(sym):
     try:
         hist = yf.Ticker(sym).history(period="5d", interval="5m")
