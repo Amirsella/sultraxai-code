@@ -110,10 +110,16 @@ export default function App() {
           <nav style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', padding: '1.5rem 5rem', alignItems: 'center' }}>
             <h1 onClick={() => { if (!['main_app', 'zone', 'settings'].includes(currentView)) setCurrentView('landing'); }} style={{ fontSize: '1.5rem', fontWeight: '800', margin: 0, cursor: ['main_app', 'zone', 'settings'].includes(currentView) ? 'default' : 'pointer' }}>SULTRAXAI</h1>
             {['main_app', 'zone', 'settings'].includes(currentView) ? (
-              <button onClick={() => setCurrentView(currentView === 'zone' ? 'main_app' : 'zone')}
-                style={{ border: `1px solid ${currentView === 'zone' ? '#4488ff' : 'rgba(68,136,255,0.35)'}`, color: '#4488ff', background: currentView === 'zone' ? 'rgba(68,136,255,0.12)' : 'rgba(68,136,255,0.05)', padding: '0.5rem 1.8rem', borderRadius: '50px', cursor: 'pointer', fontWeight: '700', fontSize: '0.82rem', letterSpacing: '0.06em' }}>
-                THE ZONE
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={() => setCurrentView('main_app')}
+                  style={{ border: `1px solid ${currentView === 'main_app' ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)'}`, color: currentView === 'main_app' ? '#fff' : '#555', background: currentView === 'main_app' ? 'rgba(255,255,255,0.06)' : 'transparent', padding: '0.5rem 1.6rem', borderRadius: '50px', cursor: 'pointer', fontWeight: '700', fontSize: '0.82rem', letterSpacing: '0.06em' }}>
+                  DASHBOARD
+                </button>
+                <button onClick={() => setCurrentView('zone')}
+                  style={{ border: `1px solid ${currentView === 'zone' ? '#4488ff' : 'rgba(68,136,255,0.3)'}`, color: '#4488ff', background: currentView === 'zone' ? 'rgba(68,136,255,0.12)' : 'rgba(68,136,255,0.04)', padding: '0.5rem 1.6rem', borderRadius: '50px', cursor: 'pointer', fontWeight: '700', fontSize: '0.82rem', letterSpacing: '0.06em' }}>
+                  THE ZONE
+                </button>
+              </div>
             ) : <div />}
             <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.9rem', alignItems: 'center', justifyContent: 'flex-end' }}>
               {['main_app', 'zone', 'settings'].includes(currentView) ? (
