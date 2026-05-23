@@ -336,10 +336,15 @@ function SignUpForm({ onRegisterSuccess, setErrorMessage, errorMessage }) {
           password: password
         })
       });
+      console.log('Response status:', res.status);
       const data = await res.json();
+      console.log('Response data:', data);
       if (res.ok) onRegisterSuccess(data.user_id, email);
       else setErrorMessage(data.detail);
-    } catch (err) { setErrorMessage("Registration connection error."); }
+    } catch (err) {
+      console.log('Fetch error:', err.message);
+      setErrorMessage("Registration connection error. Check server.");
+    }
   };
 
   return (
