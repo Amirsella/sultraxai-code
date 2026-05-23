@@ -247,13 +247,38 @@ function OnboardingStep1({ selectedAssets, toggleAsset, setOnboardingStep }) {
     <div style={{ textAlign: 'left' }}>
       <h3 style={{ fontSize: '2rem', marginBottom: '1rem' }}>Step 1: Select Assets</h3>
       <p style={{ color: '#888', marginBottom: '2rem' }}>Search and choose at least 3 assets to follow.</p>
-      <input
-        type="text" placeholder="Search any stock or crypto (e.g. TSLA, BTC)..."
-        onChange={e => handleSearch(e.target.value)}
-        style={{ width: '100%', padding: '1rem', background: '#111', border: '1px solid #333', borderRadius: '12px', color: '#fff', marginBottom: '0.5rem', outline: 'none', boxSizing: 'border-box' }}
-      />
+
+      <div style={{ position: 'relative', marginBottom: '1rem' }}>
+        <input
+          type="text"
+          placeholder="Search any stock or crypto (e.g. TSLA, BTC)..."
+          onChange={e => handleSearch(e.target.value)}
+          style={{ width: '100%', padding: '1rem', background: '#111', border: '1px solid #333', borderRadius: '12px', color: '#fff', outline: 'none', boxSizing: 'border-box' }}
+        />
+        {(searchLoading || searchResults.length > 0) && (
+          <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, background: '#111', border: '1px solid #333', borderRadius: '12px', maxHeight: '240px', overflowY: 'auto', zIndex: 100 }}>
+            {searchLoading && <div style={{ padding: '1rem', color: '#666', textAlign: 'center', fontSize: '0.85rem' }}>Searching...</div>}
+            {searchResults.map(item => (
+              <div key={item.symbol} onMouseDown={e => e.preventDefault()} onClick={() => toggleAsset(item.symbol)} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid #1a1a1a',
+                background: selectedAssets.includes(item.symbol) ? 'rgba(255,51,51,0.08)' : 'transparent',
+              }}>
+                <div>
+                  <span style={{ fontWeight: '600', color: '#fff' }}>{item.symbol}</span>
+                  <span style={{ marginLeft: '10px', color: '#666', fontSize: '0.8rem' }}>{item.name}</span>
+                </div>
+                {selectedAssets.includes(item.symbol)
+                  ? <span style={{ color: '#ff3333', fontSize: '0.8rem' }}>✓</span>
+                  : <span style={{ color: '#555', fontSize: '0.8rem' }}>+</span>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {selectedAssets.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '0.75rem' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '1rem' }}>
           {selectedAssets.map(s => (
             <div key={s} onClick={() => toggleAsset(s)} style={{ padding: '5px 12px', borderRadius: '20px', background: 'rgba(255,51,51,0.15)', border: '1px solid #ff3333', color: '#ff3333', fontSize: '0.8rem', cursor: 'pointer' }}>
               {s} ✕
@@ -261,27 +286,9 @@ function OnboardingStep1({ selectedAssets, toggleAsset, setOnboardingStep }) {
           ))}
         </div>
       )}
-      <div style={{ maxHeight: '250px', overflowY: 'auto', borderRadius: '12px', border: searchResults.length > 0 ? '1px solid #222' : 'none' }}>
-        {searchLoading && <div style={{ padding: '1rem', color: '#666', textAlign: 'center', fontSize: '0.85rem' }}>Searching...</div>}
-        {searchResults.map(item => (
-          <div key={item.symbol} onClick={() => toggleAsset(item.symbol)} style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid #1a1a1a',
-            background: selectedAssets.includes(item.symbol) ? 'rgba(255,51,51,0.08)' : 'transparent',
-            transition: '0.15s'
-          }}>
-            <div>
-              <span style={{ fontWeight: '600', color: '#fff' }}>{item.symbol}</span>
-              <span style={{ marginLeft: '10px', color: '#666', fontSize: '0.8rem' }}>{item.name}</span>
-            </div>
-            {selectedAssets.includes(item.symbol)
-              ? <span style={{ color: '#ff3333', fontSize: '0.8rem' }}>✓ Added</span>
-              : <span style={{ color: '#444', fontSize: '0.8rem' }}>+ Add</span>}
-          </div>
-        ))}
-      </div>
+
       <button disabled={selectedAssets.length < 3} onClick={() => setOnboardingStep(2)}
-        style={{ marginTop: '1.5rem', width: '100%', padding: '1rem', background: selectedAssets.length >= 3 ? '#ff3333' : '#222', border: 'none', borderRadius: '12px', color: selectedAssets.length >= 3 ? '#fff' : '#555', cursor: selectedAssets.length >= 3 ? 'pointer' : 'not-allowed', fontWeight: '600' }}>
+        style={{ marginTop: '0.5rem', width: '100%', padding: '1rem', background: selectedAssets.length >= 3 ? '#ff3333' : '#222', border: 'none', borderRadius: '12px', color: selectedAssets.length >= 3 ? '#fff' : '#555', cursor: selectedAssets.length >= 3 ? 'pointer' : 'not-allowed', fontWeight: '600' }}>
         Continue ({selectedAssets.length}/3 selected)
       </button>
     </div>
