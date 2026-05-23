@@ -170,7 +170,8 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
   const reconnectTimerRef = useRef(null);
   const reconnectCountRef = useRef(0);
   const flashTimersRef = useRef({});
-  const alertedRef = useRef(new Set());
+  const baselinePricesRef = useRef({});
+  const lastAlertTimeRef = useRef({});
   const watchlistRef = useRef(selectedAssets);
   const thresholdsRef = useRef(thresholds);
   const pricesRef = useRef(prices);
@@ -265,14 +266,17 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
           flashUpdates[sym] = newPrice > prev.price ? 'up' : 'down';
         }
 
-        // Alert if threshold crossed
+        // Alert when price moves X% from the last alert baseline
         const threshold = thresholdsRef.current[sym] ?? 2.0;
-        const windowKey = `${sym}-${Math.floor(now.getTime() / (5 * 60 * 1000))}`;
-        if (Math.abs(changePct) >= threshold && !alertedRef.current.has(windowKey)) {
-          alertedRef.current.add(windowKey);
+        const baseline = baselinePricesRef.current[sym] ?? newPrice;
+        const moveFromBaseline = baseline ? ((newPrice - baseline) / baseline) * 100 : 0;
+        const lastAlertTime = lastAlertTimeRef.current[sym] ?? 0;
+        if (Math.abs(moveFromBaseline) >= threshold && (now.getTime() - lastAlertTime) > 30000) {
+          baselinePricesRef.current[sym] = newPrice;
+          lastAlertTimeRef.current[sym] = now.getTime();
           newAlerts.push({
-            symbol: sym, pct: changePct, price: newPrice,
-            time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            symbol: sym, pct: moveFromBaseline, price: newPrice,
+            time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
             threshold,
           });
         }
@@ -316,6 +320,11 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
             if (cancelled) return;
             const initial = data.prices || {};
             pricesRef.current = initial;
+            Object.entries(initial).forEach(([sym, p]) => {
+              if (baselinePricesRef.current[sym] === undefined) {
+                baselinePricesRef.current[sym] = p.price;
+              }
+            });
             setPrices(initial);
             setLoading(false);
             connectWS(cfg.finnhub_key, selectedAssets);
