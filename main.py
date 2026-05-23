@@ -470,6 +470,51 @@ def _zone_yahoo(symbol: str) -> list:
     except Exception as e:
         print(f"Zone Yahoo error: {e}"); return []
 
+SCAN_UNIVERSE = [
+    "AAPL","MSFT","NVDA","AMZN","GOOGL","META","TSLA","AVGO","ORCL","ADBE",
+    "JPM","BAC","GS","V","MA","PYPL","COIN","HOOD","SOFI",
+    "LLY","UNH","ABBV","MRK","PFE","JNJ",
+    "XOM","CVX","OXY",
+    "HD","COST","WMT","NKE","MCD",
+    "AMD","INTC","QCOM","MU","SMCI","ARM",
+    "PLTR","MSTR","RKLB","RIVN",
+    "GME","AMC",
+    "NFLX","DIS","SPOT","SNAP","RBLX",
+    "UBER","ABNB",
+    "SPY","QQQ","IWM","ARKK",
+]
+
+def _fetch_quote(symbol: str):
+    try:
+        res = requests.get("https://finnhub.io/api/v1/quote",
+            params={"symbol": symbol, "token": FINNHUB_KEY}, timeout=5)
+        if res.status_code != 200:
+            return None
+        d = res.json()
+        price = d.get("c", 0)
+        pct = d.get("dp", 0)
+        if not price or price == 0:
+            return None
+        return {
+            "symbol": symbol,
+            "price": round(price, 2),
+            "change": round(d.get("d", 0), 2),
+            "pct": round(pct, 2),
+            "high": round(d.get("h", 0), 2),
+            "low": round(d.get("l", 0), 2),
+            "prev_close": round(d.get("pc", 0), 2),
+        }
+    except Exception:
+        return None
+
+@app.get("/api/scanner")
+async def get_scanner(threshold: float = 1.0):
+    with ThreadPoolExecutor(max_workers=15) as ex:
+        results = list(ex.map(_fetch_quote, SCAN_UNIVERSE))
+    movers = [r for r in results if r and abs(r["pct"]) >= threshold]
+    movers.sort(key=lambda x: abs(x["pct"]), reverse=True)
+    return {"movers": movers, "total_scanned": len([r for r in results if r]), "threshold": threshold}
+
 @app.get("/api/zone/all")
 async def get_zone_all(symbol: str):
     with ThreadPoolExecutor(max_workers=3) as ex:

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import MainTerminal from './components/MainTerminal';
 import TheZone from './components/TheZone';
+import Scanner from './components/Scanner';
 import AccountSettings from './components/AccountSettings';
 const API_BASE = 'http://38.180.137.122:8000';
 const MOCK_STOCKS = ["BTC/USD", "ETH/USD", "AAPL", "TSLA", "NVDA", "AMZN", "GOOGL", "MSFT", "META", "NFLX", "SOL/USD", "XRP/USD", "AMD", "PLTR", "COIN"];
@@ -139,15 +140,16 @@ export default function App() {
             <h1 className="nav-logo" onClick={() => { if (!['main_app', 'zone', 'settings'].includes(currentView)) setCurrentView('landing'); }}
               style={{ cursor: ['main_app', 'zone', 'settings'].includes(currentView) ? 'default' : 'pointer' }}>SULTRAXAI</h1>
 
-            {['main_app', 'zone', 'settings'].includes(currentView) ? (
+            {['main_app', 'zone', 'scanner', 'settings'].includes(currentView) ? (
               <div className="nav-center">
                 <button className={`nav-btn${currentView === 'main_app' ? ' active' : ''}`} onClick={() => setCurrentView('main_app')}>DASHBOARD</button>
                 <button className={`nav-btn${currentView === 'zone' ? ' active' : ''}`} onClick={() => setCurrentView('zone')}>THE ZONE</button>
+                <button className={`nav-btn${currentView === 'scanner' ? ' active' : ''}`} onClick={() => setCurrentView('scanner')}>SCANNER</button>
               </div>
             ) : <div />}
 
             <div className="nav-right">
-              {['main_app', 'zone', 'settings'].includes(currentView) ? (
+              {['main_app', 'zone', 'scanner', 'settings'].includes(currentView) ? (
                 <>
                   <button className={`nav-btn${currentView === 'settings' ? ' active' : ''}`} onClick={() => setCurrentView('settings')}
                     style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -170,6 +172,13 @@ export default function App() {
 
         {currentView === 'zone' && (
           <TheZone selectedAssets={selectedAssets} onBack={() => setCurrentView('main_app')} isNative={isNative} />
+        )}
+
+        {currentView === 'scanner' && (
+          <Scanner isNative={isNative} onNavigateToZone={(sym) => {
+            setSelectedAssets(prev => prev.includes(sym) ? prev : [...prev, sym]);
+            setCurrentView('zone');
+          }} />
         )}
 
         {currentView === 'settings' && (
