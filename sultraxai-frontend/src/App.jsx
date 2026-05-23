@@ -97,96 +97,6 @@ export default function App() {
     } catch (e) { setErrorMessage("Failed to save data."); }
   };
 
-  // --- קומפוננטות שלבי Onboarding ---
-  const OnboardingStep1 = () => (
-    <div style={{ textAlign: 'left' }}>
-      <h3 style={{ fontSize: '2rem', marginBottom: '1rem' }}>Step 1: Select Assets</h3>
-      <p style={{ color: '#888', marginBottom: '2rem' }}>Search and choose at least 3 assets to follow.</p>
-      <input
-        type="text" placeholder="Search any stock or crypto (e.g. TSLA, BTC)..."
-        value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-        style={{ width: '100%', padding: '1rem', background: '#111', border: '1px solid #333', borderRadius: '12px', color: '#fff', marginBottom: '0.5rem', outline: 'none', boxSizing: 'border-box' }}
-      />
-      {selectedAssets.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '0.75rem' }}>
-          {selectedAssets.map(s => (
-            <div key={s} onClick={() => toggleAsset(s)} style={{ padding: '5px 12px', borderRadius: '20px', background: 'rgba(255,51,51,0.15)', border: '1px solid #ff3333', color: '#ff3333', fontSize: '0.8rem', cursor: 'pointer' }}>
-              {s} ✕
-            </div>
-          ))}
-        </div>
-      )}
-      <div style={{ maxHeight: '250px', overflowY: 'auto', borderRadius: '12px', border: searchResults.length > 0 ? '1px solid #222' : 'none' }}>
-        {searchLoading && <div style={{ padding: '1rem', color: '#666', textAlign: 'center', fontSize: '0.85rem' }}>Searching...</div>}
-        {!searchLoading && searchTerm && searchResults.length === 0 && (
-          <div style={{ padding: '1rem', color: '#666', textAlign: 'center', fontSize: '0.85rem' }}>No results found</div>
-        )}
-        {!searchLoading && !searchTerm && (
-          <div style={{ padding: '0.75rem', color: '#555', textAlign: 'center', fontSize: '0.8rem' }}>Start typing to search stocks & crypto</div>
-        )}
-        {searchResults.map(item => (
-          <div key={item.symbol} onClick={() => toggleAsset(item.symbol)} style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid #1a1a1a',
-            background: selectedAssets.includes(item.symbol) ? 'rgba(255,51,51,0.08)' : 'transparent',
-            transition: '0.15s'
-          }}>
-            <div>
-              <span style={{ fontWeight: '600', color: '#fff' }}>{item.symbol}</span>
-              <span style={{ marginLeft: '10px', color: '#666', fontSize: '0.8rem' }}>{item.name}</span>
-            </div>
-            {selectedAssets.includes(item.symbol)
-              ? <span style={{ color: '#ff3333', fontSize: '0.8rem' }}>✓ Added</span>
-              : <span style={{ color: '#444', fontSize: '0.8rem' }}>+ Add</span>}
-          </div>
-        ))}
-      </div>
-      <button disabled={selectedAssets.length < 3} onClick={() => setOnboardingStep(2)}
-        style={{ marginTop: '1.5rem', width: '100%', padding: '1rem', background: selectedAssets.length >= 3 ? '#ff3333' : '#222', border: 'none', borderRadius: '12px', color: selectedAssets.length >= 3 ? '#fff' : '#555', cursor: selectedAssets.length >= 3 ? 'pointer' : 'not-allowed', fontWeight: '600' }}>
-        Continue ({selectedAssets.length}/3 selected)
-      </button>
-    </div>
-  );
-
-  const OnboardingStep2 = () => (
-    <div style={{ textAlign: 'left' }}>
-      <h3 style={{ fontSize: '2rem', marginBottom: '1rem' }}>Step 2: Volatility Thresholds</h3>
-      <p style={{ color: '#888', marginBottom: '2rem' }}>Define SD (Standard Deviation) for alerts.</p>
-      <div style={{ maxHeight: '300px', overflowY: 'auto', paddingRight: '5px' }}>
-        {selectedAssets.map(s => (
-          <div key={s} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '1rem', borderRadius: '12px', marginBottom: '10px', border: '1px solid #222' }}>
-            <span>{s}</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <span style={{ fontSize: '0.8rem', color: '#666' }}>SD:</span>
-              <input type="number" step="0.1" defaultValue="2.0" 
-                onChange={e => setAssetSettings({...assetSettings, [s]: parseFloat(e.target.value)})}
-                style={{ width: '60px', background: '#000', border: '1px solid #333', color: '#fff', padding: '5px', borderRadius: '5px', textAlign: 'center', outline: 'none' }} />
-            </div>
-          </div>
-        ))}
-      </div>
-      <button onClick={() => setOnboardingStep(3)} style={{ marginTop: '2rem', width: '100%', padding: '1rem', background: '#ff3333', border: 'none', borderRadius: '12px', color: '#fff', cursor: 'pointer', fontWeight: '600' }}>Next</button>
-    </div>
-  );
-
-  const OnboardingStep3 = () => (
-    <div style={{ textAlign: 'left' }}>
-      <h3 style={{ fontSize: '2rem', marginBottom: '1rem' }}>Step 3: Trading Profile</h3>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-        <label style={{ fontSize: '0.9rem', color: '#aaa' }}>Experience Level
-          <select value={tradingProfile.experience} onChange={e => setTradingProfile({...tradingProfile, experience: e.target.value})} style={{ width: '100%', padding: '1rem', background: '#111', color: '#fff', borderRadius: '12px', marginTop: '5px', border: '1px solid #222', outline: 'none', cursor: 'pointer' }}>
-            <option>Beginner (0-1 yrs)</option><option>Intermediate (1-3 yrs)</option><option>Professional (3+ yrs)</option>
-          </select>
-        </label>
-        <label style={{ fontSize: '0.9rem', color: '#aaa' }}>How often do you check markets?
-          <select value={tradingProfile.frequency} onChange={e => setTradingProfile({...tradingProfile, frequency: e.target.value})} style={{ width: '100%', padding: '1rem', background: '#111', color: '#fff', borderRadius: '12px', marginTop: '5px', border: '1px solid #222', outline: 'none', cursor: 'pointer' }}>
-            <option>Every Hour</option><option>Daily</option><option>Weekly</option>
-          </select>
-        </label>
-      </div>
-      <button onClick={submitOnboarding} style={{ marginTop: '2rem', width: '100%', padding: '1rem', background: '#ff3333', border: 'none', borderRadius: '12px', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>FINISH & ENTER TERMINAL</button>
-    </div>
-  );
 
   return (
     <div style={{ color: '#fff', minHeight: '100vh', background: '#020202', fontFamily: 'Inter, sans-serif', position: 'relative', overflowX: 'hidden' }}>
@@ -299,9 +209,21 @@ export default function App() {
               <div style={{ display: 'flex', gap: '5px', marginBottom: '2rem' }}>
                 {[1, 2, 3].map(i => <div key={i} style={{ flex: 1, height: '4px', background: onboardingStep >= i ? '#ff3333' : '#333', borderRadius: '2px' }} />)}
               </div>
-              {onboardingStep === 1 && <OnboardingStep1 />}
-              {onboardingStep === 2 && <OnboardingStep2 />}
-              {onboardingStep === 3 && <OnboardingStep3 />}
+              {onboardingStep === 1 && <OnboardingStep1
+                searchTerm={searchTerm} setSearchTerm={setSearchTerm}
+                searchResults={searchResults} searchLoading={searchLoading}
+                selectedAssets={selectedAssets} toggleAsset={toggleAsset}
+                setOnboardingStep={setOnboardingStep}
+              />}
+              {onboardingStep === 2 && <OnboardingStep2
+                selectedAssets={selectedAssets}
+                assetSettings={assetSettings} setAssetSettings={setAssetSettings}
+                setOnboardingStep={setOnboardingStep}
+              />}
+              {onboardingStep === 3 && <OnboardingStep3
+                tradingProfile={tradingProfile} setTradingProfile={setTradingProfile}
+                submitOnboarding={submitOnboarding}
+              />}
             </div>
           )}
 
@@ -312,6 +234,102 @@ export default function App() {
 
         </div>
       </div>
+    </div>
+  );
+}
+
+function OnboardingStep1({ searchTerm, setSearchTerm, searchResults, searchLoading, selectedAssets, toggleAsset, setOnboardingStep }) {
+  return (
+    <div style={{ textAlign: 'left' }}>
+      <h3 style={{ fontSize: '2rem', marginBottom: '1rem' }}>Step 1: Select Assets</h3>
+      <p style={{ color: '#888', marginBottom: '2rem' }}>Search and choose at least 3 assets to follow.</p>
+      <input
+        type="text" placeholder="Search any stock or crypto (e.g. TSLA, BTC)..."
+        value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+        style={{ width: '100%', padding: '1rem', background: '#111', border: '1px solid #333', borderRadius: '12px', color: '#fff', marginBottom: '0.5rem', outline: 'none', boxSizing: 'border-box' }}
+      />
+      {selectedAssets.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '0.75rem' }}>
+          {selectedAssets.map(s => (
+            <div key={s} onClick={() => toggleAsset(s)} style={{ padding: '5px 12px', borderRadius: '20px', background: 'rgba(255,51,51,0.15)', border: '1px solid #ff3333', color: '#ff3333', fontSize: '0.8rem', cursor: 'pointer' }}>
+              {s} ✕
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ maxHeight: '250px', overflowY: 'auto', borderRadius: '12px', border: searchResults.length > 0 ? '1px solid #222' : 'none' }}>
+        {searchLoading && <div style={{ padding: '1rem', color: '#666', textAlign: 'center', fontSize: '0.85rem' }}>Searching...</div>}
+        {!searchLoading && searchTerm && searchResults.length === 0 && (
+          <div style={{ padding: '1rem', color: '#666', textAlign: 'center', fontSize: '0.85rem' }}>No results found</div>
+        )}
+        {!searchLoading && !searchTerm && (
+          <div style={{ padding: '0.75rem', color: '#555', textAlign: 'center', fontSize: '0.8rem' }}>Start typing to search stocks & crypto</div>
+        )}
+        {searchResults.map(item => (
+          <div key={item.symbol} onClick={() => toggleAsset(item.symbol)} style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '0.75rem 1rem', cursor: 'pointer', borderBottom: '1px solid #1a1a1a',
+            background: selectedAssets.includes(item.symbol) ? 'rgba(255,51,51,0.08)' : 'transparent',
+            transition: '0.15s'
+          }}>
+            <div>
+              <span style={{ fontWeight: '600', color: '#fff' }}>{item.symbol}</span>
+              <span style={{ marginLeft: '10px', color: '#666', fontSize: '0.8rem' }}>{item.name}</span>
+            </div>
+            {selectedAssets.includes(item.symbol)
+              ? <span style={{ color: '#ff3333', fontSize: '0.8rem' }}>✓ Added</span>
+              : <span style={{ color: '#444', fontSize: '0.8rem' }}>+ Add</span>}
+          </div>
+        ))}
+      </div>
+      <button disabled={selectedAssets.length < 3} onClick={() => setOnboardingStep(2)}
+        style={{ marginTop: '1.5rem', width: '100%', padding: '1rem', background: selectedAssets.length >= 3 ? '#ff3333' : '#222', border: 'none', borderRadius: '12px', color: selectedAssets.length >= 3 ? '#fff' : '#555', cursor: selectedAssets.length >= 3 ? 'pointer' : 'not-allowed', fontWeight: '600' }}>
+        Continue ({selectedAssets.length}/3 selected)
+      </button>
+    </div>
+  );
+}
+
+function OnboardingStep2({ selectedAssets, assetSettings, setAssetSettings, setOnboardingStep }) {
+  return (
+    <div style={{ textAlign: 'left' }}>
+      <h3 style={{ fontSize: '2rem', marginBottom: '1rem' }}>Step 2: Volatility Thresholds</h3>
+      <p style={{ color: '#888', marginBottom: '2rem' }}>Define SD (Standard Deviation) for alerts.</p>
+      <div style={{ maxHeight: '300px', overflowY: 'auto', paddingRight: '5px' }}>
+        {selectedAssets.map(s => (
+          <div key={s} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#111', padding: '1rem', borderRadius: '12px', marginBottom: '10px', border: '1px solid #222' }}>
+            <span>{s}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '0.8rem', color: '#666' }}>SD:</span>
+              <input type="number" step="0.1" defaultValue="2.0"
+                onChange={e => setAssetSettings({ ...assetSettings, [s]: parseFloat(e.target.value) })}
+                style={{ width: '60px', background: '#000', border: '1px solid #333', color: '#fff', padding: '5px', borderRadius: '5px', textAlign: 'center', outline: 'none' }} />
+            </div>
+          </div>
+        ))}
+      </div>
+      <button onClick={() => setOnboardingStep(3)} style={{ marginTop: '2rem', width: '100%', padding: '1rem', background: '#ff3333', border: 'none', borderRadius: '12px', color: '#fff', cursor: 'pointer', fontWeight: '600' }}>Next</button>
+    </div>
+  );
+}
+
+function OnboardingStep3({ tradingProfile, setTradingProfile, submitOnboarding }) {
+  return (
+    <div style={{ textAlign: 'left' }}>
+      <h3 style={{ fontSize: '2rem', marginBottom: '1rem' }}>Step 3: Trading Profile</h3>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <label style={{ fontSize: '0.9rem', color: '#aaa' }}>Experience Level
+          <select value={tradingProfile.experience} onChange={e => setTradingProfile({ ...tradingProfile, experience: e.target.value })} style={{ width: '100%', padding: '1rem', background: '#111', color: '#fff', borderRadius: '12px', marginTop: '5px', border: '1px solid #222', outline: 'none', cursor: 'pointer' }}>
+            <option>Beginner (0-1 yrs)</option><option>Intermediate (1-3 yrs)</option><option>Professional (3+ yrs)</option>
+          </select>
+        </label>
+        <label style={{ fontSize: '0.9rem', color: '#aaa' }}>How often do you check markets?
+          <select value={tradingProfile.frequency} onChange={e => setTradingProfile({ ...tradingProfile, frequency: e.target.value })} style={{ width: '100%', padding: '1rem', background: '#111', color: '#fff', borderRadius: '12px', marginTop: '5px', border: '1px solid #222', outline: 'none', cursor: 'pointer' }}>
+            <option>Every Hour</option><option>Daily</option><option>Weekly</option>
+          </select>
+        </label>
+      </div>
+      <button onClick={submitOnboarding} style={{ marginTop: '2rem', width: '100%', padding: '1rem', background: '#ff3333', border: 'none', borderRadius: '12px', color: '#fff', cursor: 'pointer', fontWeight: 'bold' }}>FINISH & ENTER TERMINAL</button>
     </div>
   );
 }
