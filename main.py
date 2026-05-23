@@ -188,6 +188,26 @@ async def get_user_assets(user_id: int):
     conn.close()
     return {"assets": [{"symbol": r[0], "threshold": r[1]} for r in rows]}
 
+class UpdateAssets(BaseModel):
+    user_id: int
+    assets: list
+
+@app.post("/api/update-assets")
+async def update_assets(data: UpdateAssets):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM user_assets WHERE user_id = ?", (data.user_id,))
+        for asset in data.assets:
+            cursor.execute("INSERT INTO user_assets (user_id, symbol, threshold) VALUES (?, ?, ?)",
+                           (data.user_id, asset['symbol'], asset['threshold']))
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+    conn.close()
+    return {"status": "success"}
+
 @app.post("/api/login")
 async def login(user: UserLogin):
     conn = sqlite3.connect(DB_PATH)
