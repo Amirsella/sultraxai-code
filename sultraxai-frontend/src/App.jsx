@@ -113,6 +113,12 @@ export default function App() {
           .nav-btn.active { border-color: #444; color: #ddd; background: rgba(255,255,255,0.04); }
           .nav-btn.danger { border-color: #ff333340; color: #ff4444; }
           .nav-btn.danger:hover { border-color: #ff3333; }
+          @keyframes tickerScroll { 0% { transform: translateX(0) } 100% { transform: translateX(-33.333%) } }
+          @keyframes fadeUp { from { opacity: 0; transform: translateY(20px) } to { opacity: 1; transform: translateY(0) } }
+          .land-card { background: #080808; border: 1px solid #111; border-radius: 16px; padding: 28px 24px; transition: border-color 0.2s; }
+          .land-card:hover { border-color: #1e1e1e; }
+          @media (max-width: 800px) { .land-features { grid-template-columns: 1fr !important; } .land-hero h1 { font-size: 2.8rem !important; } }
+          @media (max-width: 540px) { .land-hero h1 { font-size: 2.2rem !important; } .land-cta { flex-direction: column; align-items: center; } }
           .nav-logo { font-size: 1.3rem; font-weight: 800; margin: 0; letter-spacing: 0.04em; white-space: nowrap; }
           .nav-center { display: flex; gap: 6px; }
           .nav-right { display: flex; gap: 6px; align-items: center; }
@@ -170,36 +176,23 @@ export default function App() {
           <AccountSettings userId={userId} onBack={() => setCurrentView('main_app')} onSignOut={handleSignOut} isNative={isNative} onProfileUpdate={setFirstName} />
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '2rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: currentView === 'landing' ? 'flex-start' : 'center', padding: currentView === 'landing' ? '0' : '2rem' }}>
 
           {currentView === 'landing' && (
             isNative ? (
               <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', background: '#020202', overflow: 'hidden' }}>
-
-                {/* Top: logo + name */}
                 <div style={{ paddingTop: '80px', textAlign: 'center', position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                   <img src="./sword-logo.png" alt="SultraxAI" style={{ width: '180px', height: '180px', objectFit: 'contain', marginBottom: '8px' }} />
                   <h1 style={{ fontSize: '2.4rem', fontWeight: '900', letterSpacing: '0.06em', margin: 0, color: '#fff' }}>SULTRAXAI</h1>
                   <p style={{ color: '#444', fontSize: '0.82rem', margin: '8px 0 0', letterSpacing: '0.06em' }}>Real-time market intelligence</p>
                 </div>
-
-                {/* Bottom: buttons */}
                 <div style={{ width: '100%', padding: '0 28px 56px', display: 'flex', flexDirection: 'column', gap: '12px', position: 'relative', zIndex: 1 }}>
-                  <button onClick={() => setCurrentView('signin')}
-                    style={{ width: '100%', padding: '1rem', borderRadius: '14px', background: '#ff3333', border: 'none', color: '#fff', fontSize: '1rem', fontWeight: '700', cursor: 'pointer', letterSpacing: '0.05em', boxShadow: '0 4px 24px rgba(255,51,51,0.35)' }}>
-                    LOG IN
-                  </button>
-                  <button onClick={() => setCurrentView('signup')}
-                    style={{ width: '100%', padding: '1rem', borderRadius: '14px', background: 'rgba(255,255,255,0.04)', border: '1px solid #2a2a2a', color: '#888', fontSize: '1rem', fontWeight: '600', cursor: 'pointer', letterSpacing: '0.05em' }}>
-                    CREATE ACCOUNT
-                  </button>
+                  <button onClick={() => setCurrentView('signin')} style={{ width: '100%', padding: '1rem', borderRadius: '14px', background: '#ff3333', border: 'none', color: '#fff', fontSize: '1rem', fontWeight: '700', cursor: 'pointer', letterSpacing: '0.05em', boxShadow: '0 4px 24px rgba(255,51,51,0.35)' }}>LOG IN</button>
+                  <button onClick={() => setCurrentView('signup')} style={{ width: '100%', padding: '1rem', borderRadius: '14px', background: 'rgba(255,255,255,0.04)', border: '1px solid #2a2a2a', color: '#888', fontSize: '1rem', fontWeight: '600', cursor: 'pointer', letterSpacing: '0.05em' }}>CREATE ACCOUNT</button>
                 </div>
               </div>
             ) : (
-              <div style={{ textAlign: 'center', marginTop: '5rem' }}>
-                <h2 style={{ fontSize: '5rem', fontWeight: '900', background: 'linear-gradient(to bottom, #fff, #444)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>ALPHA FROM <br/> SOCIAL VOLATILITY.</h2>
-                <button onClick={() => setCurrentView('signup')} style={{ background: '#ff3333', padding: '1rem 3rem', borderRadius: '50px', border: 'none', color: '#fff', marginTop: '2rem', cursor: 'pointer', fontWeight: '600' }}>REQUEST ACCESS</button>
-              </div>
+              <LandingPage onSignUp={() => setCurrentView('signup')} onSignIn={() => setCurrentView('signin')} />
             )
           )}
 
@@ -749,6 +742,108 @@ function ResetPasswordForm({ isNative, token, onSuccess }) {
     </div>
   ) : (
     <div style={{ width: '400px', background: 'rgba(5,5,5,0.7)', padding: '2.5rem', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)', backdropFilter: 'blur(10px)' }}>{content}</div>
+  );
+}
+
+const TICKER_DATA = [
+  { sym: 'AAPL',    pct: '+0.59', up: true  },
+  { sym: 'TSLA',    pct: '-1.33', up: false },
+  { sym: 'NVDA',    pct: '+2.10', up: true  },
+  { sym: 'BTC/USD', pct: '+1.24', up: true  },
+  { sym: 'ETH/USD', pct: '-0.87', up: false },
+  { sym: 'AMZN',    pct: '+1.64', up: true  },
+  { sym: 'MSFT',    pct: '-0.53', up: false },
+  { sym: 'META',    pct: '+1.73', up: true  },
+  { sym: 'GOOGL',   pct: '+1.25', up: true  },
+  { sym: 'AMD',     pct: '-1.98', up: false },
+  { sym: 'PLTR',    pct: '+3.76', up: true  },
+  { sym: 'SOL/USD', pct: '+3.58', up: true  },
+  { sym: 'COIN',    pct: '-2.11', up: false },
+  { sym: 'NFLX',    pct: '+0.94', up: true  },
+  { sym: 'XRP/USD', pct: '+4.20', up: true  },
+];
+
+const FEATURES = [
+  {
+    tag: 'DASHBOARD',
+    headline: 'Live Price Terminal',
+    body: 'Real-time price feeds across stocks and crypto. Instant alerts when any asset crosses your threshold.',
+    accent: '#4488ff',
+    bg: 'rgba(68,136,255,0.06)',
+  },
+  {
+    tag: 'THE ZONE',
+    headline: 'Unified Intel Feed',
+    body: 'Breaking news, social posts, and analyst takes — merged into one feed, tagged by source, sorted by time.',
+    accent: '#ff3333',
+    bg: 'rgba(255,51,51,0.06)',
+  },
+  {
+    tag: 'SMART ALERTS',
+    headline: 'Custom Sensitivity',
+    body: 'Set individual alert thresholds per asset. Filter out noise. Only get notified when it actually matters.',
+    accent: '#44cc44',
+    bg: 'rgba(68,204,68,0.06)',
+  },
+];
+
+function LandingPage({ onSignUp, onSignIn }) {
+  return (
+    <div style={{ width: '100%', animation: 'fadeUp 0.5s ease both' }}>
+
+      {/* Scrolling ticker tape */}
+      <div style={{ overflow: 'hidden', borderBottom: '1px solid #0d0d0d', padding: '9px 0', marginBottom: '5rem' }}>
+        <div style={{ display: 'flex', width: 'max-content', animation: 'tickerScroll 40s linear infinite' }}>
+          {[...TICKER_DATA, ...TICKER_DATA, ...TICKER_DATA].map((t, i) => (
+            <span key={i} style={{ marginRight: '2.5rem', fontSize: '0.68rem', fontWeight: '700', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
+              <span style={{ color: '#2a2a2a' }}>{t.sym}</span>
+              <span style={{ color: t.up ? '#44cc44' : '#ff4444', marginLeft: '6px' }}>{t.up ? '▲' : '▼'} {t.pct}%</span>
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Hero */}
+      <div className="land-hero" style={{ textAlign: 'center', padding: '0 2rem', marginBottom: '5rem' }}>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.6rem', fontWeight: '800', letterSpacing: '0.14em', color: '#ff3333', background: 'rgba(255,51,51,0.07)', border: '1px solid rgba(255,51,51,0.18)', padding: '4px 14px', borderRadius: '20px', marginBottom: '2rem' }}>
+          <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#ff3333', boxShadow: '0 0 6px #ff3333', display: 'inline-block' }} />
+          REAL-TIME MARKET INTELLIGENCE
+        </div>
+
+        <h1 style={{ fontSize: '5.5rem', fontWeight: '900', lineHeight: 1.0, margin: '0 0 1.5rem', background: 'linear-gradient(to bottom, #ffffff 30%, #333333 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.03em' }}>
+          MOVE BEFORE<br />THE MARKET DOES.
+        </h1>
+
+        <p style={{ color: '#3a3a3a', fontSize: '1.05rem', maxWidth: '500px', margin: '0 auto 2.5rem', lineHeight: 1.75 }}>
+          Track stocks and crypto in real-time. Monitor breaking news, social sentiment, and price alerts — all in one dark terminal built for traders.
+        </p>
+
+        <div className="land-cta" style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+          <button onClick={onSignUp} style={{ background: '#ff3333', border: 'none', color: '#fff', padding: '0.85rem 2.4rem', borderRadius: '10px', fontWeight: '700', fontSize: '0.82rem', letterSpacing: '0.07em', cursor: 'pointer', boxShadow: '0 4px 28px rgba(255,51,51,0.3)', fontFamily: 'inherit' }}>
+            GET STARTED →
+          </button>
+          <button onClick={onSignIn} style={{ background: 'transparent', border: '1px solid #1e1e1e', color: '#555', padding: '0.85rem 2.4rem', borderRadius: '10px', fontWeight: '700', fontSize: '0.82rem', letterSpacing: '0.07em', cursor: 'pointer', fontFamily: 'inherit' }}>
+            SIGN IN
+          </button>
+        </div>
+      </div>
+
+      {/* Feature cards */}
+      <div className="land-features" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '14px', maxWidth: '920px', margin: '0 auto 6rem', padding: '0 2rem' }}>
+        {FEATURES.map((f, i) => (
+          <div key={i} className="land-card" style={{ background: f.bg, borderColor: f.accent + '18' }}>
+            <div style={{ fontSize: '0.58rem', fontWeight: '800', letterSpacing: '0.12em', color: f.accent, marginBottom: '12px', background: f.bg, border: `1px solid ${f.accent}30`, display: 'inline-block', padding: '3px 10px', borderRadius: '5px' }}>{f.tag}</div>
+            <div style={{ fontSize: '0.95rem', fontWeight: '800', color: '#ccc', marginBottom: '10px', letterSpacing: '-0.01em' }}>{f.headline}</div>
+            <p style={{ color: '#2e2e2e', fontSize: '0.8rem', lineHeight: 1.7, margin: 0 }}>{f.body}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Bottom divider */}
+      <div style={{ textAlign: 'center', paddingBottom: '4rem' }}>
+        <p style={{ color: '#161616', fontSize: '0.7rem', letterSpacing: '0.1em', fontWeight: '600' }}>SULTRAXAI · MARKET INTELLIGENCE PLATFORM</p>
+      </div>
+    </div>
   );
 }
 
