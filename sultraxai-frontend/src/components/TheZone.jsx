@@ -108,7 +108,7 @@ export default function TheZone({ selectedAssets, onBack, isNative }) {
     return () => clearInterval(id);
   }, [activeAsset]);
 
-  const { news, stocktwits, reddit, sentiment } = data;
+  const { news = [], stocktwits = [], reddit = [], sentiment } = data;
   const bull = sentiment?.pct ?? 50;
   const bear = 100 - bull;
   const hasSentiment = (sentiment?.bull ?? 0) + (sentiment?.bear ?? 0) > 0;
