@@ -947,19 +947,20 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', maxHeight: '320px', overflowY: 'auto' }}>
-                    {signals.map((a, i) => {
+                    {signals.map((a) => {
                       const isBuy = a.dir === 'buy';
                       const score = a.score || 0;
                       const accent = isBuy ? '#ff9900' : '#ff4444';
-                      const isExpanded = expandedSignal === i;
+                      const isExpanded = expandedSignal === a.id;
+                      const isNew = signals.indexOf(a) === 0;
                       const confirmIcon = a.confirmed === null ? '⏳' : a.confirmed ? '✓' : '↔';
                       const confirmColor = a.confirmed === null ? '#333' : a.confirmed ? '#44cc44' : '#444';
 
                       return (
-                        <div key={i} style={{ borderRadius: '10px', overflow: 'hidden', border: `1px solid ${isExpanded ? accent + '40' : '#1a1a1a'}`, animation: i === 0 ? 'fadeIn 0.3s ease' : 'none', background: isExpanded ? (isBuy ? 'rgba(255,153,0,0.05)' : 'rgba(255,50,50,0.05)') : 'transparent', transition: 'border-color 0.15s, background 0.15s' }}>
+                        <div key={a.id} style={{ borderRadius: '10px', overflow: 'hidden', border: `1px solid ${isExpanded ? accent + '40' : '#1a1a1a'}`, animation: isNew ? 'fadeIn 0.3s ease' : 'none', background: isExpanded ? (isBuy ? 'rgba(255,153,0,0.05)' : 'rgba(255,50,50,0.05)') : 'transparent', transition: 'border-color 0.15s, background 0.15s' }}>
 
                           {/* Compact row */}
-                          <div onClick={() => setExpandedSignal(isExpanded ? null : i)}
+                          <div onClick={() => setExpandedSignal(isExpanded ? null : a.id)}
                             style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto auto', alignItems: 'center', gap: '8px', padding: '0.5rem 0.7rem', cursor: 'pointer', userSelect: 'none' }}>
 
                             {/* Symbol */}
