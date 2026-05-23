@@ -5,7 +5,12 @@ const MOCK_STOCKS = ["BTC/USD", "ETH/USD", "AAPL", "TSLA", "NVDA", "AMZN", "GOOG
 
 export default function App() {
   // טעינת מצב ראשוני מה-LocalStorage כדי למנוע ניתוק בריפרש
-  const [currentView, setCurrentView] = useState(() => localStorage.getItem('currentView') || 'landing');
+  const [currentView, setCurrentView] = useState(() => {
+    const saved = localStorage.getItem('currentView');
+    const userId = localStorage.getItem('userId');
+    if ((saved === 'main_app' || saved === 'onboarding') && userId) return saved;
+    return 'landing';
+  });
   const [userId, setUserId] = useState(() => localStorage.getItem('userId') || null);
   const [selectedAssets, setSelectedAssets] = useState(() => {
     const saved = localStorage.getItem('selectedAssets');
