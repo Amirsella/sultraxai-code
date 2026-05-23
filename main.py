@@ -2,7 +2,7 @@ import sqlite3
 import hashlib
 import os
 import random
-import resend
+import requests
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
@@ -10,22 +10,27 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 import uvicorn
 
-RESEND_API_KEY = "YOUR_RESEND_API_KEY"
-SENDER_EMAIL = "SultraxAI <onboarding@resend.dev>"
+BREVO_API_KEY = "YOUR_BREVO_API_KEY"
 
 verification_codes = {}
 
 def send_verification_email(to_email: str, code: str) -> bool:
     try:
-        resend.api_key = RESEND_API_KEY
-        resend.Emails.send({
-            "from": SENDER_EMAIL,
-            "to": [to_email],
-            "subject": "SultraxAI - Verification Code",
-            "html": f"<p>Your SultraxAI verification code is: <strong style='font-size:24px;letter-spacing:4px'>{code}</strong></p><p>Valid for 15 minutes.</p>"
-        })
-        print(f"Verification email sent to {to_email}")
-        return True
+        res = requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={"api-key": BREVO_API_KEY, "Content-Type": "application/json"},
+            json={
+                "sender": {"name": "SultraxAI", "email": "sultraxai@gmail.com"},
+                "to": [{"email": to_email}],
+                "subject": "SultraxAI - Verification Code",
+                "htmlContent": f"<p>Your SultraxAI verification code is:</p><h2 style='letter-spacing:6px'>{code}</h2><p>Valid for 15 minutes.</p>"
+            }
+        )
+        if res.status_code == 201:
+            print(f"Email sent to {to_email}")
+            return True
+        print(f"Email error: {res.status_code} - {res.text}")
+        return False
     except Exception as e:
         print(f"Email error: {e}")
         return False
