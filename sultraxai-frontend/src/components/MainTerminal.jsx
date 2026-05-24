@@ -433,9 +433,8 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
   const [customValues, setCustomValues] = useState({});
   const [expandedSignal, setExpandedSignal] = useState(null);
   const [activeTab, setActiveTab] = useState('assets');
-  const [newSignalId, setNewSignalId] = useState(null);
-  const newSignalTimerRef = useRef(null);
   const [flashOn, setFlashOn] = useState(false);
+  const mountTimeRef = useRef(Date.now());
   const [chartSym, setChartSym] = useState(null);
   const chartSymRef = useRef(null);
   const chartCallbackRef = useRef(null);
@@ -464,18 +463,16 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
   }, [alerts]);
 
   useEffect(() => {
-    const newest = alerts.find(a => a.type === 'signal');
-    if (!newest || newest.id === newSignalId) return;
-    clearTimeout(newSignalTimerRef.current);
-    setNewSignalId(newest.id);
-    newSignalTimerRef.current = setTimeout(() => setNewSignalId(null), 60000);
+    const id = setInterval(() => {
+      const hasNew = alerts.some(a => {
+        const ts = parseInt((a.id || '').split('-').pop());
+        return !isNaN(ts) && ts >= mountTimeRef.current && Date.now() - ts < 60000;
+      });
+      if (hasNew) setFlashOn(v => !v);
+      else setFlashOn(false);
+    }, 500);
+    return () => clearInterval(id);
   }, [alerts]);
-
-  useEffect(() => {
-    if (!newSignalId) return;
-    const id = setInterval(() => setFlashOn(v => !v), 500);
-    return () => { clearInterval(id); setFlashOn(false); };
-  }, [newSignalId]);
 
   useEffect(() => {
     selectedAssets.forEach(sym => {
@@ -987,7 +984,8 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                     const confirmIcon = a.confirmed === null ? '⏳' : a.confirmed ? '✓' : '↔';
                     const confirmColor = a.confirmed === null ? '#555' : a.confirmed ? '#44cc44' : '#666';
                     const label = a.strengthLabel || (score >= 80 ? (isBuy ? 'STRONG BUY' : 'STRONG SELL') : score >= 60 ? (isBuy ? 'BUY' : 'SELL') : (isBuy ? 'WEAK BUY' : 'WEAK SELL'));
-                    const isFlashing = a.id === newSignalId && !isExpanded;
+                    const sigTs = parseInt((a.id || '').split('-').pop());
+                    const isFlashing = !isExpanded && !isNaN(sigTs) && sigTs >= mountTimeRef.current && Date.now() - sigTs < 60000;
                     return (
                       <div key={rowKey} onClick={() => setExpandedSignal(isExpanded ? null : rowKey)}
                         style={{ padding: '12px 14px', borderRadius: '12px', background: isExpanded ? (isBuy ? 'rgba(255,153,0,0.07)' : 'rgba(255,68,68,0.07)') : (isFlashing && flashOn ? 'rgba(255,51,51,0.07)' : '#0d0d0d'), border: `1px solid ${isFlashing && flashOn ? '#ff3333' : isExpanded ? accent + '44' : '#1a1a1a'}`, boxShadow: isFlashing && flashOn ? '0 0 10px rgba(255,51,51,0.4)' : 'none', cursor: 'pointer', animation: i === 0 && !isFlashing ? 'fadeIn 0.3s ease' : 'none' }}>
@@ -1256,7 +1254,8 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                   const confirmIcon = a.confirmed === null ? '⏳' : a.confirmed ? '✓' : '↔';
                   const confirmColor = a.confirmed === null ? '#555' : a.confirmed ? '#44cc44' : '#666';
                   const label = a.strengthLabel || (score >= 80 ? (isBuy ? 'STRONG BUY' : 'STRONG SELL') : score >= 60 ? (isBuy ? 'BUY' : 'SELL') : (isBuy ? 'WEAK BUY' : 'WEAK SELL'));
-                  const isFlashing = a.id === newSignalId && !isExpanded;
+                  const sigTs = parseInt((a.id || '').split('-').pop());
+                  const isFlashing = !isExpanded && !isNaN(sigTs) && sigTs >= mountTimeRef.current && Date.now() - sigTs < 60000;
                   return (
                     <div key={rowKey} onClick={() => setExpandedSignal(isExpanded ? null : rowKey)}
                       style={{ padding: '0.65rem 0.75rem', borderRadius: '10px', background: isExpanded ? (isBuy ? 'rgba(255,153,0,0.07)' : 'rgba(255,68,68,0.07)') : (isFlashing && flashOn ? 'rgba(255,51,51,0.07)' : '#111'), border: `1px solid ${isFlashing && flashOn ? '#ff3333' : isExpanded ? accent + '44' : '#1e1e1e'}`, boxShadow: isFlashing && flashOn ? '0 0 10px rgba(255,51,51,0.4)' : 'none', cursor: 'pointer', animation: i === 0 && !isFlashing ? 'fadeIn 0.3s ease' : 'none' }}>
