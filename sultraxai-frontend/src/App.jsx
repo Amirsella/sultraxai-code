@@ -1,8 +1,8 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, lazy, Suspense } from 'react';
 import MainTerminal from './components/MainTerminal';
-import TheZone from './components/TheZone';
-import Scanner from './components/Scanner';
-import AccountSettings from './components/AccountSettings';
+const TheZone        = lazy(() => import('./components/TheZone'));
+const Scanner        = lazy(() => import('./components/Scanner'));
+const AccountSettings = lazy(() => import('./components/AccountSettings'));
 import SupportBot from './components/SupportBot';
 const API_BASE = 'http://38.180.137.122:8000';
 const MOCK_STOCKS = ["BTC/USD", "ETH/USD", "AAPL", "TSLA", "NVDA", "AMZN", "GOOGL", "MSFT", "META", "NFLX", "SOL/USD", "XRP/USD", "AMD", "PLTR", "COIN"];
@@ -194,6 +194,7 @@ export default function App() {
           </nav>
         )}
 
+        <Suspense fallback={null}>
         {currentView === 'zone' && (
           <TheZone selectedAssets={selectedAssets} onBack={() => setCurrentView('main_app')} isNative={isNative} />
         )}
@@ -208,6 +209,7 @@ export default function App() {
         {currentView === 'settings' && (
           <AccountSettings userId={userId} onBack={() => setCurrentView('main_app')} onSignOut={handleSignOut} isNative={isNative} onProfileUpdate={setFirstName} />
         )}
+        </Suspense>
 
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: currentView === 'landing' ? 'flex-start' : 'center', padding: currentView === 'landing' ? '0' : '2rem' }}>
 

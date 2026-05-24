@@ -14,6 +14,7 @@ import asyncio
 from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
@@ -70,6 +71,7 @@ app = FastAPI()
 # נתיב קבוע לבסיס הנתונים
 DB_PATH = "/root/sultraxai/sultraxai-frontend/users.db"
 
+app.add_middleware(GZipMiddleware, minimum_size=500)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -702,7 +704,14 @@ async def login(user: UserLogin):
     
 dist_path = "/root/sultraxai/sultraxai-frontend/dist"
 if os.path.exists(dist_path):
-    app.mount("/assets", StaticFiles(directory=f"{dist_path}/assets"), name="assets")
+    app.mount("/assets", StaticFiles(directory=f"{dist_path}/assets", html=False), name="assets")
+
+    @app.middleware("http")
+    async def add_cache_headers(request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/assets/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
     @app.get("/{catchall:path}")
     async def serve_react(catchall: str):
         if catchall.startswith("api"): 
