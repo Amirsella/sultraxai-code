@@ -25,9 +25,14 @@ function TypingDots() {
 
 export default function SupportBot() {
   const [open, setOpen]       = useState(false);
-  const [messages, setMessages] = useState([
-    { role: 'assistant', content: "Hi! I'm the SultraxAI assistant.\nAsk me anything about the platform." }
-  ]);
+  const [messages, setMessages] = useState(() => {
+    try {
+      const saved = localStorage.getItem('supportChat');
+      return saved ? JSON.parse(saved) : [{ role: 'assistant', content: "Hi! I'm the SultraxAI assistant.\nAsk me anything about the platform." }];
+    } catch {
+      return [{ role: 'assistant', content: "Hi! I'm the SultraxAI assistant.\nAsk me anything about the platform." }];
+    }
+  });
   const [input, setInput]     = useState('');
   const [loading, setLoading] = useState(false);
   const [unread, setUnread]   = useState(0);
@@ -37,6 +42,10 @@ export default function SupportBot() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
+
+  useEffect(() => {
+    localStorage.setItem('supportChat', JSON.stringify(messages.slice(-30)));
+  }, [messages]);
 
   useEffect(() => {
     if (open) {

@@ -21,7 +21,7 @@ import uvicorn
 
 BREVO_API_KEY = "YOUR_BREVO_API_KEY"
 FINNHUB_KEY = "FINNHUB_API_KEY"
-ANTHROPIC_KEY = "YOUR_ANTHROPIC_KEY"
+GROQ_KEY = "YOUR_GROQ_KEY"
 APP_URL = "http://38.180.137.122:8000"
 
 verification_codes = {}
@@ -518,6 +518,7 @@ _SCAN_CRYPTO = {
 SCAN_UNIVERSE = _SCAN_STOCKS + list(_SCAN_CRYPTO.keys())
 
 _scanner_cache = {"movers": [], "scanned": 0, "updated": None}
+_zone_cache = {}  # {symbol: {"news": [], "stocktwits": [], "yahoo": [], "updated": datetime}}
 
 def _fetch_quote(symbol: str):
     try:
@@ -561,9 +562,32 @@ async def _scanner_background_loop():
             print(f"Scanner background error: {e}")
         await asyncio.sleep(60)
 
+async def _zone_background_loop():
+    while True:
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            rows = conn.execute("SELECT DISTINCT symbol FROM user_assets").fetchall()
+            conn.close()
+            symbols = [r[0] for r in rows]
+            for sym in symbols:
+                try:
+                    with ThreadPoolExecutor(max_workers=3) as ex:
+                        nf = ex.submit(_zone_news, sym)
+                        sf = ex.submit(_zone_stocktwits, sym)
+                        yf = ex.submit(_zone_yahoo, sym)
+                        news, twits, yahoo = nf.result(), sf.result(), yf.result()
+                    _zone_cache[sym] = {"news": news, "stocktwits": twits, "yahoo": yahoo, "updated": datetime.now()}
+                except Exception as e:
+                    print(f"Zone cache error for {sym}: {e}")
+                await asyncio.sleep(2)
+        except Exception as e:
+            print(f"Zone background error: {e}")
+        await asyncio.sleep(10 * 60)
+
 @app.on_event("startup")
 async def start_scanner_loop():
     asyncio.create_task(_scanner_background_loop())
+    asyncio.create_task(_zone_background_loop())
 
 @app.get("/api/scanner")
 async def get_scanner(threshold: float = 1.0):
@@ -601,38 +625,42 @@ class SupportRequest(BaseModel):
 
 @app.post("/api/support/chat")
 async def support_chat(req: SupportRequest):
-    if not ANTHROPIC_KEY or ANTHROPIC_KEY == "YOUR_ANTHROPIC_KEY":
+    if not GROQ_KEY or GROQ_KEY.startswith("YOUR_"):
         raise HTTPException(status_code=503, detail="Support not configured")
     history = req.messages[-12:]
+    groq_messages = [{"role": "system", "content": _SUPPORT_SYSTEM}] + history
     try:
         res = requests.post(
-            "https://api.anthropic.com/v1/messages",
+            "https://api.groq.com/openai/v1/chat/completions",
             headers={
-                "x-api-key": ANTHROPIC_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
+                "Authorization": f"Bearer {GROQ_KEY}",
+                "Content-Type": "application/json",
             },
             json={
-                "model": "claude-haiku-4-5-20251001",
+                "model": "llama-3.1-8b-instant",
                 "max_tokens": 400,
-                "system": _SUPPORT_SYSTEM,
-                "messages": history,
+                "messages": groq_messages,
             },
             timeout=15,
         )
         if res.status_code != 200:
             raise HTTPException(status_code=502, detail="AI service error")
-        return {"reply": res.json()["content"][0]["text"]}
+        return {"reply": res.json()["choices"][0]["message"]["content"]}
     except requests.Timeout:
         raise HTTPException(status_code=504, detail="Request timed out")
 
 @app.get("/api/zone/all")
 async def get_zone_all(symbol: str):
-    with ThreadPoolExecutor(max_workers=3) as ex:
-        nf = ex.submit(_zone_news, symbol)
-        sf = ex.submit(_zone_stocktwits, symbol)
-        yf_fut = ex.submit(_zone_yahoo, symbol)
-        news, twits, yahoo = nf.result(), sf.result(), yf_fut.result()
+    if symbol in _zone_cache:
+        cached = _zone_cache[symbol]
+        news, twits, yahoo = cached["news"], cached["stocktwits"], cached["yahoo"]
+    else:
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            nf = ex.submit(_zone_news, symbol)
+            sf = ex.submit(_zone_stocktwits, symbol)
+            yf_fut = ex.submit(_zone_yahoo, symbol)
+            news, twits, yahoo = nf.result(), sf.result(), yf_fut.result()
+        _zone_cache[symbol] = {"news": news, "stocktwits": twits, "yahoo": yahoo, "updated": datetime.now()}
     bull = sum(1 for m in twits if m.get("sentiment") == "Bullish")
     bear = sum(1 for m in twits if m.get("sentiment") == "Bearish")
     total = bull + bear

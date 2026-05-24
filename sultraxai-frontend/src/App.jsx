@@ -18,7 +18,7 @@ export default function App() {
     if (new URLSearchParams(window.location.search).get('reset_token')) return 'reset_password';
     const saved = localStorage.getItem('currentView');
     const userId = localStorage.getItem('userId');
-    if ((saved === 'main_app' || saved === 'onboarding') && userId) return saved;
+    if (['main_app', 'onboarding', 'zone', 'scanner', 'settings'].includes(saved) && userId) return saved;
     return 'landing';
   });
   const [userId, setUserId] = useState(() => localStorage.getItem('userId') || null);
@@ -33,6 +33,7 @@ export default function App() {
   const [pendingEmail, setPendingEmail] = useState(() => localStorage.getItem('pendingEmail') || '');
   const [assetSettings, setAssetSettings] = useState({}); 
   const [tradingProfile, setTradingProfile] = useState({ experience: 'Beginner (0-1 yrs)', frequency: 'Daily' });
+  const inactivityRef = useRef(null);
   // עדכון ה-LocalStorage בכל פעם שהערכים משתנים
   useEffect(() => {
     localStorage.setItem('currentView', currentView);
@@ -66,6 +67,7 @@ export default function App() {
   };
 
   const handleSignOut = () => {
+    clearTimeout(inactivityRef.current);
     setUserId(null);
     setFirstName('');
     setSelectedAssets([]);
@@ -76,6 +78,27 @@ export default function App() {
     setCurrentView('landing');
     localStorage.clear();
   };
+
+  useEffect(() => {
+    if (!userId) return;
+    const reset = () => {
+      clearTimeout(inactivityRef.current);
+      inactivityRef.current = setTimeout(() => {
+        clearTimeout(inactivityRef.current);
+        setUserId(null); setFirstName(''); setSelectedAssets([]);
+        setAssetSettings({}); setOnboardingStep(1); setErrorMessage('');
+        setPendingEmail(''); setCurrentView('landing');
+        localStorage.clear();
+      }, 60 * 60 * 1000);
+    };
+    const events = ['mousemove', 'keydown', 'click', 'touchstart', 'scroll'];
+    events.forEach(e => window.addEventListener(e, reset, { passive: true }));
+    reset();
+    return () => {
+      events.forEach(e => window.removeEventListener(e, reset));
+      clearTimeout(inactivityRef.current);
+    };
+  }, [userId]);
 
   const toggleAsset = (symbol) => {
     if (selectedAssets.includes(symbol)) {
