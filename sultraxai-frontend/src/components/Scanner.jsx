@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 
 const API_BASE = 'http://38.180.137.122:8000';
 
@@ -11,14 +11,60 @@ const THRESHOLDS = [
 
 const REFRESH_SEC = 60;
 
-function MoverRow({ m, onZone }) {
+function toTVSymbol(sym) {
+  if (sym.includes('BINANCE:')) return sym;
+  if (sym.endsWith('-USD')) return 'BINANCE:' + sym.replace('-USD', 'USDT');
+  return sym;
+}
+
+function ChartPopup({ sym, onClose }) {
+  const id = `tv_scan_${sym.replace(/[^a-zA-Z0-9]/g, '_')}`;
+  useEffect(() => {
+    const init = () => {
+      const el = document.getElementById(id);
+      if (!el || !window.TradingView) return;
+      el.innerHTML = '';
+      new window.TradingView.widget({
+        container_id: id, symbol: toTVSymbol(sym),
+        interval: '15', theme: 'dark', style: '1',
+        width: '100%', height: 420,
+        hide_side_toolbar: false, allow_symbol_change: false,
+        save_image: false, locale: 'en',
+        backgroundColor: '#070707', gridColor: 'rgba(255,255,255,0.03)',
+      });
+    };
+    if (window.TradingView) init();
+    else if (!document.getElementById('tv-script')) {
+      const s = document.createElement('script');
+      s.id = 'tv-script'; s.src = 'https://s3.tradingview.com/tv.js'; s.async = true; s.onload = init;
+      document.head.appendChild(s);
+    } else {
+      const t = setInterval(() => { if (window.TradingView) { clearInterval(t); init(); } }, 100);
+      return () => clearInterval(t);
+    }
+  }, [sym]);
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9998, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '760px', maxWidth: '96vw', background: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: '16px', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 18px', borderBottom: '1px solid #111' }}>
+          <span style={{ fontWeight: '800', fontSize: '0.9rem', color: '#ddd' }}>{sym.replace('-USD', '/USD')}</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: '1.1rem' }}>✕</button>
+        </div>
+        <div id={id} style={{ width: '100%' }} />
+      </div>
+    </div>
+  );
+}
+
+function MoverRow({ m, onChart }) {
   const up = m.pct >= 0;
   const color = up ? '#44cc44' : '#ff4444';
   const barWidth = Math.min(Math.abs(m.pct) * 8, 100);
 
   return (
     <div
-      onClick={() => onZone(m.symbol)}
+      onClick={() => onChart(m.symbol)}
       style={{ display: 'grid', gridTemplateColumns: '90px 1fr 90px 90px', alignItems: 'center', padding: '12px 16px', borderRadius: '10px', background: '#080808', border: '1px solid #111', marginBottom: '6px', cursor: 'pointer', transition: 'border-color 0.15s' }}
       onMouseEnter={e => e.currentTarget.style.borderColor = '#1e1e1e'}
       onMouseLeave={e => e.currentTarget.style.borderColor = '#111'}
@@ -46,9 +92,10 @@ function MoverRow({ m, onZone }) {
   );
 }
 
-export default function Scanner({ onNavigateToZone, isNative }) {
+export default function Scanner({ isNative }) {
   const [movers, setMovers]         = useState([]);
   const [threshold, setThreshold]   = useState(1.0);
+  const [chartSym, setChartSym]     = useState(null);
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState('');
   const [lastUpdate, setLastUpdate] = useState(null);
@@ -91,6 +138,7 @@ export default function Scanner({ onNavigateToZone, isNative }) {
 
   return (
     <div style={containerStyle}>
+      {chartSym && <ChartPopup sym={chartSym} onClose={() => setChartSym(null)} />}
       <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
 
       {/* HEADER */}
@@ -154,7 +202,7 @@ export default function Scanner({ onNavigateToZone, isNative }) {
         {up.length > 0 && (
           <>
             <div style={{ fontSize: '0.58rem', fontWeight: '800', color: '#44cc44', letterSpacing: '0.1em', marginBottom: '8px', opacity: 0.6 }}>GAINING</div>
-            {up.map(m => <MoverRow key={m.symbol} m={m} onZone={onNavigateToZone} />)}
+            {up.map(m => <MoverRow key={m.symbol} m={m} onChart={setChartSym} />)}
           </>
         )}
 
@@ -162,7 +210,7 @@ export default function Scanner({ onNavigateToZone, isNative }) {
         {down.length > 0 && (
           <>
             <div style={{ fontSize: '0.58rem', fontWeight: '800', color: '#ff4444', letterSpacing: '0.1em', margin: `${up.length > 0 ? '20px' : '0px'} 0 8px`, opacity: 0.6 }}>DECLINING</div>
-            {down.map(m => <MoverRow key={m.symbol} m={m} onZone={onNavigateToZone} />)}
+            {down.map(m => <MoverRow key={m.symbol} m={m} onChart={setChartSym} />)}
           </>
         )}
       </div>

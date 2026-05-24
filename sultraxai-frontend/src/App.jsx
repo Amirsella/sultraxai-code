@@ -200,10 +200,7 @@ export default function App() {
         )}
 
         {currentView === 'scanner' && (
-          <Scanner isNative={isNative} onNavigateToZone={(sym) => {
-            setSelectedAssets(prev => prev.includes(sym) ? prev : [...prev, sym]);
-            setCurrentView('zone');
-          }} />
+          <Scanner isNative={isNative} />
         )}
 
         {currentView === 'settings' && (
