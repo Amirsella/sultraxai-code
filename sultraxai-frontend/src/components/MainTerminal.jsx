@@ -990,7 +990,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                     const isFlashing = a.id === newSignalId && !isExpanded;
                     return (
                       <div key={rowKey} onClick={() => setExpandedSignal(isExpanded ? null : rowKey)}
-                        style={{ padding: '12px 14px', borderRadius: '12px', background: isExpanded ? (isBuy ? 'rgba(255,153,0,0.07)' : 'rgba(255,68,68,0.07)') : '#0d0d0d', border: `1px solid ${isExpanded ? accent + '44' : '#1a1a1a'}`, cursor: 'pointer', boxShadow: isFlashing && flashOn ? '0 0 0 2px #ff3333' : 'none', animation: i === 0 && !isFlashing ? 'fadeIn 0.3s ease' : 'none' }}>
+                        style={{ padding: '12px 14px', borderRadius: '12px', background: isExpanded ? (isBuy ? 'rgba(255,153,0,0.07)' : 'rgba(255,68,68,0.07)') : (isFlashing && flashOn ? 'rgba(255,51,51,0.07)' : '#0d0d0d'), border: `1px solid ${isFlashing && flashOn ? '#ff3333' : isExpanded ? accent + '44' : '#1a1a1a'}`, boxShadow: isFlashing && flashOn ? '0 0 10px rgba(255,51,51,0.4)' : 'none', cursor: 'pointer', animation: i === 0 && !isFlashing ? 'fadeIn 0.3s ease' : 'none' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <span>{isBuy ? '🐋' : '🔴'}</span>
@@ -1256,10 +1256,10 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                   const confirmIcon = a.confirmed === null ? '⏳' : a.confirmed ? '✓' : '↔';
                   const confirmColor = a.confirmed === null ? '#555' : a.confirmed ? '#44cc44' : '#666';
                   const label = a.strengthLabel || (score >= 80 ? (isBuy ? 'STRONG BUY' : 'STRONG SELL') : score >= 60 ? (isBuy ? 'BUY' : 'SELL') : (isBuy ? 'WEAK BUY' : 'WEAK SELL'));
-                  const isFlashing = i === 0 && !isExpanded;
+                  const isFlashing = a.id === newSignalId && !isExpanded;
                   return (
                     <div key={rowKey} onClick={() => setExpandedSignal(isExpanded ? null : rowKey)}
-                      style={{ padding: '0.65rem 0.75rem', borderRadius: '10px', background: isExpanded ? (isBuy ? 'rgba(255,153,0,0.07)' : 'rgba(255,68,68,0.07)') : '#111', border: `1px solid ${isExpanded ? accent + '44' : '#1e1e1e'}`, cursor: 'pointer', boxShadow: isFlashing && flashOn ? '0 0 0 2px #ff3333' : 'none', animation: i === 0 && !isFlashing ? 'fadeIn 0.3s ease' : 'none' }}>
+                      style={{ padding: '0.65rem 0.75rem', borderRadius: '10px', background: isExpanded ? (isBuy ? 'rgba(255,153,0,0.07)' : 'rgba(255,68,68,0.07)') : (isFlashing && flashOn ? 'rgba(255,51,51,0.07)' : '#111'), border: `1px solid ${isFlashing && flashOn ? '#ff3333' : isExpanded ? accent + '44' : '#1e1e1e'}`, boxShadow: isFlashing && flashOn ? '0 0 10px rgba(255,51,51,0.4)' : 'none', cursor: 'pointer', animation: i === 0 && !isFlashing ? 'fadeIn 0.3s ease' : 'none' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                           <span style={{ fontSize: '0.78rem' }}>{isBuy ? '🐋' : '🔴'}</span>
