@@ -45,7 +45,30 @@ PAYPAL_PLAN_ID         = os.environ.get("PAYPAL_PLAN_ID", "")
 PAYPAL_PLAN_ID_YEARLY  = os.environ.get("PAYPAL_PLAN_ID_YEARLY", "")
 PAYPAL_BASE            = "https://api-m.paypal.com"
 APP_URL   = "http://38.180.137.122:8000"
-ADMIN_KEY = "sultrax_admin_key_2026"
+ADMIN_KEY = os.environ.get("ADMIN_KEY", "sultrax_admin_key_2026")
+
+# Account lockout: 5 failed attempts → 15 minute lockout
+_failed_logins: dict[str, dict] = {}
+
+def _check_lockout(email: str):
+    data = _failed_logins.get(email)
+    if not data:
+        return
+    locked_until = data.get("locked_until")
+    if locked_until and datetime.now(timezone.utc) < locked_until:
+        remaining = int((locked_until - datetime.now(timezone.utc)).total_seconds() / 60) + 1
+        raise HTTPException(status_code=429, detail=f"Account locked. Try again in {remaining} minutes.")
+
+def _record_failed_login(email: str):
+    data = _failed_logins.setdefault(email, {"count": 0, "locked_until": None})
+    data["count"] += 1
+    if data["count"] >= 5:
+        data["locked_until"] = datetime.now(timezone.utc) + timedelta(minutes=15)
+        data["count"] = 0
+        print(f"[Security] Account locked after 5 failed attempts: {email}")
+
+def _clear_failed_login(email: str):
+    _failed_logins.pop(email, None)
 
 reset_tokens = {}
 
@@ -100,6 +123,18 @@ _ip_geo_cache: dict[str, dict] = {}
 
 # נתיב קבוע לבסיס הנתונים
 DB_PATH = "/root/sultraxai/sultraxai-frontend/users.db"
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    # HSTS: force HTTPS for 1 year once TLS is active
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
 
 app.add_middleware(GZipMiddleware, minimum_size=500)
 app.add_middleware(
@@ -993,7 +1028,7 @@ async def contact(msg: ContactMessage):
     return {"status": "ok"}
 
 def _admin_auth(key: str):
-    if key != ADMIN_KEY:
+    if not hmac.compare_digest(key, ADMIN_KEY):
         raise HTTPException(status_code=403, detail="Forbidden")
 
 def _validate_session(user_id: int, session_token: str):
@@ -1046,21 +1081,26 @@ async def admin_delete_user(user_id: int, key: str = ""):
 @app.post("/api/login")
 @limiter.limit("10/minute")
 async def login(request: Request, user: UserLogin):
+    email_clean = user.email.strip().lower()
+    _check_lockout(email_clean)
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    
-    email_clean = user.email.strip().lower()
+
     cursor.execute("SELECT id, first_name, password_hash, subscription_status, stripe_customer_id FROM users WHERE LOWER(email) = ?", (email_clean,))
     row = cursor.fetchone()
 
     if not row:
+        _record_failed_login(email_clean)
         conn.close()
         return JSONResponse(status_code=401, content={"detail": "User not found"})
 
     user_id, first_name, stored_pwd_hash, subscription_status, sub_id = row
     if not verify_password(user.password, stored_pwd_hash):
+        _record_failed_login(email_clean)
         conn.close()
         return JSONResponse(status_code=401, content={"detail": "Wrong password"})
+    _clear_failed_login(email_clean)
     # Transparent upgrade: re-hash SHA256 passwords to bcrypt on successful login
     if not (stored_pwd_hash.startswith("$2b$") or stored_pwd_hash.startswith("$2a$")):
         conn.execute("UPDATE users SET password_hash=? WHERE id=?", (hash_password(user.password), user_id))
