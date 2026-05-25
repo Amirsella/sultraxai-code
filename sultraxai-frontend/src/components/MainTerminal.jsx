@@ -534,6 +534,17 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
     }
   }, [alerts, playBeep]);
 
+  const lastPriceSoundIdRef = useRef(null);
+  useEffect(() => {
+    const newest = alerts.find(a => a.type === 'price');
+    if (!newest) return;
+    const ts = parseInt((newest.id || '').split('-').pop());
+    if (!isNaN(ts) && ts >= mountTimeRef.current && newest.id !== lastPriceSoundIdRef.current) {
+      lastPriceSoundIdRef.current = newest.id;
+      playBeep();
+    }
+  }, [alerts, playBeep]);
+
   useEffect(() => {
     selectedAssets.forEach(sym => {
       if (!volumeTrackingRef.current[sym]) {
@@ -770,8 +781,8 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
           baselinePricesRef.current[sym] = newPrice;
           lastAlertTimeRef.current[sym] = now;
           newAlerts.push({
-            type: 'price', symbol: sym,
-            pct: moveFromBaseline, price: newPrice,
+            type: 'price', id: `price-${sym}-${now}`,
+            symbol: sym, pct: moveFromBaseline, price: newPrice,
             time: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
             threshold: priceThreshold,
           });
