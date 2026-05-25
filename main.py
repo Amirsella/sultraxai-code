@@ -4,6 +4,7 @@ import os
 import random
 import uuid
 import requests
+import stripe
 
 # Load .env file if it exists (persists across git pulls)
 _env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
@@ -30,10 +31,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 import uvicorn
 
-BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "")
-FINNHUB_KEY   = os.environ.get("FINNHUB_KEY", "")
-GROQ_KEY      = os.environ.get("GROQ_KEY", "")
-APP_URL = "http://38.180.137.122:8000"
+BREVO_API_KEY      = os.environ.get("BREVO_API_KEY", "")
+FINNHUB_KEY        = os.environ.get("FINNHUB_KEY", "")
+GROQ_KEY           = os.environ.get("GROQ_KEY", "")
+STRIPE_SECRET_KEY  = os.environ.get("STRIPE_SECRET_KEY", "")
+STRIPE_PRICE_ID    = os.environ.get("STRIPE_PRICE_ID", "")
+APP_URL   = "http://38.180.137.122:8000"
 ADMIN_KEY = "sultrax_admin_key_2026"
 
 reset_tokens = {}
@@ -100,10 +103,11 @@ def init_db():
             password_hash TEXT, created_at TEXT
         )
     """)
-    try:
-        cursor.execute("ALTER TABLE users ADD COLUMN created_at TEXT")
-    except Exception:
-        pass
+    for _col in ["created_at TEXT", "subscription_status TEXT", "stripe_customer_id TEXT"]:
+        try:
+            cursor.execute(f"ALTER TABLE users ADD COLUMN {_col}")
+        except Exception:
+            pass
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_assets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -762,6 +766,7 @@ async def admin_list_users(key: str = ""):
     cursor = conn.cursor()
     cursor.execute("""
         SELECT u.id, u.first_name, u.full_name, u.email, u.phone, u.created_at,
+               u.subscription_status,
                COUNT(DISTINCT a.id) as asset_count,
                GROUP_CONCAT(a.symbol, ', ') as assets,
                p.experience, p.frequency
@@ -795,33 +800,90 @@ async def login(user: UserLogin):
     cursor = conn.cursor()
     
     email_clean = user.email.strip().lower()
-    cursor.execute("SELECT id, first_name, password_hash FROM users WHERE LOWER(email) = ?", (email_clean,))
+    cursor.execute("SELECT id, first_name, password_hash, subscription_status FROM users WHERE LOWER(email) = ?", (email_clean,))
     row = cursor.fetchone()
-    
+
     if not row:
         conn.close()
         return JSONResponse(status_code=401, content={"detail": "User not found"})
-    
-    user_id, first_name, stored_pwd_hash = row
-    pwd_hash = hash_password(user.password)
-    
-    print(f"Login attempt for: {email_clean}")
-    print(f"DB Hash: {stored_pwd_hash}")
-    print(f"Calc Hash: {pwd_hash}")
 
+    user_id, first_name, stored_pwd_hash, subscription_status = row
+    pwd_hash = hash_password(user.password)
     if stored_pwd_hash != pwd_hash:
         conn.close()
         return JSONResponse(status_code=401, content={"detail": "Wrong password"})
-    
+
     cursor.execute("SELECT experience FROM user_profiles WHERE user_id = ?", (user_id,))
     has_profile = cursor.fetchone() is not None
     cursor.execute("SELECT symbol FROM user_assets WHERE user_id = ?", (user_id,))
     assets = [r[0] for r in cursor.fetchall()]
     conn.close()
-    
-    return {"user_id": user_id, "first_name": first_name, "onboarding_completed": has_profile, "assets": assets}
+
+    return {"user_id": user_id, "first_name": first_name, "onboarding_completed": has_profile,
+            "assets": assets, "subscription_status": subscription_status or ""}
 
     
+@app.post("/api/create-checkout-session")
+async def create_checkout_session(data: dict):
+    user_id = data.get("user_id")
+    if not STRIPE_SECRET_KEY or not STRIPE_PRICE_ID:
+        raise HTTPException(status_code=503, detail="Payments not configured")
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT email FROM users WHERE id = ?", (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="User not found")
+    stripe.api_key = STRIPE_SECRET_KEY
+    try:
+        session = stripe.checkout.Session.create(
+            customer_email=row[0],
+            payment_method_types=["card"],
+            line_items=[{"price": STRIPE_PRICE_ID, "quantity": 1}],
+            mode="subscription",
+            success_url=f"{APP_URL}/?payment=success&session_id={{CHECKOUT_SESSION_ID}}&user_id={user_id}",
+            cancel_url=f"{APP_URL}/?payment=canceled&user_id={user_id}",
+        )
+        return {"url": session.url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/verify-payment")
+async def verify_payment(data: dict):
+    session_id = data.get("session_id")
+    user_id    = data.get("user_id")
+    if not STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=503, detail="Payments not configured")
+    stripe.api_key = STRIPE_SECRET_KEY
+    try:
+        session = stripe.checkout.Session.retrieve(session_id)
+        if session.payment_status == "paid":
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE users SET subscription_status = 'active', stripe_customer_id = ? WHERE id = ?",
+                (session.customer, user_id)
+            )
+            conn.commit()
+            conn.close()
+            print(f"Subscription activated: user_id={user_id}")
+            return {"status": "active"}
+        return {"status": session.payment_status}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/admin/grant-subscription")
+async def admin_grant_subscription(data: dict, key: str = ""):
+    _admin_auth(key)
+    user_id = data.get("user_id")
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET subscription_status = 'active' WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    return {"status": "ok"}
+
 dist_path = "/root/sultraxai/sultraxai-frontend/dist"
 if os.path.exists(dist_path):
     app.mount("/assets", StaticFiles(directory=f"{dist_path}/assets", html=False), name="assets")

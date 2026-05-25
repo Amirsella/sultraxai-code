@@ -67,6 +67,22 @@ export default function AdminPanel({ onExit }) {
     }
   };
 
+  const handleGrantSub = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/grant-subscription?key=${ADMIN_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: id }),
+      });
+      if (!res.ok) throw new Error();
+      setDeleteMsg(`Subscription granted to user #${id}.`);
+      setTimeout(() => setDeleteMsg(''), 3000);
+      load();
+    } catch {
+      setDeleteMsg('Grant failed.');
+    }
+  };
+
   const filtered = users.filter(u => {
     const q = search.toLowerCase();
     return !q || [u.first_name, u.full_name, u.email, u.phone, String(u.id)]
@@ -159,8 +175,8 @@ export default function AdminPanel({ onExit }) {
         ) : (
           <div style={{ background: '#080808', border: '1px solid #111', borderRadius: '14px', overflow: 'hidden' }}>
             {/* Table header */}
-            <div style={{ display: 'grid', gridTemplateColumns: '48px 1fr 1fr 1fr 90px 110px 80px', padding: '10px 16px', borderBottom: '1px solid #111', gap: '8px' }}>
-              {['ID', 'Name', 'Email', 'Phone', 'Assets', 'Joined', 'Action'].map(h => (
+            <div style={{ display: 'grid', gridTemplateColumns: '48px 1fr 1fr 80px 90px 110px 140px', padding: '10px 16px', borderBottom: '1px solid #111', gap: '8px' }}>
+              {['ID', 'Name', 'Email', 'Plan', 'Assets', 'Joined', 'Actions'].map(h => (
                 <div key={h} style={{ fontSize: '0.58rem', fontWeight: '800', color: '#333', letterSpacing: '0.1em' }}>{h.toUpperCase()}</div>
               ))}
             </div>
@@ -174,7 +190,7 @@ export default function AdminPanel({ onExit }) {
                 {/* Row */}
                 <div
                   onClick={() => setExpanded(expanded === u.id ? null : u.id)}
-                  style={{ display: 'grid', gridTemplateColumns: '48px 1fr 1fr 1fr 90px 110px 80px', padding: '13px 16px', borderBottom: '1px solid #0d0d0d', gap: '8px', cursor: 'pointer', transition: 'background 0.1s', background: expanded === u.id ? '#0d0d0d' : 'transparent', alignItems: 'center' }}
+                  style={{ display: 'grid', gridTemplateColumns: '48px 1fr 1fr 80px 90px 110px 140px', padding: '13px 16px', borderBottom: '1px solid #0d0d0d', gap: '8px', cursor: 'pointer', transition: 'background 0.1s', background: expanded === u.id ? '#0d0d0d' : 'transparent', alignItems: 'center' }}
                   onMouseEnter={e => { if (expanded !== u.id) e.currentTarget.style.background = '#0a0a0a'; }}
                   onMouseLeave={e => { if (expanded !== u.id) e.currentTarget.style.background = 'transparent'; }}
                 >
@@ -186,16 +202,25 @@ export default function AdminPanel({ onExit }) {
                     {u.experience && <div style={{ fontSize: '0.62rem', color: '#333', marginTop: '2px' }}>{u.experience}</div>}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</div>
-                  <div style={{ fontSize: '0.72rem', color: '#555' }}>{u.phone || '—'}</div>
+                  <div style={{ fontSize: '0.65rem', fontWeight: '800', color: u.subscription_status === 'active' ? '#44cc44' : '#444' }}>
+                    {u.subscription_status === 'active' ? '● PREMIUM' : '○ FREE'}
+                  </div>
                   <div style={{ fontSize: '0.72rem', color: u.asset_count > 0 ? '#44cc44' : '#333', fontWeight: '700' }}>
                     {u.asset_count > 0 ? `${u.asset_count} assets` : 'None'}
                   </div>
                   <div style={{ fontSize: '0.65rem', color: '#444' }}>{fmt(u.created_at)}</div>
-                  <button
-                    onClick={e => { e.stopPropagation(); setConfirmDelete(u.id); }}
-                    style={{ background: 'rgba(255,51,51,0.06)', border: '1px solid rgba(255,51,51,0.15)', color: '#ff4444', padding: '4px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.65rem', fontWeight: '700', fontFamily: 'inherit' }}>
-                    Delete
-                  </button>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    {u.subscription_status !== 'active' && (
+                      <button onClick={e => { e.stopPropagation(); handleGrantSub(u.id); }}
+                        style={{ background: 'rgba(68,204,68,0.07)', border: '1px solid rgba(68,204,68,0.2)', color: '#44cc44', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.6rem', fontWeight: '700', fontFamily: 'inherit' }}>
+                        Grant
+                      </button>
+                    )}
+                    <button onClick={e => { e.stopPropagation(); setConfirmDelete(u.id); }}
+                      style={{ background: 'rgba(255,51,51,0.06)', border: '1px solid rgba(255,51,51,0.15)', color: '#ff4444', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.6rem', fontWeight: '700', fontFamily: 'inherit' }}>
+                      Delete
+                    </button>
+                  </div>
                 </div>
 
                 {/* Expanded detail */}

@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useEffect, useRef, lazy, Suspense } from 'react';
 import MainTerminal from './components/MainTerminal';
-const TheZone        = lazy(() => import('./components/TheZone'));
-const Scanner        = lazy(() => import('./components/Scanner'));
-const AccountSettings = lazy(() => import('./components/AccountSettings'));
-const AdminPanel     = lazy(() => import('./components/AdminPanel'));
+const TheZone            = lazy(() => import('./components/TheZone'));
+const Scanner            = lazy(() => import('./components/Scanner'));
+const AccountSettings    = lazy(() => import('./components/AccountSettings'));
+const AdminPanel         = lazy(() => import('./components/AdminPanel'));
+const SubscriptionModal  = lazy(() => import('./components/SubscriptionModal'));
 import SupportBot from './components/SupportBot';
 const API_BASE = 'http://38.180.137.122:8000';
 const MOCK_STOCKS = ["BTC/USD", "ETH/USD", "AAPL", "TSLA", "NVDA", "AMZN", "GOOGL", "MSFT", "META", "NFLX", "SOL/USD", "XRP/USD", "AMD", "PLTR", "COIN"];
@@ -13,6 +14,11 @@ const isNative = typeof window !== 'undefined' &&
 
 export default function App() {
   const [isAdminMode] = useState(() => new URLSearchParams(window.location.search).has('admin'));
+
+  // Stripe payment redirect params
+  const [stripePayment]   = useState(() => new URLSearchParams(window.location.search).get('payment') || '');
+  const [stripeSessionId] = useState(() => new URLSearchParams(window.location.search).get('session_id') || '');
+  const [stripeUserId]    = useState(() => new URLSearchParams(window.location.search).get('user_id') || '');
 
   // טעינת מצב ראשוני מה-LocalStorage כדי למנוע ניתוק בריפרש
   const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get('reset_token') || '');
@@ -35,12 +41,39 @@ export default function App() {
 
   const [previousView, setPreviousView] = useState('landing');
   const [onboardingStep, setOnboardingStep] = useState(1);
+  const [subscriptionStatus, setSubscriptionStatus] = useState(() => localStorage.getItem('subscriptionStatus') || '');
   const [errorMessage, setErrorMessage] = useState('');
   const [pendingEmail, setPendingEmail] = useState(() => localStorage.getItem('pendingEmail') || '');
   const [assetSettings, setAssetSettings] = useState({}); 
   const [tradingProfile, setTradingProfile] = useState({ experience: 'Beginner (0-1 yrs)', frequency: 'Daily' });
   const inactivityRef = useRef(null);
   const [sessionError, setSessionError] = useState('');
+
+  // Persist subscription status
+  useEffect(() => {
+    localStorage.setItem('subscriptionStatus', subscriptionStatus);
+  }, [subscriptionStatus]);
+
+  // Handle Stripe redirect back to app
+  useEffect(() => {
+    if (stripePayment === 'success' && stripeSessionId && stripeUserId) {
+      window.history.replaceState({}, '', '/');
+      fetch(`${API_BASE}/api/verify-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: stripeSessionId, user_id: parseInt(stripeUserId) }),
+      })
+        .then(r => r.json())
+        .then(d => {
+          if (d.status === 'active') {
+            setSubscriptionStatus('active');
+            setUserId(stripeUserId);
+            setCurrentView('main_app');
+          }
+        })
+        .catch(() => {});
+    }
+  }, []);
 
   // Validate userId on startup — if the user no longer exists in DB, redirect to signin
   useEffect(() => {
@@ -102,6 +135,7 @@ export default function App() {
     setOnboardingStep(1);
     setErrorMessage('');
     setPendingEmail('');
+    setSubscriptionStatus('');
     setCurrentView('landing');
     localStorage.clear();
   };
@@ -148,7 +182,7 @@ export default function App() {
           frequency: tradingProfile.frequency
         })
       });
-      if (res.ok) setCurrentView('main_app');
+      if (res.ok) setCurrentView(subscriptionStatus === 'active' ? 'main_app' : 'subscription');
     } catch (e) { setErrorMessage("Failed to save data."); }
   };
 
@@ -240,6 +274,10 @@ export default function App() {
 
         {currentView === 'settings' && (
           <AccountSettings userId={userId} onBack={() => setCurrentView('main_app')} onSignOut={handleSignOut} isNative={isNative} onProfileUpdate={setFirstName} />
+        )}
+
+        {currentView === 'subscription' && (
+          <SubscriptionModal userId={userId} onSuccess={() => { setSubscriptionStatus('active'); setCurrentView('main_app'); }} onSignOut={handleSignOut} />
         )}
         </Suspense>
 
@@ -337,7 +375,7 @@ export default function App() {
                     try {
                       const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e.target[0].value, password: e.target[1].value }) });
                       const data = await res.json();
-                      if (res.ok) { setSessionError(''); setUserId(data.user_id); setFirstName(data.first_name || ''); if (data.onboarding_completed) { setSelectedAssets(data.assets); setCurrentView('main_app'); } else { setSelectedAssets([]); setOnboardingStep(1); setCurrentView('onboarding'); } } else setErrorMessage(data.detail);
+                      if (res.ok) { setSessionError(''); setUserId(data.user_id); setFirstName(data.first_name || ''); setSubscriptionStatus(data.subscription_status || ''); if (data.onboarding_completed) { setSelectedAssets(data.assets); setCurrentView(data.subscription_status === 'active' ? 'main_app' : 'subscription'); } else { setSelectedAssets([]); setOnboardingStep(1); setCurrentView('onboarding'); } } else setErrorMessage(data.detail);
                     } catch { setErrorMessage("Login failed."); }
                   }} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                     <input type="text" inputMode="email" placeholder="Email" required style={mobileInputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
@@ -364,7 +402,7 @@ export default function App() {
                   try {
                     const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e.target[0].value, password: e.target[1].value }) });
                     const data = await res.json();
-                    if (res.ok) { setSessionError(''); setUserId(data.user_id); setFirstName(data.first_name || ''); if (data.onboarding_completed) { setSelectedAssets(data.assets); setCurrentView('main_app'); } else { setSelectedAssets([]); setOnboardingStep(1); setCurrentView('onboarding'); } } else setErrorMessage(data.detail);
+                    if (res.ok) { setSessionError(''); setUserId(data.user_id); setFirstName(data.first_name || ''); setSubscriptionStatus(data.subscription_status || ''); if (data.onboarding_completed) { setSelectedAssets(data.assets); setCurrentView(data.subscription_status === 'active' ? 'main_app' : 'subscription'); } else { setSelectedAssets([]); setOnboardingStep(1); setCurrentView('onboarding'); } } else setErrorMessage(data.detail);
                   } catch { setErrorMessage("Login failed."); }
                 }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <input type="text" inputMode="email" placeholder="Email Address" required style={inputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
