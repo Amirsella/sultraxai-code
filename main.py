@@ -1883,12 +1883,19 @@ if os.path.exists(dist_path):
         if request.url.path.startswith("/assets/"):
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         return response
+    @app.get("/favicon.svg")
+    async def serve_favicon_svg():
+        return FileResponse(f"{dist_path}/favicon.svg", media_type="image/svg+xml")
+
+    @app.get("/favicon.png")
+    async def serve_favicon_png():
+        return FileResponse(f"{dist_path}/favicon.png", media_type="image/png")
+
     @app.get("/{catchall:path}")
     async def serve_react(catchall: str):
-        if catchall.startswith("api"): 
+        if catchall.startswith("api"):
             raise HTTPException(status_code=404)
-        
-        # יצירת ה-Response עם כותרות למניעת Caching
+
         response = FileResponse(f"{dist_path}/index.html")
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response.headers["Pragma"] = "no-cache"
