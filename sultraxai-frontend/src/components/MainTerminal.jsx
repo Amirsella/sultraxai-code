@@ -474,27 +474,26 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
       if (ctx.state === 'suspended') ctx.resume();
       const now = ctx.currentTime;
 
-      // "cha" — quick hit
+      // "di" — first note
       const osc1 = ctx.createOscillator();
       const g1 = ctx.createGain();
       osc1.connect(g1); g1.connect(ctx.destination);
-      osc1.type = 'sawtooth';
-      osc1.frequency.value = 820;
-      g1.gain.setValueAtTime(0.18, now);
-      g1.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
-      osc1.start(now); osc1.stop(now + 0.07);
+      osc1.type = 'sine';
+      osc1.frequency.value = 880;
+      g1.gain.setValueAtTime(0.28, now);
+      g1.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+      osc1.start(now); osc1.stop(now + 0.12);
 
-      // "ching" — metallic ring
+      // "ding" — second note, higher
       const osc2 = ctx.createOscillator();
       const g2 = ctx.createGain();
       osc2.connect(g2); g2.connect(ctx.destination);
-      osc2.type = 'triangle';
-      osc2.frequency.setValueAtTime(1900, now + 0.06);
-      osc2.frequency.exponentialRampToValueAtTime(1400, now + 0.32);
+      osc2.type = 'sine';
+      osc2.frequency.value = 1175;
       g2.gain.setValueAtTime(0, now);
-      g2.gain.setValueAtTime(0.22, now + 0.06);
-      g2.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
-      osc2.start(now); osc2.stop(now + 0.38);
+      g2.gain.setValueAtTime(0.3, now + 0.1);
+      g2.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+      osc2.start(now); osc2.stop(now + 0.55);
     } catch {}
   }, []);
 
