@@ -7,9 +7,12 @@ const ROOMS = [
   { id: 'stocks', label: 'Stocks', color: '#44cc44' },
 ];
 
-function fmtTime(iso) {
-  try { return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); }
-  catch { return ''; }
+const AVATAR_COLORS = ['#e05252','#e08844','#d4c244','#52b852','#44a8cc','#7c6cd4','#cc52a8','#52ccaa'];
+
+function avatarColor(name) {
+  let h = 0;
+  for (let i = 0; i < (name || '').length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
 export default function CommunityChat({ userId }) {
@@ -125,7 +128,7 @@ export default function CommunityChat({ userId }) {
           </div>
 
           {/* Messages */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
             {currentMessages.length === 0 && (
               <div style={{ textAlign: 'center', color: '#2a2a2a', fontSize: '0.75rem', marginTop: '40px' }}>
                 No messages in #{room} yet.
@@ -133,27 +136,19 @@ export default function CommunityChat({ userId }) {
             )}
             {currentMessages.map((m, i) => {
               const isMe = String(m.user_id) === String(userId);
+              const color = isMe ? activeRoom.color : avatarColor(m.first_name);
               return (
-                <div key={m.id || i} style={{ display: 'flex', flexDirection: isMe ? 'row-reverse' : 'row', alignItems: 'flex-end', gap: '7px' }}>
-                  {!isMe && (
-                    <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: '#1a1a1a', border: '1px solid #222', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: '800', color: '#666', flexShrink: 0 }}>
-                      {(m.first_name || 'U').charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                  <div style={{ maxWidth: '72%' }}>
-                    <div style={{ fontSize: '0.58rem', color: '#444', fontWeight: '700', marginBottom: '3px', paddingLeft: isMe ? 0 : '2px', textAlign: isMe ? 'right' : 'left' }}>{m.first_name}</div>
-                    <div style={{
-                      background: isMe ? activeRoom.color : '#111',
-                      color: '#fff',
-                      padding: '7px 11px',
-                      borderRadius: isMe ? '12px 12px 3px 12px' : '12px 12px 12px 3px',
-                      fontSize: '0.82rem', lineHeight: 1.45, wordBreak: 'break-word'
-                    }}>
+                <div key={m.id || i} style={{ display: 'flex', alignItems: 'flex-start', gap: '9px', padding: '5px 0' }}>
+                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: color + '22', border: `1px solid ${color}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.62rem', fontWeight: '800', color, flexShrink: 0, marginTop: '1px' }}>
+                    {(m.first_name || 'U').charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0, lineHeight: 1.5 }}>
+                    <span style={{ fontWeight: '700', color: isMe ? activeRoom.color : '#ddd', fontSize: '0.82rem', marginRight: '6px' }}>
+                      {m.first_name}
+                    </span>
+                    <span style={{ color: '#777', fontSize: '0.82rem', wordBreak: 'break-word' }}>
                       {m.message}
-                    </div>
-                    <div style={{ fontSize: '0.55rem', color: '#2a2a2a', marginTop: '3px', textAlign: isMe ? 'right' : 'left', paddingLeft: isMe ? 0 : '2px' }}>
-                      {fmtTime(m.created_at)}
-                    </div>
+                    </span>
                   </div>
                 </div>
               );
