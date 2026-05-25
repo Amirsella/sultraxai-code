@@ -85,11 +85,12 @@ export default function App() {
     else localStorage.removeItem('pendingEmail');
   }, [pendingEmail]);
 
- const handleRegisterSuccess = (id) => {
+ const handleRegisterSuccess = (id, email) => {
     setUserId(id);
+    setPendingEmail(email);
     setSelectedAssets([]);
     setOnboardingStep(1);
-    setCurrentView('onboarding');
+    setCurrentView('verify');
   };
 
   const handleSignOut = () => {
@@ -599,7 +600,7 @@ function SignUpForm({ isNative, onBack, onRegisterSuccess, setErrorMessage, erro
         })
       });
       const data = await res.json();
-      if (res.ok) onRegisterSuccess(data.user_id);
+      if (res.ok) onRegisterSuccess(data.user_id, email);
       else setErrorMessage(data.detail);
     } catch (err) {
       setErrorMessage("Connection error. Please try again.");

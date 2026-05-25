@@ -4,6 +4,16 @@ import os
 import random
 import uuid
 import requests
+
+# Load .env file if it exists (persists across git pulls)
+_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+if os.path.exists(_env_path):
+    with open(_env_path) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith('#') and '=' in _line:
+                _k, _v = _line.split('=', 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
 import urllib.request
 import xml.etree.ElementTree as ET
 import email.utils
@@ -20,9 +30,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 import uvicorn
 
-BREVO_API_KEY = "YOUR_BREVO_API_KEY"
-FINNHUB_KEY = "FINNHUB_API_KEY"
-GROQ_KEY = "YOUR_GROQ_KEY"
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "")
+FINNHUB_KEY   = os.environ.get("FINNHUB_KEY", "")
+GROQ_KEY      = os.environ.get("GROQ_KEY", "")
 APP_URL = "http://38.180.137.122:8000"
 ADMIN_KEY = "sultrax_admin_key_2026"
 
@@ -238,7 +248,7 @@ def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 @app.post("/api/register")
-async def register(user: UserRegister):
+async def register(user: UserRegister, background_tasks: BackgroundTasks):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     email_clean = user.email.strip().lower()
@@ -274,7 +284,8 @@ async def register(user: UserRegister):
                    (email_clean, code, expiry))
     conn.commit()
     conn.close()
-    print(f"New user registered: id={user_id}, email={email_clean}")
+    print(f"New user registered: id={user_id}, email={email_clean}, code={code}")
+    background_tasks.add_task(send_verification_email, email_clean, code)
     return {"status": "success", "user_id": user_id}
 @app.post("/api/complete-onboarding")
 async def complete_onboarding(data: OnboardingData):
