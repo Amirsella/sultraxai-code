@@ -352,12 +352,28 @@ export default function CommunityChat({ userId, sessionToken }) {
 
       {/* Toggle button */}
       <button onClick={handleToggle}
-        style={{ width: '44px', height: '44px', borderRadius: '50%', background: open ? '#ff3333' : '#0d0d0d', border: `1px solid ${open ? '#ff333360' : '#1e1e1e'}`, color: open ? '#fff' : '#555', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: open ? '0 4px 20px rgba(255,51,51,0.3)' : '0 2px 12px rgba(0,0,0,0.5)', transition: 'all 0.2s', position: 'relative' }}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.06)'; e.currentTarget.style.boxShadow = open ? '0 6px 28px rgba(255,51,51,0.65)' : '0 6px 28px rgba(255,51,51,0.35), inset 0 1px 0 rgba(255,255,255,0.06)'; }}
+        onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = open ? '0 4px 22px rgba(255,51,51,0.5)' : '0 4px 20px rgba(255,51,51,0.2), inset 0 1px 0 rgba(255,255,255,0.04)'; }}
+        style={{
+          width: '48px', height: '48px', borderRadius: '50%',
+          background: open
+            ? 'linear-gradient(135deg, #e02222 0%, #ff4444 100%)'
+            : 'linear-gradient(135deg, #1c0909 0%, #120606 100%)',
+          border: `1px solid ${open ? 'rgba(255,140,140,0.35)' : 'rgba(255,51,51,0.45)'}`,
+          color: open ? '#fff' : '#ff4444',
+          cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: open
+            ? '0 4px 22px rgba(255,51,51,0.5), inset 0 1px 0 rgba(255,255,255,0.15)'
+            : '0 4px 20px rgba(255,51,51,0.2), inset 0 1px 0 rgba(255,255,255,0.04)',
+          transition: 'all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
+          position: 'relative',
+        }}>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
         {unread > 0 && !open && (
-          <span style={{ position: 'absolute', top: '-4px', right: '-4px', background: '#ff3333', color: '#fff', borderRadius: '50%', width: '18px', height: '18px', fontSize: '0.6rem', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #020202' }}>
+          <span style={{ position: 'absolute', top: '-3px', right: '-3px', background: 'linear-gradient(135deg, #ff2222, #ff5555)', color: '#fff', borderRadius: '50%', width: '19px', height: '19px', fontSize: '0.6rem', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #080808', boxShadow: '0 2px 8px rgba(255,51,51,0.5)' }}>
             {unread > 9 ? '9+' : unread}
           </span>
         )}
