@@ -906,12 +906,9 @@ function LandingPage({ onSignUp, onSignIn, onNavigateStatic }) {
           Track stocks and crypto in real-time. Monitor breaking news, social sentiment, and price alerts — all in one dark terminal built for traders.
         </p>
 
-        <div className="land-cta" style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+        <div className="land-cta" style={{ display: 'flex', justifyContent: 'center' }}>
           <button onClick={onSignUp} style={{ background: '#ff3333', border: 'none', color: '#fff', padding: '0.85rem 2.4rem', borderRadius: '10px', fontWeight: '700', fontSize: '0.82rem', letterSpacing: '0.07em', cursor: 'pointer', boxShadow: '0 4px 28px rgba(255,51,51,0.3)', fontFamily: 'inherit' }}>
             GET STARTED →
-          </button>
-          <button onClick={onSignIn} style={{ background: 'transparent', border: '1px solid #1e1e1e', color: '#555', padding: '0.85rem 2.4rem', borderRadius: '10px', fontWeight: '700', fontSize: '0.82rem', letterSpacing: '0.07em', cursor: 'pointer', fontFamily: 'inherit' }}>
-            SIGN IN
           </button>
         </div>
       </div>
@@ -927,20 +924,6 @@ function LandingPage({ onSignUp, onSignIn, onNavigateStatic }) {
         ))}
       </div>
 
-      {/* Footer */}
-      <div style={{ borderTop: '1px solid #0d0d0d', padding: '2rem', textAlign: 'center' }}>
-        <p style={{ color: '#1e1e1e', fontSize: '0.65rem', letterSpacing: '0.1em', fontWeight: '600', marginBottom: '12px' }}>SULTRAXAI · MARKET INTELLIGENCE PLATFORM</p>
-        <div style={{ display: 'flex', gap: '24px', justifyContent: 'center', flexWrap: 'wrap' }}>
-          {[['Contact', 'contact'], ['Terms of Service', 'terms'], ['Privacy Policy', 'privacy']].map(([label, view]) => (
-            <button key={view} onClick={() => onNavigateStatic(view)}
-              style={{ background: 'none', border: 'none', color: '#2a2a2a', cursor: 'pointer', fontSize: '0.65rem', fontWeight: '600', letterSpacing: '0.06em', fontFamily: 'inherit', textTransform: 'uppercase', transition: 'color 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.color = '#555'}
-              onMouseLeave={e => e.currentTarget.style.color = '#2a2a2a'}>
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
