@@ -26,7 +26,6 @@ GROQ_KEY = "YOUR_GROQ_KEY"
 APP_URL = "http://38.180.137.122:8000"
 ADMIN_KEY = "sultrax_admin_key_2026"
 
-verification_codes = {}
 reset_tokens = {}
 
 def send_reset_email(to_email: str, reset_link: str) -> bool:
@@ -116,6 +115,13 @@ def init_db():
             expiry REAL
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS verification_codes_db (
+            email TEXT PRIMARY KEY,
+            code TEXT,
+            expiry REAL
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -152,12 +158,27 @@ async def search_stocks(q: str = ""):
 @app.post("/api/verify-code")
 async def verify_code(data: dict):
     email = (data.get('email') or '').strip().lower()
-    code = data.get('code')
-    if verification_codes.get(email) == code:
-        del verification_codes[email]
-        return {"status": "success"}
-    
-    return JSONResponse(status_code=400, content={"detail": "Invalid code"})
+    code = (data.get('code') or '').strip()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT code, expiry FROM verification_codes_db WHERE email = ?", (email,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return JSONResponse(status_code=400, content={"detail": "Code not found. Please register again."})
+    stored_code, expiry = row
+    if datetime.now().timestamp() > expiry:
+        cursor.execute("DELETE FROM verification_codes_db WHERE email = ?", (email,))
+        conn.commit()
+        conn.close()
+        return JSONResponse(status_code=400, content={"detail": "Code expired. Please register again."})
+    if stored_code != code:
+        conn.close()
+        return JSONResponse(status_code=400, content={"detail": "Invalid code."})
+    cursor.execute("DELETE FROM verification_codes_db WHERE email = ?", (email,))
+    conn.commit()
+    conn.close()
+    return {"status": "success"}
 
 @app.post("/api/forgot-password")
 async def forgot_password(data: dict, background_tasks: BackgroundTasks):
@@ -236,10 +257,6 @@ async def register(user: UserRegister, background_tasks: BackgroundTasks):
             conn.close()
             return JSONResponse(status_code=400, content={"detail": "This phone number is already registered."})
 
-    code = str(random.randint(100000, 999999))
-    verification_codes[email_clean] = code
-    background_tasks.add_task(send_verification_email, email_clean, code)
-
     pwd_hash = hash_password(user.password)
     try:
         cursor.execute("INSERT INTO users (first_name, full_name, email, phone, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)",
@@ -250,8 +267,15 @@ async def register(user: UserRegister, background_tasks: BackgroundTasks):
         conn.close()
         print(f"Register insert error for {email_clean}: {e}")
         return JSONResponse(status_code=500, content={"detail": f"Registration failed: {str(e)}"})
+
+    code = str(random.randint(100000, 999999))
+    expiry = (datetime.now() + timedelta(minutes=30)).timestamp()
+    cursor.execute("INSERT OR REPLACE INTO verification_codes_db (email, code, expiry) VALUES (?, ?, ?)",
+                   (email_clean, code, expiry))
+    conn.commit()
     conn.close()
-    print(f"New user registered: id={user_id}, email={email_clean}")
+    print(f"New user registered: id={user_id}, email={email_clean}, code={code}")
+    background_tasks.add_task(send_verification_email, email_clean, code)
     return {"status": "success", "user_id": user_id}
 @app.post("/api/complete-onboarding")
 async def complete_onboarding(data: OnboardingData):
