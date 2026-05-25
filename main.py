@@ -112,7 +112,7 @@ def init_db():
     for _col in ["created_at TEXT", "subscription_status TEXT", "stripe_customer_id TEXT",
                   "subscription_plan TEXT", "subscription_expires TEXT",
                   "subscription_start TEXT", "subscription_cancel_pending INTEGER DEFAULT 0",
-                  "username TEXT"]:
+                  "username TEXT", "session_token TEXT"]:
         try:
             cursor.execute(f"ALTER TABLE users ADD COLUMN {_col}")
         except Exception:
@@ -1056,10 +1056,16 @@ async def login(user: UserLogin):
         except Exception as e:
             print(f"[Login] PayPal check failed (non-blocking): {e}")
 
-    conn.close()
+    # Generate a new session token — invalidates any previous active session for this account
+    session_token = str(uuid.uuid4())
+    conn2 = sqlite3.connect(DB_PATH)
+    conn2.execute("UPDATE users SET session_token=? WHERE id=?", (session_token, user_id))
+    conn2.commit()
+    conn2.close()
 
     return {"user_id": user_id, "first_name": first_name, "onboarding_completed": has_profile,
-            "assets": assets, "subscription_status": subscription_status or ""}
+            "assets": assets, "subscription_status": subscription_status or "",
+            "session_token": session_token}
 
     
 def _check_subscriptions_sync():
@@ -1395,10 +1401,18 @@ async def admin_delete_username_blocked_word(word: str, key: str = ""):
 # ─── HEARTBEAT / ACTIVE USERS ─────────────────────────────────────────────────
 
 @app.post("/api/heartbeat")
-async def heartbeat(user_id: int):
+async def heartbeat(user_id: int, session_token: str = ""):
     import time
+
+    # Validate session token — if another device logged in, their token replaced this one
+    if session_token:
+        conn = sqlite3.connect(DB_PATH)
+        row = conn.execute("SELECT session_token FROM users WHERE id=?", (user_id,)).fetchone()
+        conn.close()
+        if row and row[0] and row[0] != session_token:
+            return JSONResponse(status_code=401, content={"detail": "session_replaced"})
+
     _active_sessions[user_id] = time.time()
-    # Prune stale entries older than 10 minutes to keep the dict small
     cutoff = time.time() - 600
     stale = [uid for uid, ts in _active_sessions.items() if ts < cutoff]
     for uid in stale:

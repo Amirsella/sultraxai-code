@@ -412,7 +412,7 @@ function EditPanel({ userId, selectedAssets, thresholds, onSave, onClose }) {
   );
 }
 
-export default function MainTerminal({ userId, selectedAssets, onSignOut, onAssetsUpdate, isNative, onNavigateToZone, onNavigateToSettings, onNavigateToScanner }) {
+export default function MainTerminal({ userId, sessionToken, selectedAssets, onSignOut, onSessionReplaced, onAssetsUpdate, isNative, onNavigateToZone, onNavigateToSettings, onNavigateToScanner }) {
   const [thresholds, setThresholds] = useState({});
   const [prices, setPrices] = useState({});
   const [history, setHistory] = useState({});
@@ -611,14 +611,25 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
     return () => clearInterval(id);
   }, [selectedAssets]);
 
-  // Heartbeat — keeps the user counted as "online" in the admin dashboard
+  // Heartbeat — tracks online users + validates session token.
+  // 401 means another device logged in and replaced this session → force sign-out.
   useEffect(() => {
     if (!userId) return;
-    const ping = () => fetch(`${API_BASE}/api/heartbeat?user_id=${userId}`, { method: 'POST' }).catch(() => {});
+    const ping = async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/heartbeat?user_id=${userId}&session_token=${encodeURIComponent(sessionToken || '')}`,
+          { method: 'POST' }
+        );
+        if (res.status === 401) {
+          onSessionReplaced?.();
+        }
+      } catch {}
+    };
     ping();
     const id = setInterval(ping, 60000);
     return () => clearInterval(id);
-  }, [userId]);
+  }, [userId, sessionToken, onSessionReplaced]);
 
   // Load historical average volumes for RVOL calculation
   useEffect(() => {

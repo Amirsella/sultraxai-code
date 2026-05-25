@@ -33,6 +33,7 @@ export default function App() {
     return 'landing';
   });
   const [userId, setUserId] = useState(() => localStorage.getItem('userId') || null);
+  const [sessionToken, setSessionToken] = useState(() => localStorage.getItem('sessionToken') || '');
   const [firstName, setFirstName] = useState(() => localStorage.getItem('firstName') || '');
   const [selectedAssets, setSelectedAssets] = useState(() => {
     const saved = localStorage.getItem('selectedAssets');
@@ -120,6 +121,11 @@ export default function App() {
   }, [userId]);
 
   useEffect(() => {
+    if (sessionToken) localStorage.setItem('sessionToken', sessionToken);
+    else localStorage.removeItem('sessionToken');
+  }, [sessionToken]);
+
+  useEffect(() => {
     if (firstName) localStorage.setItem('firstName', firstName);
     else localStorage.removeItem('firstName');
   }, [firstName]);
@@ -144,6 +150,7 @@ export default function App() {
   const handleSignOut = () => {
     clearTimeout(inactivityRef.current);
     setUserId(null);
+    setSessionToken('');
     setFirstName('');
     setSelectedAssets([]);
     setAssetSettings({});
@@ -153,6 +160,18 @@ export default function App() {
     setSubscriptionStatus('');
     setCurrentView('landing');
     localStorage.clear();
+  };
+
+  const handleSessionReplaced = () => {
+    clearTimeout(inactivityRef.current);
+    setUserId(null);
+    setSessionToken('');
+    setFirstName('');
+    setSelectedAssets([]);
+    setSubscriptionStatus('');
+    localStorage.clear();
+    setSessionError('Your account was signed in on another device. Please sign in again.');
+    setCurrentView('signin');
   };
 
   useEffect(() => {
@@ -413,7 +432,7 @@ export default function App() {
                     try {
                       const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e.target[0].value, password: e.target[1].value }) });
                       const data = await res.json();
-                      if (res.ok) { setSessionError(''); setUserId(data.user_id); setFirstName(data.first_name || ''); setSubscriptionStatus(data.subscription_status || ''); if (data.onboarding_completed) { setSelectedAssets(data.assets); setCurrentView(data.subscription_status === 'active' ? 'main_app' : 'subscription'); } else { setSelectedAssets([]); setOnboardingStep(1); setCurrentView('onboarding'); } } else setErrorMessage(data.detail);
+                      if (res.ok) { setSessionError(''); setUserId(data.user_id); setSessionToken(data.session_token || ''); setFirstName(data.first_name || ''); setSubscriptionStatus(data.subscription_status || ''); if (data.onboarding_completed) { setSelectedAssets(data.assets); setCurrentView(data.subscription_status === 'active' ? 'main_app' : 'subscription'); } else { setSelectedAssets([]); setOnboardingStep(1); setCurrentView('onboarding'); } } else setErrorMessage(data.detail);
                     } catch { setErrorMessage("Login failed."); }
                   }} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                     <input type="text" inputMode="email" placeholder="Email" required style={mobileInputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
@@ -440,7 +459,7 @@ export default function App() {
                   try {
                     const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e.target[0].value, password: e.target[1].value }) });
                     const data = await res.json();
-                    if (res.ok) { setSessionError(''); setUserId(data.user_id); setFirstName(data.first_name || ''); setSubscriptionStatus(data.subscription_status || ''); if (data.onboarding_completed) { setSelectedAssets(data.assets); setCurrentView(data.subscription_status === 'active' ? 'main_app' : 'subscription'); } else { setSelectedAssets([]); setOnboardingStep(1); setCurrentView('onboarding'); } } else setErrorMessage(data.detail);
+                    if (res.ok) { setSessionError(''); setUserId(data.user_id); setSessionToken(data.session_token || ''); setFirstName(data.first_name || ''); setSubscriptionStatus(data.subscription_status || ''); if (data.onboarding_completed) { setSelectedAssets(data.assets); setCurrentView(data.subscription_status === 'active' ? 'main_app' : 'subscription'); } else { setSelectedAssets([]); setOnboardingStep(1); setCurrentView('onboarding'); } } else setErrorMessage(data.detail);
                   } catch { setErrorMessage("Login failed."); }
                 }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <input type="text" inputMode="email" placeholder="Email Address" required style={inputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
@@ -474,7 +493,7 @@ export default function App() {
           )}
 
          {currentView === 'main_app' && (
-            <MainTerminal userId={userId} selectedAssets={selectedAssets} onSignOut={handleSignOut} onAssetsUpdate={setSelectedAssets} isNative={isNative} onNavigateToZone={() => setCurrentView('zone')} onNavigateToSettings={() => setCurrentView('settings')} onNavigateToScanner={() => setCurrentView('scanner')} />
+            <MainTerminal userId={userId} sessionToken={sessionToken} selectedAssets={selectedAssets} onSignOut={handleSignOut} onSessionReplaced={handleSessionReplaced} onAssetsUpdate={setSelectedAssets} isNative={isNative} onNavigateToZone={() => setCurrentView('zone')} onNavigateToSettings={() => setCurrentView('settings')} onNavigateToScanner={() => setCurrentView('scanner')} />
           )}
 
         </div>
