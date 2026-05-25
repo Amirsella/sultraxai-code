@@ -154,16 +154,20 @@ export default function AdminPanel({ onExit }) {
   }, [chatRoom, authed, loadChatMessages]);
 
   const addWord = async () => {
-    const w = newWord.trim().toLowerCase();
-    if (!w) return;
-    const res = await fetch(`${API_BASE}/api/admin/blocked-words`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', ...authH() },
-      body: JSON.stringify({ word: w }),
-    });
-    const data = await res.json();
-    if (res.ok) { setNewWord(''); loadWords(); setWordMsg(`"${w}" added`); }
-    else setWordMsg(data.detail || 'Error');
-    setTimeout(() => setWordMsg(''), 3000);
+    const words = newWord.split(/[\n,]+/).map(w => w.trim().toLowerCase()).filter(Boolean);
+    if (!words.length) return;
+    let added = 0, skipped = 0;
+    for (const w of words) {
+      const res = await fetch(`${API_BASE}/api/admin/blocked-words`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...authH() },
+        body: JSON.stringify({ word: w }),
+      });
+      if (res.ok) added++; else skipped++;
+    }
+    setNewWord('');
+    loadWords();
+    setWordMsg(skipped > 0 ? `${added} added, ${skipped} skipped (duplicates)` : `${added} word${added > 1 ? 's' : ''} added`);
+    setTimeout(() => setWordMsg(''), 4000);
   };
 
   const removeWord = async (word) => {
@@ -546,19 +550,23 @@ export default function AdminPanel({ onExit }) {
             <span style={{ fontSize: '0.7rem', color: '#333', fontWeight: '700' }}>{blockedWords.length} words</span>
           </div>
 
-          {/* Add word */}
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '1rem' }}>
-            <input
+          {/* Add words */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '1rem' }}>
+            <textarea
               value={newWord} onChange={e => setNewWord(e.target.value.toLowerCase())}
-              onKeyDown={e => e.key === 'Enter' && addWord()}
-              placeholder="Add a word to block..."
-              maxLength={40}
-              style={{ flex: 1, padding: '9px 14px', background: '#0d0d0d', border: '1px solid #1e1e1e', borderRadius: '8px', color: '#fff', fontSize: '0.82rem', outline: 'none', fontFamily: 'inherit' }}
+              placeholder={"One word per line, or comma-separated:\nfuck, shit, scam\nguaranteed profit\npump and dump"}
+              rows={4}
+              style={{ padding: '10px 14px', background: '#0d0d0d', border: '1px solid #1e1e1e', borderRadius: '8px', color: '#fff', fontSize: '0.82rem', outline: 'none', fontFamily: 'inherit', resize: 'vertical', lineHeight: 1.6 }}
             />
-            <button onClick={addWord} disabled={!newWord.trim()}
-              style={{ padding: '9px 20px', background: newWord.trim() ? '#ff3333' : '#111', border: 'none', borderRadius: '8px', color: newWord.trim() ? '#fff' : '#333', cursor: newWord.trim() ? 'pointer' : 'default', fontSize: '0.78rem', fontWeight: '700', fontFamily: 'inherit', transition: 'all 0.15s' }}>
-              + Add
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '0.7rem', color: '#333' }}>
+                {newWord.split(/[\n,]+/).filter(w => w.trim()).length} word{newWord.split(/[\n,]+/).filter(w => w.trim()).length !== 1 ? 's' : ''} ready to add
+              </span>
+              <button onClick={addWord} disabled={!newWord.trim()}
+                style={{ padding: '9px 24px', background: newWord.trim() ? '#ff3333' : '#111', border: 'none', borderRadius: '8px', color: newWord.trim() ? '#fff' : '#333', cursor: newWord.trim() ? 'pointer' : 'default', fontSize: '0.78rem', fontWeight: '700', fontFamily: 'inherit', transition: 'all 0.15s' }}>
+                + Add All
+              </button>
+            </div>
           </div>
 
           {wordMsg && (
