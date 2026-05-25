@@ -1001,23 +1001,33 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
     if (!selectedAssets.length) return;
     let cancelled = false;
 
-    // Connect WebSocket directly to backend relay (no API-key roundtrip needed)
     connectWS(selectedAssets);
 
-    // Fetch initial price snapshot in parallel (memory-read on backend, ~5ms)
-    fetch(`${API_BASE}/api/prices?symbols=${selectedAssets.join(',')}`)
-      .then(r => r.json())
-      .then(data => {
-        if (cancelled) return;
-        const initial = data.prices || {};
-        pricesRef.current = { ...pricesRef.current, ...initial };
-        setPrices(prev => ({ ...prev, ...initial }));
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    const pollPrices = () => {
+      fetch(`${API_BASE}/api/prices?symbols=${selectedAssets.join(',')}`)
+        .then(r => r.json())
+        .then(data => {
+          if (cancelled) return;
+          const update = data.prices || {};
+          if (!Object.keys(update).length) return;
+          const prev = pricesRef.current;
+          const changed = Object.entries(update).some(
+            ([s, d]) => !prev[s] || prev[s].price !== d.price
+          );
+          pricesRef.current = { ...prev, ...update };
+          if (changed) setPrices(p => ({ ...p, ...update }));
+          setLoading(false);
+        })
+        .catch(() => setLoading(false));
+    };
+
+    pollPrices(); // immediate snapshot
+    // Fallback poll every 30s — keeps prices fresh when WS feed is stale (e.g. weekend, reconnecting)
+    const pollId = setInterval(pollPrices, 30000);
 
     return () => {
       cancelled = true;
+      clearInterval(pollId);
       clearInterval(wsPingRef.current);
       clearTimeout(reconnectTimerRef.current);
       Object.values(flashTimersRef.current).forEach(clearTimeout);

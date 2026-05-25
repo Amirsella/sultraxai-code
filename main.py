@@ -630,6 +630,7 @@ async def _pf_init_prev_closes(symbols: list):
                     "price": round(price, 4),
                     "change_pct": round(cp, 4),
                     "prev_close": round(prev, 4),
+                    "ts": time.time(),
                 }
         except Exception as e:
             print(f"[PriceFeed] REST init {sym}: {e}")
@@ -689,6 +690,7 @@ async def _finnhub_price_feed():
                             "price": round(price, 4),
                             "change_pct": round(cp, 4),
                             "prev_close": round(prev, 4),
+                            "ts": time.time(),
                         }
                     # Broadcast raw trade message to all connected frontend clients
                     if _price_ws_clients:
@@ -769,11 +771,19 @@ async def get_prices(symbols: str = ""):
     symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
 
     # Fast path: read from backend live price feed (instant, no network call)
+    # Fall back to yfinance if data is stale: >2 min for crypto (24/7), >10 min for stocks
     result = {}
     missing = []
+    now_ts = time.time()
     for sym in symbol_list:
         if sym in _live_prices:
-            result[sym] = _live_prices[sym]
+            entry = _live_prices[sym]
+            is_crypto = '-USD' in sym or '/' in sym
+            max_age = 120 if is_crypto else 600
+            if now_ts - entry.get("ts", 0) < max_age:
+                result[sym] = {k: v for k, v in entry.items() if k != "ts"}
+            else:
+                missing.append(sym)
         else:
             missing.append(sym)
 
@@ -787,7 +797,7 @@ async def get_prices(symbols: str = ""):
         for sym, data in fallback:
             if data:
                 result[sym] = data
-                _live_prices[sym] = data  # seed the dict
+                _live_prices[sym] = {**data, "ts": time.time()}
 
     return {"prices": result}
 
