@@ -436,6 +436,7 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
   const [flashOn, setFlashOn] = useState(false);
   const mountTimeRef = useRef(Date.now());
   const wsPingRef = useRef(null);
+  const lastUpdateTsRef = useRef(0);
   const [soundMuted, setSoundMuted] = useState(() => localStorage.getItem('sultrax_sound_muted') === 'true');
   const soundMutedRef = useRef(soundMuted);
   const audioCtxRef = useRef(null);
@@ -676,6 +677,8 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
       if (msg.type !== 'trade' || !msg.data?.length) return;
 
       const now = Date.now();
+      // Compute once per batch — never inside the trade loop
+      const today = new Date(now).toISOString().slice(0, 10);
       const latestPriceByFinnhub = {};
       const newAlerts = [];
       const rvolUpdates = {};
@@ -693,8 +696,7 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
         const tracking = volumeTrackingRef.current[sym];
         if (!tracking || vol <= 0) return;
 
-        // VWAP — reset daily at midnight UTC so it reflects the current session only
-        const today = new Date().toISOString().slice(0, 10);
+        // VWAP — reset daily at midnight UTC
         if (tracking.vwapDate !== today) {
           tracking.vwapNum = 0;
           tracking.vwapDen = 0;
@@ -709,9 +711,11 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
           chartCallbackRef.current(price, now);
         }
 
-        // RVOL badge
+        // RVOL badge — trim front in-place, no new array created
         tracking.trades5m.push({ vol, time: now });
-        tracking.trades5m = tracking.trades5m.filter(t => now - t.time < 5 * 60 * 1000);
+        const cut5m = now - 300000;
+        while (tracking.trades5m.length > 0 && tracking.trades5m[0].time < cut5m)
+          tracking.trades5m.shift();
         const avgVol = avgVolumesRef.current[sym];
         if (avgVol > 0) {
           const avgVol5m = (avgVol / (sym.endsWith('-USD') ? 1440 : 390)) * 5;
@@ -719,22 +723,26 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
           rvolUpdates[sym] = parseFloat((avgVol5m > 0 ? cur5m / avgVol5m : 0).toFixed(2));
         }
 
-        // Price history buffer for momentum (10-min rolling window, trimmed lazily)
+        // Price history buffer — trim front in-place, cap at 600 entries (~60s for BTC)
         tracking.priceHistory.push({ price, time: now });
-        if (tracking.priceHistory.length > 1200) {
-          tracking.priceHistory = tracking.priceHistory.filter(p => now - p.time < 600000);
-        }
+        const cut10m = now - 600000;
+        while (tracking.priceHistory.length > 0 && tracking.priceHistory[0].time < cut10m)
+          tracking.priceHistory.shift();
+        if (tracking.priceHistory.length > 600)
+          tracking.priceHistory.splice(0, tracking.priceHistory.length - 600);
 
-        // Trade direction — equal price carries forward last direction (no default bias)
+        // Trade direction
         const dir = tracking.lastPrice !== null
           ? (price > tracking.lastPrice ? 'buy' : price < tracking.lastPrice ? 'sell' : (tracking.lastDir || 'buy'))
           : 'buy';
         tracking.lastDir = dir;
         tracking.lastPrice = price;
 
-        // Order flow window (rolling 30s)
+        // Order flow window (rolling 30s) — trim front in-place
         tracking.flowWindow.push({ dir, time: now });
-        tracking.flowWindow = tracking.flowWindow.filter(t => now - t.time < 30000);
+        const cut30s = now - 30000;
+        while (tracking.flowWindow.length > 0 && tracking.flowWindow[0].time < cut30s)
+          tracking.flowWindow.shift();
 
         // EWMA mean and variance (α=0.1 → ~10 trade window)
         // Variance tracked directly to avoid catastrophic cancellation from E[X²]-(E[X])²
@@ -834,7 +842,6 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
         }
 
         const priceThreshold = thresholdsRef.current[sym] ?? 2.0;
-        const today = new Date().toISOString().slice(0, 10);
 
         // ── LAYER 1: DAILY MOVE ALERT ──
         // Measures from session open (first price of the day). Fires once per threshold
@@ -874,9 +881,16 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
         const tracking = volumeTrackingRef.current[sym];
         if (tracking) {
           const spikeThreshold = Math.max(priceThreshold / 4, 0.25);
-          // Reference price: oldest point within the 4.5–6 min window
+          // Reference price: newest point in the 4.5–6 min window
+          // Iterate from end (newest) — no array copy, no reverse()
           const hist = tracking.priceHistory;
-          const ref5m = hist.slice().reverse().find(p => now - p.time >= 270000 && now - p.time <= 360000);
+          let ref5m = null;
+          for (let i = hist.length - 1; i >= 0; i--) {
+            const age = now - hist[i].time;
+            if (age < 270000) continue;
+            if (age <= 360000) { ref5m = hist[i]; break; }
+            break;
+          }
           if (ref5m) {
             const momentum5m = ((newPrice - ref5m.price) / ref5m.price) * 100;
             const spikeDir = momentum5m >= 0 ? 'up' : 'down';
@@ -911,7 +925,11 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
 
       Object.entries(flashUpdates).forEach(([sym, dir]) => triggerFlash(sym, dir));
       if (newAlerts.length) setAlerts(prev => [...newAlerts, ...prev].slice(0, 100));
-      setLastUpdate(new Date(now));
+      // Throttle to 1 re-render/sec — Finnhub can send 10+ messages/sec for BTC
+      if (now - lastUpdateTsRef.current > 1000) {
+        lastUpdateTsRef.current = now;
+        setLastUpdate(new Date(now));
+      }
       setLoading(false);
 
       if (Object.keys(rvolUpdates).length > 0 && now - lastRvolUpdateRef.current > 5000) {
