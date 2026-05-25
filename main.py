@@ -1104,34 +1104,65 @@ SCAN_UNIVERSE = _SCAN_STOCKS + list(_SCAN_CRYPTO.keys())
 _scanner_cache = {"movers": [], "scanned": 0, "updated": None}
 _zone_cache = {}  # {symbol: {"news": [], "stocktwits": [], "yahoo": [], "updated": datetime}}
 
-def _fetch_quote(symbol: str):
-    try:
-        res = requests.get("https://finnhub.io/api/v1/quote",
-            params={"symbol": symbol, "token": FINNHUB_KEY}, timeout=5)
-        if res.status_code != 200:
-            return None
-        d = res.json()
-        price = d.get("c", 0)
-        pct = d.get("dp", 0)
-        if not price or price == 0:
-            return None
-        display = _SCAN_CRYPTO.get(symbol, symbol)
-        return {
-            "symbol": display,
-            "price": round(price, 2),
-            "change": round(d.get("d", 0), 2),
-            "pct": round(pct, 2),
-            "high": round(d.get("h", 0), 2),
-            "low": round(d.get("l", 0), 2),
-            "prev_close": round(d.get("pc", 0), 2),
-        }
-    except Exception:
-        return None
-
 def _run_scanner_sync():
-    with ThreadPoolExecutor(max_workers=15) as ex:
-        results = list(ex.map(_fetch_quote, SCAN_UNIVERSE))
-    movers = [r for r in results if r]
+    """Scan for biggest movers.
+    Stocks: yfinance batch download (one request for all symbols — no Finnhub REST calls).
+    Crypto: read from _live_prices (already maintained by backend WS feed, zero extra calls)."""
+    movers = []
+
+    # ── STOCKS via yfinance batch ────────────────────────────────────────────
+    try:
+        raw = yf.download(
+            ' '.join(_SCAN_STOCKS),
+            period='5d',
+            interval='1d',
+            auto_adjust=True,
+            progress=False,
+            threads=True,
+        )
+        if not raw.empty and 'Close' in raw:
+            closes = raw['Close']
+            # closes may be a Series (1 symbol) or DataFrame (multiple symbols)
+            if hasattr(closes, 'columns'):
+                sym_cols = closes.columns.tolist()
+            else:
+                sym_cols = [_SCAN_STOCKS[0]] if len(_SCAN_STOCKS) == 1 else []
+            for sym in _SCAN_STOCKS:
+                try:
+                    series = closes[sym].dropna() if sym in sym_cols else None
+                    if series is None or len(series) < 2:
+                        continue
+                    prev = float(series.iloc[-2])
+                    curr = float(series.iloc[-1])
+                    if prev <= 0:
+                        continue
+                    pct = (curr - prev) / prev * 100
+                    movers.append({
+                        "symbol": sym,
+                        "price": round(curr, 2),
+                        "change": round(curr - prev, 2),
+                        "pct": round(pct, 2),
+                        "prev_close": round(prev, 2),
+                        "high": 0, "low": 0,
+                    })
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f"[Scanner] yfinance error: {e}")
+
+    # ── CRYPTO from backend WS live prices (no extra API call) ──────────────
+    for display_sym in _SCAN_CRYPTO.values():
+        d = _live_prices.get(display_sym)
+        if d and d.get("price", 0) > 0:
+            movers.append({
+                "symbol": display_sym,
+                "price": d["price"],
+                "change": round(d["price"] - d["prev_close"], 4),
+                "pct": d["change_pct"],
+                "prev_close": d["prev_close"],
+                "high": 0, "low": 0,
+            })
+
     movers.sort(key=lambda x: abs(x["pct"]), reverse=True)
     _scanner_cache["movers"] = movers
     _scanner_cache["scanned"] = len(movers)
