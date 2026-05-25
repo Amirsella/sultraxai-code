@@ -23,7 +23,7 @@ import yfinance as yf
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
 from datetime import datetime, timedelta, timezone
-from fastapi import FastAPI, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, FileResponse
@@ -84,8 +84,10 @@ def send_verification_email(to_email: str, code: str) -> bool:
 dist_path = "/root/sultraxai/sultraxai-frontend/dist"
 app = FastAPI()
 
-# In-memory active sessions: {user_id: last_seen_timestamp}
-_active_sessions: dict[int, float] = {}
+# In-memory active sessions: {user_id: {last_seen, country, country_code}}
+_active_sessions: dict[int, dict] = {}
+# IP geolocation cache to avoid re-fetching the same IP
+_ip_geo_cache: dict[str, dict] = {}
 
 # נתיב קבוע לבסיס הנתונים
 DB_PATH = "/root/sultraxai/sultraxai-frontend/users.db"
@@ -1419,8 +1421,27 @@ class HeartbeatData(BaseModel):
     user_id: int
     session_token: str = ""
 
+def _geolocate(ip: str) -> dict:
+    """Return {country, country_code} for an IP. Cached. Falls back to unknown."""
+    if ip in _ip_geo_cache:
+        return _ip_geo_cache[ip]
+    if not ip or ip in ("127.0.0.1", "::1"):
+        return {"country": "Local", "country_code": "??"}
+    try:
+        r = requests.get(f"http://ip-api.com/json/{ip}?fields=country,countryCode",
+                         timeout=3)
+        if r.status_code == 200:
+            d = r.json()
+            result = {"country": d.get("country", "Unknown"),
+                      "country_code": d.get("countryCode", "??")}
+            _ip_geo_cache[ip] = result
+            return result
+    except Exception:
+        pass
+    return {"country": "Unknown", "country_code": "??"}
+
 @app.post("/api/heartbeat")
-async def heartbeat(data: HeartbeatData):
+async def heartbeat(data: HeartbeatData, request: Request):
     import time
 
     if data.session_token:
@@ -1430,9 +1451,19 @@ async def heartbeat(data: HeartbeatData):
         if row and row[0] and row[0] != data.session_token:
             return JSONResponse(status_code=401, content={"detail": "session_replaced"})
 
-    _active_sessions[data.user_id] = time.time()
-    cutoff = time.time() - 600
-    stale = [uid for uid, ts in _active_sessions.items() if ts < cutoff]
+    # Geolocate in thread so it doesn't block the event loop
+    client_ip = request.headers.get("x-forwarded-for", request.client.host).split(",")[0].strip()
+    loop = asyncio.get_event_loop()
+    geo = await loop.run_in_executor(None, _geolocate, client_ip)
+
+    now = time.time()
+    _active_sessions[data.user_id] = {
+        "last_seen": now,
+        "country": geo["country"],
+        "country_code": geo["country_code"],
+    }
+    cutoff = now - 600
+    stale = [uid for uid, info in _active_sessions.items() if info["last_seen"] < cutoff]
     for uid in stale:
         del _active_sessions[uid]
     return {"status": "ok"}
@@ -1450,9 +1481,19 @@ async def admin_stats(key: str = ""):
     import time
     _admin_auth(key)
     now = time.time()
-    online_5m  = sum(1 for ts in _active_sessions.values() if now - ts < 300)
-    online_15m = sum(1 for ts in _active_sessions.values() if now - ts < 900)
-    return {"online_5m": online_5m, "online_15m": online_15m}
+    sessions_5m  = [s for s in _active_sessions.values() if now - s["last_seen"] < 300]
+    sessions_15m = [s for s in _active_sessions.values() if now - s["last_seen"] < 900]
+    country_counts: dict[str, dict] = {}
+    for s in sessions_15m:
+        cc = s["country_code"]
+        if cc not in country_counts:
+            country_counts[cc] = {"country": s["country"], "count": 0}
+        country_counts[cc]["count"] += 1
+    return {
+        "online_5m": len(sessions_5m),
+        "online_15m": len(sessions_15m),
+        "countries": country_counts,
+    }
 
 # ─── COMMUNITY CHAT ───────────────────────────────────────────────────────────
 

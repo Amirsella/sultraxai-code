@@ -1,4 +1,34 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
+import { ComposableMap, Geographies, Geography } from 'react-simple-maps';
+
+const GEO_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json';
+
+// ISO alpha-3 → alpha-2 mapping for the countries we're likely to see
+const A3_TO_A2 = {"ISR":"IL","USA":"US","GBR":"GB","DEU":"DE","FRA":"FR","NLD":"NL","CAN":"CA","AUS":"AU","IND":"IN","BRA":"BR","RUS":"RU","CHN":"CN","JPN":"JP","KOR":"KR","ZAF":"ZA","ARG":"AR","MEX":"MX","ITA":"IT","ESP":"ES","CHE":"CH","SWE":"SE","NOR":"NO","DNK":"DK","FIN":"FI","POL":"PL","UKR":"UA","TUR":"TR","SAU":"SA","ARE":"AE","SGP":"SG","HKG":"HK","NZL":"NZ","AUT":"AT","BEL":"BE","PRT":"PT","GRC":"GR","CZE":"CZ","ROU":"RO","HUN":"HU","BGD":"BD","PAK":"PK","EGY":"EG","NGA":"NG","KEN":"KE","MAR":"MA","THA":"TH","VNM":"VN","IDN":"ID","PHL":"PH","MYS":"MY","COL":"CO","CHL":"CL","PER":"PE","VEN":"VE","PRY":"PY","URY":"UY"};
+
+const WorldMap = memo(({ countries }) => {
+  const maxCount = Math.max(1, ...Object.values(countries).map(c => c.count));
+  return (
+    <ComposableMap projectionConfig={{ scale: 140, center: [10, 10] }}
+      style={{ width: '100%', height: '100%' }}>
+      <Geographies geography={GEO_URL}>
+        {({ geographies }) => geographies.map(geo => {
+          const a2 = A3_TO_A2[geo.properties.adm0_a3 || geo.id] || geo.id;
+          const data = countries[a2];
+          const intensity = data ? Math.max(0.15, data.count / maxCount) : 0;
+          const fill = data
+            ? `rgba(255, ${Math.round(51 + (1 - intensity) * 150)}, 51, ${0.2 + intensity * 0.75})`
+            : '#111';
+          return (
+            <Geography key={geo.rsmKey} geography={geo}
+              fill={fill} stroke="#1a1a1a" strokeWidth={0.4}
+              style={{ default: { outline: 'none' }, hover: { fill: data ? '#ff6666' : '#1e1e1e', outline: 'none' }, pressed: { outline: 'none' } }} />
+          );
+        })}
+      </Geographies>
+    </ComposableMap>
+  );
+});
 
 const API_BASE = 'http://38.180.137.122:8000';
 const ADMIN_KEY = 'sultrax_admin_key_2026';
@@ -35,7 +65,7 @@ export default function AdminPanel({ onExit }) {
   const [chatRoom, setChatRoom] = useState('crypto');
   const [chatMessages, setChatMessages] = useState([]);
   const [chatLoading, setChatLoading] = useState(false);
-  const [onlineStats, setOnlineStats] = useState({ online_5m: 0, online_15m: 0 });
+  const [onlineStats, setOnlineStats] = useState({ online_5m: 0, online_15m: 0, countries: {} });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -253,7 +283,7 @@ export default function AdminPanel({ onExit }) {
         </div>
 
         {/* Online now */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', marginBottom: '2rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', marginBottom: '1rem' }}>
           <div style={{ background: '#080808', border: '1px solid #0d2b0d', borderRadius: '12px', padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
             <div style={{ position: 'absolute', top: '12px', right: '14px', width: '7px', height: '7px', borderRadius: '50%', background: '#44cc44', boxShadow: '0 0 8px #44cc44' }} />
             <div style={{ fontSize: '2rem', fontWeight: '900', color: '#44cc44', lineHeight: 1 }}>{onlineStats.online_5m}</div>
@@ -263,6 +293,32 @@ export default function AdminPanel({ onExit }) {
             <div style={{ fontSize: '2rem', fontWeight: '900', color: '#888', lineHeight: 1 }}>{onlineStats.online_15m}</div>
             <div style={{ fontSize: '0.65rem', color: '#333', marginTop: '4px', letterSpacing: '0.06em', fontWeight: '700' }}>ACTIVE · 15 MIN</div>
           </div>
+        </div>
+
+        {/* World Map */}
+        <div style={{ background: '#080808', border: '1px solid #111', borderRadius: '12px', padding: '20px', marginBottom: '2rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <span style={{ fontSize: '0.65rem', fontWeight: '700', color: '#333', letterSpacing: '0.1em' }}>CONNECTED FROM · LAST 15 MIN</span>
+            <span style={{ fontSize: '0.6rem', color: '#222' }}>{Object.keys(onlineStats.countries).length} countries</span>
+          </div>
+          <div style={{ height: '260px', borderRadius: '8px', overflow: 'hidden', background: '#050505' }}>
+            <WorldMap countries={onlineStats.countries} />
+          </div>
+          {Object.keys(onlineStats.countries).length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '12px' }}>
+              {Object.entries(onlineStats.countries)
+                .sort((a, b) => b[1].count - a[1].count)
+                .map(([code, { country, count }]) => (
+                  <div key={code} style={{ display: 'flex', alignItems: 'center', gap: '5px', background: '#0d0d0d', border: '1px solid #1a1a1a', borderRadius: '8px', padding: '4px 10px' }}>
+                    <img src={`https://flagcdn.com/16x12/${code.toLowerCase()}.png`} alt={code}
+                      style={{ width: '16px', height: '12px', borderRadius: '2px', objectFit: 'cover' }}
+                      onError={e => { e.target.style.display = 'none'; }} />
+                    <span style={{ fontSize: '0.68rem', color: '#888', fontWeight: '600' }}>{country}</span>
+                    <span style={{ fontSize: '0.62rem', color: '#ff4444', fontWeight: '700' }}>{count}</span>
+                  </div>
+                ))}
+            </div>
+          )}
         </div>
 
         {/* Toast */}
