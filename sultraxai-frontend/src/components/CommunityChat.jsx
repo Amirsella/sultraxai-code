@@ -12,7 +12,7 @@ function fmtTime(iso) {
   catch { return ''; }
 }
 
-export default function CommunityChat({ userId, firstName }) {
+export default function CommunityChat({ userId }) {
   const [open, setOpen]       = useState(false);
   const [room, setRoom]       = useState('crypto');
   const [messages, setMessages] = useState({ crypto: [], stocks: [] });
@@ -32,7 +32,7 @@ export default function CommunityChat({ userId, firstName }) {
       wsRef.current.close();
     }
     const ws = new WebSocket(
-      `${WS_BASE}/ws/chat?user_id=${userId}&first_name=${encodeURIComponent(firstName || 'User')}&room=${targetRoom}`
+      `${WS_BASE}/ws/chat?user_id=${userId}&room=${targetRoom}`
     );
     ws.onopen  = () => setConnected(true);
     ws.onclose = () => {
@@ -51,7 +51,7 @@ export default function CommunityChat({ userId, firstName }) {
       }
     };
     wsRef.current = ws;
-  }, [userId, firstName]);
+  }, [userId]);
 
   useEffect(() => {
     connect('crypto');

@@ -26,6 +26,10 @@ export default function AccountSettings({ userId, onBack, onSignOut, isNative, o
   const [firstName, setFirstName] = useState('');
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
+  const [username, setUsername] = useState('');
+  const [usernameAvailable, setUsernameAvailable] = useState(null);
+  const [usernameMsg, setUsernameMsg] = useState('');
+  const [checkingUsername, setCheckingUsername] = useState(false);
   const [experience, setExperience] = useState('Beginner (0-1 yrs)');
   const [frequency, setFrequency] = useState('Daily');
   const [original, setOriginal] = useState({});
@@ -55,19 +59,40 @@ export default function AccountSettings({ userId, onBack, onSignOut, isNative, o
           firstName: data.first_name || '',
           fullName: data.full_name || '',
           phone: data.phone || '',
+          username: data.username || '',
           experience: data.experience || 'Beginner (0-1 yrs)',
           frequency: data.frequency || 'Daily',
         };
         setUser(data);
         setFirstName(snap.firstName); setFullName(snap.fullName);
-        setPhone(snap.phone); setExperience(snap.experience); setFrequency(snap.frequency);
+        setPhone(snap.phone); setUsername(snap.username);
+        setExperience(snap.experience); setFrequency(snap.frequency);
         setOriginal(snap);
         setLoading(false);
       })
       .catch(() => setLoading(false));
   }, [userId]);
 
-  const profileDirty = firstName !== original.firstName || fullName !== original.fullName || phone !== original.phone;
+  useEffect(() => {
+    if (!username.trim() || username === original.username) {
+      setUsernameAvailable(null); setUsernameMsg(''); return;
+    }
+    if (username.length < 3) { setUsernameAvailable(null); setUsernameMsg(''); return; }
+    const timer = setTimeout(async () => {
+      setCheckingUsername(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/check-username?username=${encodeURIComponent(username)}`);
+        const data = await res.json();
+        setUsernameAvailable(data.available);
+        setUsernameMsg(data.available ? 'Available' : (data.error || 'Not available'));
+      } catch { setUsernameAvailable(null); setUsernameMsg(''); }
+      setCheckingUsername(false);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [username, original.username]);
+
+  const profileDirty = firstName !== original.firstName || fullName !== original.fullName ||
+    phone !== original.phone || username !== original.username;
   const prefsDirty = experience !== original.experience || frequency !== original.frequency;
 
   const pwdCriteria = {
@@ -83,19 +108,27 @@ export default function AccountSettings({ userId, onBack, onSignOut, isNative, o
       setProfileError('Please enter a valid phone number');
       return;
     }
+    if (username !== original.username && usernameAvailable !== true) {
+      setProfileError(usernameMsg || 'Please choose a valid, available username');
+      return;
+    }
     setProfileSaving(true); setProfileSaved(false);
     try {
       const res = await fetch(`${API_BASE}/api/update-profile`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: parseInt(userId), first_name: firstName, full_name: fullName, phone, experience, frequency })
+        body: JSON.stringify({ user_id: parseInt(userId), first_name: firstName, full_name: fullName, phone, username, experience, frequency })
       });
+      const data = await res.json();
       if (res.ok) {
-        setOriginal(prev => ({ ...prev, firstName, fullName, phone, experience, frequency }));
+        setOriginal(prev => ({ ...prev, firstName, fullName, phone, username, experience, frequency }));
+        setUsernameAvailable(null); setUsernameMsg('');
         setProfileSaved(true);
         onProfileUpdate && onProfileUpdate(firstName);
         setTimeout(() => setProfileSaved(false), 2000);
+      } else {
+        setProfileError(data.detail || 'Failed to save');
       }
-    } catch {}
+    } catch { setProfileError('Connection error. Please try again.'); }
     setProfileSaving(false);
   };
 
@@ -239,6 +272,24 @@ export default function AccountSettings({ userId, onBack, onSignOut, isNative, o
                           <Label>Last Name</Label>
                           <input className="acc-input" value={fullName} onChange={e => setFullName(e.target.value)} style={inputStyle} autoCorrect="off" spellCheck={false} />
                         </div>
+                      </div>
+                      <div>
+                        <Label>Username</Label>
+                        <div style={{ position: 'relative' }}>
+                          <input className="acc-input" value={username}
+                            onChange={e => setUsername(e.target.value.replace(/\s/g, ''))}
+                            style={{ ...inputStyle, paddingRight: '2.5rem',
+                              borderColor: usernameAvailable === true ? '#225522' : usernameAvailable === false ? '#662222' : '#1e1e1e' }}
+                            placeholder="your_username" maxLength={20} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
+                          <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.72rem',
+                            color: usernameAvailable === true ? '#44cc44' : '#cc4444' }}>
+                            {checkingUsername ? '…' : usernameAvailable === true ? '✓' : usernameAvailable === false ? '✗' : ''}
+                          </span>
+                        </div>
+                        {usernameMsg && username !== original.username && (
+                          <p style={{ fontSize: '0.7rem', color: usernameAvailable ? '#44cc44' : '#cc4444', margin: '5px 0 0' }}>{usernameMsg}</p>
+                        )}
+                        <p style={{ fontSize: '0.62rem', color: '#222', margin: '5px 0 0' }}>3–20 chars, letters/numbers/underscores. Shown in community chat.</p>
                       </div>
                       <div>
                         <Label>Email Address</Label>

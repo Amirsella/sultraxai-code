@@ -459,7 +459,7 @@ export default function App() {
         <SupportBot />
       )}
       {['main_app', 'zone', 'scanner', 'settings'].includes(currentView) && !isNative && (
-        <CommunityChat userId={userId} firstName={firstName} />
+        <CommunityChat userId={userId} />
       )}
       {!isNative && (
         <div style={{ borderTop: '1px solid #0a0a0a', padding: '14px 0', display: 'flex', justifyContent: 'center', gap: '28px' }}>
@@ -611,12 +611,34 @@ function OnboardingStep3({ tradingProfile, setTradingProfile, submitOnboarding }
 function SignUpForm({ isNative, onBack, onRegisterSuccess, setErrorMessage, errorMessage }) {
   const [firstName, setFirstName] = useState('');
   const [fullName, setFullName] = useState('');
+  const [username, setUsername] = useState('');
+  const [usernameAvailable, setUsernameAvailable] = useState(null);
+  const [usernameMsg, setUsernameMsg] = useState('');
+  const [checkingUsername, setCheckingUsername] = useState(false);
   const [email, setEmail] = useState('');
   const [countryCode, setCountryCode] = useState('+972');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [agreeTerms, setAgreeTerms] = useState(false);
+
+  useEffect(() => {
+    if (!username.trim() || username.length < 3) {
+      setUsernameAvailable(null); setUsernameMsg('');
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setCheckingUsername(true);
+      try {
+        const res = await fetch(`http://38.180.137.122:8000/api/check-username?username=${encodeURIComponent(username)}`);
+        const data = await res.json();
+        setUsernameAvailable(data.available);
+        setUsernameMsg(data.available ? 'Username is available' : (data.error || 'Not available'));
+      } catch { setUsernameAvailable(null); setUsernameMsg(''); }
+      setCheckingUsername(false);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [username]);
 
   const isPasswordStrong = (pwd) => {
     const hasMinLength = pwd.length >= 8;
@@ -630,6 +652,7 @@ function SignUpForm({ isNative, onBack, onRegisterSuccess, setErrorMessage, erro
 
   const isFormValid =
     firstName.trim() !== '' && fullName.trim() !== '' &&
+    username.trim() !== '' && usernameAvailable === true &&
     isEmailValid(email) && phone.trim() !== '' &&
     pwdCriteria.isValid && password === confirmPassword && agreeTerms;
 
@@ -650,6 +673,7 @@ function SignUpForm({ isNative, onBack, onRegisterSuccess, setErrorMessage, erro
         body: JSON.stringify({
           first_name: firstName,
           full_name: fullName,
+          username: username.trim(),
           email: email.trim(),
           phone: `${countryCode}${phone.trim()}`,
           password: password
@@ -680,6 +704,23 @@ function SignUpForm({ isNative, onBack, onRegisterSuccess, setErrorMessage, erro
           onInput={e => setFullName(e.currentTarget.textContent || '')}
           dir="auto"
           style={{ ...(isNative ? mobileInputStyle : inputStyle), minHeight: '1.4em', cursor: 'text', whiteSpace: 'nowrap', overflowX: 'hidden' }} />
+        <div style={{ position: 'relative' }}>
+          <input
+            type="text" placeholder="Username (shown in chat)"
+            value={username} onChange={e => setUsername(e.target.value.replace(/\s/g, ''))}
+            style={{ ...(isNative ? mobileInputStyle : inputStyle), paddingRight: '2.5rem',
+              borderColor: usernameAvailable === true ? '#225522' : usernameAvailable === false ? '#662222' : undefined }}
+            autoCorrect="off" autoCapitalize="none" spellCheck={false} maxLength={20}
+          />
+          <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.7rem' }}>
+            {checkingUsername ? '...' : usernameAvailable === true ? '✓' : usernameAvailable === false ? '✗' : ''}
+          </span>
+        </div>
+        {usernameMsg && (
+          <span style={{ color: usernameAvailable ? '#44cc44' : '#ff6666', fontSize: '0.75rem', marginTop: '-0.5rem' }}>
+            {usernameMsg}
+          </span>
+        )}
         <input type="text" inputMode="email" placeholder="Email Address" value={email} onChange={e => setEmail(e.target.value)} style={isNative ? mobileInputStyle : inputStyle} required autoCorrect="off" autoCapitalize="none" spellCheck={false} />
         {email && !isEmailValid(email) && <span style={{ color: '#ff3333', fontSize: '0.8rem', marginTop: '-0.5rem' }}>Please enter a valid email format</span>}
 
@@ -726,6 +767,8 @@ function SignUpForm({ isNative, onBack, onRegisterSuccess, setErrorMessage, erro
           <div style={{ fontSize: '0.85rem', color: '#ff6666', background: 'rgba(255,51,51,0.08)', border: '1px solid rgba(255,51,51,0.3)', padding: '0.75rem', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
             {!firstName.trim() && <span>• First name is required</span>}
             {!fullName.trim() && <span>• Full name is required</span>}
+            {!username.trim() && <span>• Username is required</span>}
+            {username.trim() && usernameAvailable !== true && <span>• Choose a valid, available username</span>}
             {!isEmailValid(email) && <span>• Valid email is required</span>}
             {!phone.trim() && <span>• Phone number is required</span>}
             {!pwdCriteria.isValid && <span>• Password doesn't meet requirements</span>}

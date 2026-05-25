@@ -2,6 +2,7 @@ import sqlite3
 import hashlib
 import os
 import random
+import re
 import uuid
 import requests
 
@@ -107,11 +108,16 @@ def init_db():
     """)
     for _col in ["created_at TEXT", "subscription_status TEXT", "stripe_customer_id TEXT",
                   "subscription_plan TEXT", "subscription_expires TEXT",
-                  "subscription_start TEXT", "subscription_cancel_pending INTEGER DEFAULT 0"]:
+                  "subscription_start TEXT", "subscription_cancel_pending INTEGER DEFAULT 0",
+                  "username TEXT"]:
         try:
             cursor.execute(f"ALTER TABLE users ADD COLUMN {_col}")
         except Exception:
             pass
+    try:
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users (username) WHERE username IS NOT NULL")
+    except Exception:
+        pass
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_assets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -159,8 +165,54 @@ def init_db():
 
 init_db()
 
+_BLOCKED_USERNAME_TERMS = {
+    "fuck","shit","cunt","bitch","cock","pussy","asshole","bastard","whore","slut",
+    "dickhead","motherfucker","bullshit","piss","twat",
+    "nigger","nigga","kike","spic","chink","gook","wetback","faggot","retard",
+    "raghead","beaner","cracker",
+    "nazi","hitler","himmler","goebbels","kkk","isis","hamas","hezbollah",
+    "alqaeda","taliban","jihad","genocide",
+    "porn","dildo","masturbat","pedophile","pedo","rapist","terrorist",
+    "admin","moderator","support","official","staff",
+}
+
+def _leet_normalize(s: str) -> str:
+    for a, b in [('0','o'),('1','i'),('3','e'),('4','a'),('5','s'),('$','s'),('@','a'),('!','i'),('7','t')]:
+        s = s.replace(a, b)
+    return s.lower()
+
+def _validate_username(username: str):
+    """Returns error string or None if valid."""
+    if not username:
+        return "Username is required"
+    if len(username) < 3:
+        return "Username must be at least 3 characters"
+    if len(username) > 20:
+        return "Username must be at most 20 characters"
+    if not re.match(r'^[a-zA-Z0-9_]+$', username):
+        return "Username can only contain letters, numbers, and underscores"
+    if not username[0].isalpha():
+        return "Username must start with a letter"
+    if any(term in _leet_normalize(username) for term in _BLOCKED_USERNAME_TERMS):
+        return "This username is not allowed"
+    return None
+
 class UserRegister(BaseModel):
-    first_name: str; full_name: str; email: EmailStr; phone: str; password: str
+    first_name: str; full_name: str; email: EmailStr; phone: str; password: str; username: str
+
+@app.get("/api/check-username")
+async def check_username(username: str = ""):
+    err = _validate_username(username)
+    if err:
+        return {"available": False, "error": err}
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE LOWER(username) = ?", (username.lower(),))
+    taken = cursor.fetchone() is not None
+    conn.close()
+    if taken:
+        return {"available": False, "error": "This username is already taken"}
+    return {"available": True, "error": None}
 
 @app.get("/api/config")
 async def get_config():
@@ -275,6 +327,19 @@ async def register(user: UserRegister, background_tasks: BackgroundTasks):
     cursor = conn.cursor()
     email_clean = user.email.strip().lower()
     phone_clean = user.phone.strip()
+    username_clean = user.username.strip()
+
+    # Validate username format / content
+    username_err = _validate_username(username_clean)
+    if username_err:
+        conn.close()
+        return JSONResponse(status_code=400, content={"detail": username_err})
+
+    # Check username uniqueness
+    cursor.execute("SELECT id FROM users WHERE LOWER(username) = ?", (username_clean.lower(),))
+    if cursor.fetchone():
+        conn.close()
+        return JSONResponse(status_code=400, content={"detail": "This username is already taken."})
 
     # Check email (case-insensitive)
     cursor.execute("SELECT id FROM users WHERE LOWER(email) = ?", (email_clean,))
@@ -291,8 +356,8 @@ async def register(user: UserRegister, background_tasks: BackgroundTasks):
 
     pwd_hash = hash_password(user.password)
     try:
-        cursor.execute("INSERT INTO users (first_name, full_name, email, phone, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                       (user.first_name, user.full_name, email_clean, phone_clean or '', pwd_hash, datetime.now().isoformat()))
+        cursor.execute("INSERT INTO users (first_name, full_name, email, phone, password_hash, created_at, username) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                       (user.first_name, user.full_name, email_clean, phone_clean or '', pwd_hash, datetime.now().isoformat(), username_clean))
         user_id = cursor.lastrowid
         conn.commit()
     except Exception as e:
@@ -422,7 +487,7 @@ async def get_user(user_id: int):
     cursor.execute("""
         SELECT first_name, full_name, email, phone, subscription_status,
                subscription_plan, subscription_expires, subscription_start,
-               subscription_cancel_pending, stripe_customer_id
+               subscription_cancel_pending, stripe_customer_id, username
         FROM users WHERE id = ?
     """, (user_id,))
     row = cursor.fetchone()
@@ -440,6 +505,7 @@ async def get_user(user_id: int):
         "subscription_start": row[7] or "",
         "subscription_cancel_pending": bool(row[8]),
         "has_paypal_sub": bool(row[9]),
+        "username": row[10] or "",
         "experience": profile[0] if profile else "Beginner (0-1 yrs)",
         "frequency": profile[1] if profile else "Daily"
     }
@@ -452,10 +518,26 @@ async def update_profile(data: dict):
     phone = data.get("phone", "").strip()
     experience = data.get("experience")
     frequency = data.get("frequency")
+    new_username = data.get("username", "").strip()
+
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("UPDATE users SET first_name = ?, full_name = ?, phone = ? WHERE id = ?",
-                   (first_name, full_name, phone, user_id))
+
+    if new_username:
+        err = _validate_username(new_username)
+        if err:
+            conn.close()
+            return JSONResponse(status_code=400, content={"detail": err})
+        cursor.execute("SELECT id FROM users WHERE LOWER(username) = ? AND id != ?", (new_username.lower(), user_id))
+        if cursor.fetchone():
+            conn.close()
+            return JSONResponse(status_code=400, content={"detail": "This username is already taken."})
+        cursor.execute("UPDATE users SET first_name = ?, full_name = ?, phone = ?, username = ? WHERE id = ?",
+                       (first_name, full_name, phone, new_username, user_id))
+    else:
+        cursor.execute("UPDATE users SET first_name = ?, full_name = ?, phone = ? WHERE id = ?",
+                       (first_name, full_name, phone, user_id))
+
     if experience and frequency:
         cursor.execute("INSERT OR REPLACE INTO user_profiles (user_id, experience, frequency) VALUES (?, ?, ?)",
                        (user_id, experience, frequency))
@@ -1159,8 +1241,14 @@ def _chat_save(user_id, first_name, message, room):
     return msg_id, now
 
 @app.websocket("/ws/chat")
-async def chat_ws(ws: WebSocket, user_id: int = 0, first_name: str = "User", room: str = "crypto"):
+async def chat_ws(ws: WebSocket, user_id: int = 0, room: str = "crypto"):
     room = room if room in ("crypto", "stocks") else "crypto"
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT username, first_name FROM users WHERE id = ?", (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    display_name = (row[0] or row[1] or "User") if row else "User"
     await chat_manager.connect(ws, room)
     try:
         await ws.send_json({"type": "history", "messages": _chat_history(room)})
@@ -1169,12 +1257,12 @@ async def chat_ws(ws: WebSocket, user_id: int = 0, first_name: str = "User", roo
             text = (data.get("message") or "").strip()[:500]
             if not text:
                 continue
-            msg_id, ts = _chat_save(user_id, first_name, text, room)
+            msg_id, ts = _chat_save(user_id, display_name, text, room)
             await chat_manager.broadcast({
                 "type": "message",
                 "id": msg_id,
                 "user_id": user_id,
-                "first_name": first_name,
+                "first_name": display_name,
                 "message": text,
                 "created_at": ts,
                 "room": room,
