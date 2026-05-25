@@ -949,8 +949,8 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
     if (!selectedAssets.length) return;
     let cancelled = false;
 
-    fetch(`${API_BASE}/api/config`)
-      .then(r => r.json())
+    fetch(`${API_BASE}/api/config?user_id=${userId}&session_token=${encodeURIComponent(sessionToken || '')}`)
+      .then(r => { if (!r.ok) throw new Error(`config ${r.status}`); return r.json(); })
       .then(cfg => fetch(`${API_BASE}/api/prices?symbols=${selectedAssets.join(',')}`)
         .then(r => r.json())
         .then(data => {

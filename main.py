@@ -312,7 +312,10 @@ async def check_username(username: str = ""):
     return {"available": True, "error": None}
 
 @app.get("/api/config")
-async def get_config():
+async def get_config(user_id: int = 0, session_token: str = ""):
+    if not user_id or not session_token:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    _validate_session(user_id, session_token)
     return {"finnhub_key": FINNHUB_KEY}
 
 @app.get("/api/search-stocks")
