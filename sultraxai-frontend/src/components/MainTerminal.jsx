@@ -1588,7 +1588,10 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
                 <h3 style={{ margin: 0, fontSize: '0.7rem', fontWeight: '700', color: '#444', letterSpacing: '0.12em', textTransform: 'uppercase' }}>Price Alerts</h3>
                 {priceAlerts.length > 0 && <span style={{ fontSize: '0.62rem', background: 'rgba(255,51,51,0.15)', color: '#ff4444', padding: '1px 7px', borderRadius: '8px', fontWeight: '700' }}>{priceAlerts.length}</span>}
               </div>
-              {priceAlerts.length > 0 && <button onClick={() => setAlerts(prev => prev.filter(a => a.type !== 'price'))} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.72rem', padding: '2px 4px' }}>✕</button>}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <button onClick={() => setSoundMuted(m => !m)} title={soundMuted ? 'Unmute' : 'Mute'} style={{ background: 'none', border: 'none', color: soundMuted ? '#333' : '#666', cursor: 'pointer', fontSize: '0.8rem', padding: '2px 4px', lineHeight: 1 }}>{soundMuted ? '🔇' : '🔔'}</button>
+                {priceAlerts.length > 0 && <button onClick={() => setAlerts(prev => prev.filter(a => a.type !== 'price'))} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.72rem', padding: '2px 4px' }}>✕</button>}
+              </div>
             </div>
             {priceAlerts.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '1.5rem 0.5rem' }}>
