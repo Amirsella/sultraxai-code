@@ -16,33 +16,36 @@ function avatarColor(name) {
 }
 
 export default function CommunityChat({ userId }) {
-  const [open, setOpen]       = useState(false);
-  const [room, setRoom]       = useState('crypto');
+  const [open, setOpen]         = useState(false);
+  const [room, setRoom]         = useState('crypto');
+  const [dropdown, setDropdown] = useState(false);
   const [messages, setMessages] = useState({ crypto: [], stocks: [] });
-  const [input, setInput]     = useState('');
+  const [input, setInput]       = useState('');
   const [connected, setConnected] = useState(false);
-  const [unread, setUnread]   = useState(0);
+  const [unread, setUnread]     = useState(0);
   const [chatError, setChatError] = useState('');
-  const wsRef    = useRef(null);
-  const bottomRef = useRef(null);
-  const openRef  = useRef(open);
-  const roomRef  = useRef(room);
+
+  const wsRef      = useRef(null);
+  const bottomRef  = useRef(null);
+  const dropRef    = useRef(null);
+  const openRef    = useRef(open);
+  const roomRef    = useRef(room);
   openRef.current = open;
   roomRef.current = room;
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!dropdown) return;
+    const handler = (e) => { if (dropRef.current && !dropRef.current.contains(e.target)) setDropdown(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [dropdown]);
+
   const connect = useCallback((targetRoom) => {
-    if (wsRef.current) {
-      wsRef.current.onclose = null;
-      wsRef.current.close();
-    }
-    const ws = new WebSocket(
-      `${WS_BASE}/ws/chat?user_id=${userId}&room=${targetRoom}`
-    );
+    if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); }
+    const ws = new WebSocket(`${WS_BASE}/ws/chat?user_id=${userId}&room=${targetRoom}`);
     ws.onopen  = () => setConnected(true);
-    ws.onclose = () => {
-      setConnected(false);
-      setTimeout(() => connect(roomRef.current), 3000);
-    };
+    ws.onclose = () => { setConnected(false); setTimeout(() => connect(roomRef.current), 3000); };
     ws.onerror = () => ws.close();
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data);
@@ -50,8 +53,7 @@ export default function CommunityChat({ userId }) {
         setMessages(prev => ({ ...prev, [targetRoom]: data.messages }));
       } else if (data.type === 'message') {
         setMessages(prev => ({ ...prev, [targetRoom]: [...prev[targetRoom], data] }));
-        if (!openRef.current || roomRef.current !== targetRoom)
-          setUnread(n => n + 1);
+        if (!openRef.current || roomRef.current !== targetRoom) setUnread(n => n + 1);
       } else if (data.type === 'error') {
         setChatError(data.message);
         setTimeout(() => setChatError(''), 4000);
@@ -66,16 +68,14 @@ export default function CommunityChat({ userId }) {
   }, [connect]);
 
   const switchRoom = (newRoom) => {
+    setDropdown(false);
     if (newRoom === room) return;
     setRoom(newRoom);
     connect(newRoom);
   };
 
   useEffect(() => {
-    if (open) {
-      setUnread(0);
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 60);
-    }
+    if (open) { setUnread(0); setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 60); }
   }, [open, room]);
 
   useEffect(() => {
@@ -89,9 +89,7 @@ export default function CommunityChat({ userId }) {
     setInput('');
   };
 
-  const onKey = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
-  };
+  const onKey = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } };
 
   const activeRoom = ROOMS.find(r => r.id === room);
   const currentMessages = messages[room] || [];
@@ -101,17 +99,53 @@ export default function CommunityChat({ userId }) {
 
       {/* Chat panel */}
       {open && (
-        <div style={{ position: 'absolute', bottom: '56px', left: 0, width: '320px', height: '460px', background: '#080808', border: '1px solid #1a1a1a', borderRadius: '16px', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}>
+        <div style={{ position: 'absolute', bottom: '56px', left: 0, width: '300px', height: '440px', background: '#080808', border: '1px solid #1a1a1a', borderRadius: '16px', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}>
 
           {/* Header */}
           <div style={{ padding: '10px 14px', borderBottom: '1px solid #111', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+
+            {/* Left: title + online dot */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '0.65rem', fontWeight: '800', letterSpacing: '0.1em', color: '#fff' }}>COMMUNITY</span>
               <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: connected ? '#44cc44' : '#444', boxShadow: connected ? '0 0 6px #44cc44' : 'none', display: 'inline-block' }} />
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ fontSize: '0.6rem', fontWeight: '800', color: activeRoom.color, letterSpacing: '0.06em' }}>#{room.toUpperCase()}</span>
-              <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: '#444', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: '0 0 0 8px' }}>×</button>
+
+            {/* Right: room dropdown + close */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div ref={dropRef} style={{ position: 'relative' }}>
+                <button
+                  onClick={() => setDropdown(d => !d)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 6px', borderRadius: '6px', transition: 'background 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#111'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                >
+                  <span style={{ fontSize: '0.68rem', fontWeight: '800', color: activeRoom.color, letterSpacing: '0.06em' }}>
+                    #{room.toUpperCase()}
+                  </span>
+                  <span style={{ fontSize: '0.5rem', color: '#444', marginTop: '1px' }}>▼</span>
+                </button>
+
+                {/* Dropdown */}
+                {dropdown && (
+                  <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, background: '#0d0d0d', border: '1px solid #1e1e1e', borderRadius: '10px', overflow: 'hidden', minWidth: '120px', boxShadow: '0 4px 20px rgba(0,0,0,0.5)', zIndex: 10 }}>
+                    {ROOMS.map(r => (
+                      <button key={r.id} onClick={() => switchRoom(r.id)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '9px 14px', background: room === r.id ? r.color + '14' : 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'background 0.12s' }}
+                        onMouseEnter={e => { if (room !== r.id) e.currentTarget.style.background = '#161616'; }}
+                        onMouseLeave={e => { if (room !== r.id) e.currentTarget.style.background = 'none'; }}
+                      >
+                        <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: r.color, flexShrink: 0, boxShadow: room === r.id ? `0 0 6px ${r.color}` : 'none' }} />
+                        <span style={{ fontSize: '0.75rem', fontWeight: '700', color: room === r.id ? r.color : '#888' }}>
+                          {r.label}
+                        </span>
+                        {room === r.id && <span style={{ marginLeft: 'auto', fontSize: '0.6rem', color: r.color }}>✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: '#444', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: '2px 4px' }}>×</button>
             </div>
           </div>
 
@@ -152,45 +186,22 @@ export default function CommunityChat({ userId }) {
           )}
 
           {/* Input */}
-          <div style={{ padding: '8px 12px', borderTop: '1px solid #111', display: 'flex', gap: '8px', flexShrink: 0 }}>
+          <div style={{ padding: '10px 12px', borderTop: '1px solid #111', display: 'flex', gap: '8px', flexShrink: 0 }}>
             <input
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={onKey}
-              placeholder={`Message #${room}...`}
-              maxLength={500}
+              value={input} onChange={e => setInput(e.target.value)} onKeyDown={onKey}
+              placeholder={`Message #${room}...`} maxLength={500}
               style={{ flex: 1, background: '#111', border: '1px solid #1e1e1e', borderRadius: '10px', color: '#fff', padding: '8px 12px', fontSize: '0.82rem', outline: 'none', fontFamily: 'inherit' }}
             />
-            <button
-              onClick={send}
-              disabled={!input.trim() || !connected}
+            <button onClick={send} disabled={!input.trim() || !connected}
               style={{ background: input.trim() && connected ? activeRoom.color : '#111', border: 'none', borderRadius: '10px', color: input.trim() && connected ? '#fff' : '#333', width: '36px', cursor: input.trim() && connected ? 'pointer' : 'default', fontSize: '1rem', transition: 'all 0.15s', flexShrink: 0 }}>
               ↑
             </button>
-          </div>
-
-          {/* Bottom nav bar */}
-          <div style={{ display: 'flex', borderTop: '1px solid #111', flexShrink: 0 }}>
-            {ROOMS.map(r => (
-              <button key={r.id} onClick={() => switchRoom(r.id)}
-                style={{
-                  flex: 1, padding: '10px 0', border: 'none', cursor: 'pointer',
-                  background: room === r.id ? r.color + '14' : 'transparent',
-                  fontFamily: 'inherit', fontSize: '0.68rem', fontWeight: '800',
-                  letterSpacing: '0.08em', color: room === r.id ? r.color : '#333',
-                  borderTop: `2px solid ${room === r.id ? r.color : 'transparent'}`,
-                  transition: 'all 0.15s',
-                }}>
-                {r.label.toUpperCase()}
-              </button>
-            ))}
           </div>
         </div>
       )}
 
       {/* Toggle button */}
-      <button
-        onClick={() => setOpen(o => !o)}
+      <button onClick={() => setOpen(o => !o)}
         style={{ width: '44px', height: '44px', borderRadius: '50%', background: open ? '#ff3333' : '#0d0d0d', border: `1px solid ${open ? '#ff333360' : '#1e1e1e'}`, color: open ? '#fff' : '#555', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: open ? '0 4px 20px rgba(255,51,51,0.3)' : '0 2px 12px rgba(0,0,0,0.5)', transition: 'all 0.2s', position: 'relative' }}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
