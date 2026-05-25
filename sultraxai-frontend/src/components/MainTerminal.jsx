@@ -1000,7 +1000,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                           <span style={{ fontWeight: '800', fontSize: '0.95rem', color: '#fff' }}>{sym}</span>
                           <span style={{ fontSize: '0.6rem', fontWeight: '700', color: status.color, background: `${status.color}18`, padding: '2px 8px', borderRadius: '20px' }}>{status.label}</span>
                           {rvolStyle && <span style={{ fontSize: '0.58rem', fontWeight: '700', color: rvolStyle.color }}>{rvolStyle.icon} {rvols[sym].toFixed(1)}x</span>}
-                          <button onClick={e => { e.stopPropagation(); setExpandedCard(expandedCard === sym ? null : sym); }}
+                          <button onClick={e => { e.stopPropagation(); setExpandedCard(prev => prev === sym ? null : sym); }}
                             style={{ background: 'none', border: 'none', color: expandedCard === sym ? '#aaa' : '#2a2a2a', cursor: 'pointer', fontSize: '0.88rem', marginLeft: 'auto', padding: '2px 4px', lineHeight: 1 }}>⚙</button>
                         </div>
                         <div style={{ fontSize: '1.55rem', fontWeight: '800', fontVariantNumeric: 'tabular-nums', color: priceColor, transition: 'color 0.15s', lineHeight: 1.1 }}>
@@ -1244,7 +1244,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                     <span style={{ fontSize: '0.65rem', fontWeight: '700', color: status.color, background: `${status.color}18`, padding: '3px 8px', borderRadius: '20px' }}>
                       {status.label}
                     </span>
-                    <button onClick={e => { e.stopPropagation(); setExpandedCard(expandedCard === sym ? null : sym); }}
+                    <button onClick={e => { e.stopPropagation(); setExpandedCard(prev => prev === sym ? null : sym); }}
                       style={{ background: 'none', border: 'none', color: expandedCard === sym ? '#fff' : '#444', cursor: 'pointer', fontSize: '0.85rem', lineHeight: 1, padding: '2px' }}>
                       ⚙
                     </button>
