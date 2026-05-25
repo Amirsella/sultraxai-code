@@ -13,7 +13,51 @@ const MOCK_STOCKS = ["BTC/USD", "ETH/USD", "AAPL", "TSLA", "NVDA", "AMZN", "GOOG
 const isNative = typeof window !== 'undefined' &&
   (window.location.protocol === 'capacitor:' || !!window.Capacitor?.isNativePlatform?.());
 
+const BETA_CODE = 'SULTRAX2026';
+
+function BetaGate({ onUnlock }) {
+  const [input, setInput] = useState('');
+  const [error, setError] = useState('');
+
+  const attempt = (e) => {
+    e.preventDefault();
+    if (input.trim().toUpperCase() === BETA_CODE) {
+      localStorage.setItem('beta_unlocked', '1');
+      onUnlock();
+    } else {
+      setError('Invalid access code.');
+      setInput('');
+    }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: '#020202', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: '-apple-system, BlinkMacSystemFont, system-ui, sans-serif', zIndex: 99999 }}>
+      <div style={{ width: '100%', maxWidth: '360px', padding: '0 24px', textAlign: 'center' }}>
+        <div style={{ fontSize: '1.4rem', fontWeight: '900', letterSpacing: '0.08em', marginBottom: '6px' }}>
+          <span style={{ color: '#ff3333' }}>SULTRAX</span><span style={{ color: '#fff' }}>AI</span>
+        </div>
+        <div style={{ fontSize: '0.65rem', color: '#444', letterSpacing: '0.2em', marginBottom: '48px' }}>PRIVATE BETA</div>
+
+        <form onSubmit={attempt} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <input
+            value={input} onChange={e => { setInput(e.target.value); setError(''); }}
+            placeholder="Enter access code"
+            autoFocus autoComplete="off" autoCorrect="off" autoCapitalize="characters" spellCheck={false}
+            style={{ padding: '14px 16px', background: '#0d0d0d', border: `1px solid ${error ? '#ff3333' : '#1e1e1e'}`, borderRadius: '12px', color: '#fff', fontSize: '0.95rem', letterSpacing: '0.08em', textAlign: 'center', outline: 'none', fontFamily: 'inherit' }}
+          />
+          {error && <div style={{ color: '#ff4444', fontSize: '0.75rem' }}>{error}</div>}
+          <button type="submit" disabled={!input.trim()}
+            style={{ padding: '14px', background: input.trim() ? '#ff3333' : '#111', border: 'none', borderRadius: '12px', color: input.trim() ? '#fff' : '#333', fontWeight: '800', fontSize: '0.85rem', letterSpacing: '0.08em', cursor: input.trim() ? 'pointer' : 'default', transition: 'all 0.15s' }}>
+            REQUEST ACCESS →
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const [betaUnlocked, setBetaUnlocked] = useState(() => localStorage.getItem('beta_unlocked') === '1');
   const [isAdminMode] = useState(() => new URLSearchParams(window.location.search).has('admin'));
 
   // Payment redirect params (Lemon Squeezy)
@@ -235,6 +279,10 @@ export default function App() {
         <AdminPanel onExit={() => { window.history.replaceState({}, '', '/'); window.location.reload(); }} />
       </Suspense>
     );
+  }
+
+  if (!betaUnlocked) {
+    return <BetaGate onUnlock={() => setBetaUnlocked(true)} />;
   }
 
   return (
