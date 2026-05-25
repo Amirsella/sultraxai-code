@@ -476,36 +476,59 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
     return () => { window.removeEventListener('click', unlock); window.removeEventListener('touchstart', unlock); };
   }, []);
 
+  const _getCtx = useCallback(async () => {
+    if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtxRef.current.state === 'suspended') await audioCtxRef.current.resume();
+    return audioCtxRef.current;
+  }, []);
+
+  // Signal alert — ascending "di-ding" (880 → 1175 Hz)
   const playBeep = useCallback(() => {
     if (soundMutedRef.current) return;
-    try {
-      if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-      const ctx = audioCtxRef.current;
-      if (ctx.state === 'suspended') ctx.resume();
-      const now = ctx.currentTime;
+    _getCtx().then(ctx => {
+      try {
+        const now = ctx.currentTime;
+        const osc1 = ctx.createOscillator(); const g1 = ctx.createGain();
+        osc1.connect(g1); g1.connect(ctx.destination);
+        osc1.type = 'sine'; osc1.frequency.value = 880;
+        g1.gain.setValueAtTime(0.28, now);
+        g1.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        osc1.start(now); osc1.stop(now + 0.12);
 
-      // "di" — first note
-      const osc1 = ctx.createOscillator();
-      const g1 = ctx.createGain();
-      osc1.connect(g1); g1.connect(ctx.destination);
-      osc1.type = 'sine';
-      osc1.frequency.value = 880;
-      g1.gain.setValueAtTime(0.28, now);
-      g1.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-      osc1.start(now); osc1.stop(now + 0.12);
+        const osc2 = ctx.createOscillator(); const g2 = ctx.createGain();
+        osc2.connect(g2); g2.connect(ctx.destination);
+        osc2.type = 'sine'; osc2.frequency.value = 1175;
+        g2.gain.setValueAtTime(0, now);
+        g2.gain.setValueAtTime(0.3, now + 0.1);
+        g2.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+        osc2.start(now); osc2.stop(now + 0.55);
+      } catch {}
+    }).catch(() => {});
+  }, [_getCtx]);
 
-      // "ding" — second note, higher
-      const osc2 = ctx.createOscillator();
-      const g2 = ctx.createGain();
-      osc2.connect(g2); g2.connect(ctx.destination);
-      osc2.type = 'sine';
-      osc2.frequency.value = 1175;
-      g2.gain.setValueAtTime(0, now);
-      g2.gain.setValueAtTime(0.3, now + 0.1);
-      g2.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
-      osc2.start(now); osc2.stop(now + 0.55);
-    } catch {}
-  }, []);
+  // Price alert — single descending bell (1040 → 660 Hz), softer
+  const playPriceBeep = useCallback(() => {
+    if (soundMutedRef.current) return;
+    _getCtx().then(ctx => {
+      try {
+        const now = ctx.currentTime;
+        const osc1 = ctx.createOscillator(); const g1 = ctx.createGain();
+        osc1.connect(g1); g1.connect(ctx.destination);
+        osc1.type = 'sine'; osc1.frequency.value = 1040;
+        g1.gain.setValueAtTime(0.22, now);
+        g1.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+        osc1.start(now); osc1.stop(now + 0.18);
+
+        const osc2 = ctx.createOscillator(); const g2 = ctx.createGain();
+        osc2.connect(g2); g2.connect(ctx.destination);
+        osc2.type = 'sine'; osc2.frequency.value = 660;
+        g2.gain.setValueAtTime(0, now);
+        g2.gain.setValueAtTime(0.25, now + 0.15);
+        g2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+        osc2.start(now); osc2.stop(now + 0.6);
+      } catch {}
+    }).catch(() => {});
+  }, [_getCtx]);
 
   useEffect(() => {
     localStorage.setItem('sultrax_alerts', JSON.stringify(alerts));
@@ -541,9 +564,9 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
     const ts = parseInt((newest.id || '').split('-').pop());
     if (!isNaN(ts) && ts >= mountTimeRef.current && newest.id !== lastPriceSoundIdRef.current) {
       lastPriceSoundIdRef.current = newest.id;
-      playBeep();
+      playPriceBeep();
     }
-  }, [alerts, playBeep]);
+  }, [alerts, playPriceBeep]);
 
   useEffect(() => {
     selectedAssets.forEach(sym => {
