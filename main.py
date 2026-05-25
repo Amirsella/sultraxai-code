@@ -589,15 +589,32 @@ async def complete_onboarding(data: OnboardingData):
         return JSONResponse(status_code=500, content={"detail": str(e)})
     return {"status": "success"}
 
-# ── BACKEND FINNHUB PRICE FEED ─────────────────────────────────────────────
-# One persistent WebSocket connection to Finnhub maintained server-side.
-# Keeps _live_prices updated in real-time. /api/prices reads from this dict
-# (instant memory read) instead of calling yfinance on every request.
+# ── BACKEND PRICE FEED ARCHITECTURE ────────────────────────────────────────
+# Crypto  → Binance WebSocket (free, no API key, sub-100ms, always reliable)
+# Stocks  → Finnhub WebSocket (free with API key, real-time during market hours)
+# Fallback→ yfinance batch (background refresh every 60s)
 
-_live_prices: dict[str, dict] = {}   # sym → {price, change_pct, prev_close}
-_pf_subscribed: set[str] = set()     # symbols currently subscribed on the feed WS
-_pf_ws = None                         # active websockets connection, or None
-_price_ws_clients: set = set()        # frontend WebSocket connections receiving trade broadcasts
+_live_prices: dict[str, dict] = {}   # sym → {price, change_pct, prev_close, ts}
+_pf_subscribed: set[str] = set()     # symbols currently subscribed on Finnhub WS
+_pf_ws = None                         # active Finnhub websockets connection, or None
+_price_ws_clients: set = set()        # frontend WebSocket connections
+
+# Binance stream name → internal display symbol (covers all common crypto)
+_BINANCE_CRYPTO: dict[str, str] = {
+    "btcusdt":  "BTC-USD",
+    "ethusdt":  "ETH-USD",
+    "solusdt":  "SOL-USD",
+    "xrpusdt":  "XRP-USD",
+    "bnbusdt":  "BNB-USD",
+    "adausdt":  "ADA-USD",
+    "dogeusdt": "DOGE-USD",
+    "avaxusdt": "AVAX-USD",
+    "dotusdt":  "DOT-USD",
+    "linkusdt": "LINK-USD",
+    "ltcusdt":  "LTC-USD",
+    "atomusdt": "ATOM-USD",
+}
+_DISPLAY_TO_BINANCE = {v: k for k, v in _BINANCE_CRYPTO.items()}  # "BTC-USD" → "btcusdt"
 
 def _sym_to_finnhub(sym: str) -> str:
     if sym.endswith('-USD'):
@@ -609,47 +626,93 @@ def _finnhub_to_sym(fs: str) -> str:
         return f"{fs[8:-4]}-USD"
     return fs
 
-async def _pf_init_prev_closes(symbols: list):
-    """Seed _live_prices on startup.
-    Stocks: one yfinance batch call (avoids Finnhub rate limits with 25+ symbols).
-    Crypto: Finnhub REST per symbol (few symbols, real-time data)."""
+def _binance_init_prev_closes():
+    """Seed _live_prices for all Binance crypto symbols via one batch REST call."""
+    try:
+        res = requests.get("https://api.binance.com/api/v3/ticker/24hr", timeout=10)
+        tickers = {t["symbol"].lower(): t for t in res.json()}
+        now_ts = time.time()
+        seeded = 0
+        for stream_sym, display_sym in _BINANCE_CRYPTO.items():
+            if display_sym in _live_prices:
+                continue
+            t = tickers.get(stream_sym)
+            if not t:
+                continue
+            price = float(t["lastPrice"])
+            prev  = float(t["prevClosePrice"] or price)
+            if price <= 0:
+                continue
+            cp = ((price - prev) / prev * 100) if prev else 0
+            _live_prices[display_sym] = {"price": round(price, 4), "change_pct": round(cp, 4), "prev_close": round(prev, 4), "ts": now_ts}
+            seeded += 1
+        print(f"[Binance] Seeded {seeded} crypto symbols via 24hr ticker")
+    except Exception as e:
+        print(f"[Binance] Init error: {e}")
+
+async def _binance_price_feed():
+    """Persistent Binance WebSocket — free, no API key, sub-100ms crypto updates.
+    Covers all _BINANCE_CRYPTO symbols. Broadcasts in Finnhub-compatible format
+    so the frontend's existing trade handler works unchanged."""
+    streams = "/".join(f"{sym}@aggTrade" for sym in _BINANCE_CRYPTO)
+    uri = f"wss://stream.binance.com:9443/stream?streams={streams}"
+    reconnect_delay = 2
     loop = asyncio.get_event_loop()
+    # Seed prev_closes before first connection
+    await loop.run_in_executor(None, _binance_init_prev_closes)
+    while True:
+        try:
+            async with _ws_lib.connect(uri, ping_interval=20, ping_timeout=10) as ws:
+                reconnect_delay = 2
+                print(f"[Binance] Connected — streaming {len(_BINANCE_CRYPTO)} crypto pairs")
+                async for raw in ws:
+                    envelope = _json.loads(raw)
+                    trade = envelope.get("data", {})
+                    if trade.get("e") != "aggTrade":
+                        continue
+                    stream_sym = trade["s"].lower()          # "btcusdt"
+                    display_sym = _BINANCE_CRYPTO.get(stream_sym)
+                    if not display_sym:
+                        continue
+                    price = float(trade["p"])
+                    vol   = float(trade.get("q", 0))
+                    if price <= 0:
+                        continue
+                    existing = _live_prices.get(display_sym)
+                    prev = existing["prev_close"] if existing else price
+                    cp = ((price - prev) / prev * 100) if prev else 0
+                    _live_prices[display_sym] = {"price": round(price, 6), "change_pct": round(cp, 4), "prev_close": round(prev, 6), "ts": time.time()}
+                    # Broadcast in Finnhub-compatible format (frontend expects {"type":"trade","data":[...]})
+                    finnhub_sym = f"BINANCE:{trade['s']}"
+                    msg = _json.dumps({"type": "trade", "data": [{"s": finnhub_sym, "p": price, "v": vol, "t": trade.get("T", 0)}]})
+                    if _price_ws_clients:
+                        clients = list(_price_ws_clients)
+                        results = await asyncio.gather(*[c.send_text(msg) for c in clients], return_exceptions=True)
+                        dead = {c for c, r in zip(clients, results) if isinstance(r, Exception)}
+                        if dead:
+                            _price_ws_clients.difference_update(dead)
+        except Exception as e:
+            print(f"[Binance] Error: {e}")
+        await asyncio.sleep(reconnect_delay)
+        reconnect_delay = min(reconnect_delay * 2, 30)
 
-    stocks  = [s for s in symbols if '-USD' not in s and '/' not in s and s not in _live_prices]
-    cryptos = [s for s in symbols if ('-USD' in s or '/' in s) and s not in _live_prices]
-
-    # Batch seed stocks in one yfinance request
+async def _pf_init_prev_closes(symbols: list):
+    """Seed _live_prices for STOCK symbols only (crypto handled by _binance_price_feed)."""
+    loop = asyncio.get_event_loop()
+    stocks = [s for s in symbols if '-USD' not in s and '/' not in s and s not in _live_prices]
     if stocks:
         batch = await loop.run_in_executor(None, _batch_seed_stocks, stocks)
         for sym, data in batch.items():
             _live_prices[sym] = data
         print(f"[PriceFeed] Seeded {len(batch)}/{len(stocks)} stocks via yfinance batch")
 
-    # Crypto: individual Finnhub REST (real-time, typically ≤12 symbols)
-    async def _one_crypto(sym):
-        try:
-            res = await loop.run_in_executor(None, lambda: requests.get(
-                "https://finnhub.io/api/v1/quote",
-                params={"symbol": _sym_to_finnhub(sym), "token": FINNHUB_KEY},
-                timeout=5,
-            ))
-            d = res.json()
-            price = d.get("c") or 0
-            prev  = d.get("pc") or 0
-            if price > 0:
-                cp = ((price - prev) / prev * 100) if prev else 0
-                _live_prices[sym] = {"price": round(price, 4), "change_pct": round(cp, 4), "prev_close": round(prev, 4), "ts": time.time()}
-        except Exception as e:
-            print(f"[PriceFeed] REST init {sym}: {e}")
-    if cryptos:
-        await asyncio.gather(*[_one_crypto(s) for s in cryptos])
-
 _PF_MAX_SYMBOLS = 50  # Finnhub free plan: 50 WebSocket subscriptions per connection
 
 async def _finnhub_price_feed():
-    """Persistent backend WebSocket to Finnhub — reconnects forever on failure."""
+    """Persistent Finnhub WebSocket for STOCKS only.
+    Crypto is handled by _binance_price_feed (free, no API key, more reliable)."""
     global _pf_ws
-    reconnect_delay = 5
+    reconnect_delay = 3
     while True:
         try:
             if not FINNHUB_KEY:
@@ -659,10 +722,11 @@ async def _finnhub_price_feed():
             conn = _get_db()
             rows = conn.execute("SELECT DISTINCT symbol FROM user_assets").fetchall()
             all_symbols = [r[0] for r in rows]
-            # Respect Finnhub free-tier 50-symbol cap
-            symbols = all_symbols[:_PF_MAX_SYMBOLS]
-            if len(all_symbols) > _PF_MAX_SYMBOLS:
-                print(f"[PriceFeed] WARNING: {len(all_symbols)} symbols found, subscribing first {_PF_MAX_SYMBOLS} only (Finnhub free cap).")
+            # Stocks only — crypto covered by Binance WS, freeing all 50 slots for stocks
+            stock_symbols = [s for s in all_symbols if '-USD' not in s and '/' not in s]
+            symbols = stock_symbols[:_PF_MAX_SYMBOLS]
+            if len(stock_symbols) > _PF_MAX_SYMBOLS:
+                print(f"[PriceFeed] WARNING: {len(stock_symbols)} stocks, subscribing first {_PF_MAX_SYMBOLS}")
 
             if symbols:
                 await _pf_init_prev_closes(symbols)
@@ -670,7 +734,7 @@ async def _finnhub_price_feed():
             uri = f"wss://ws.finnhub.io?token={FINNHUB_KEY}"
             async with _ws_lib.connect(uri, ping_interval=25, ping_timeout=10) as ws:
                 _pf_ws = ws
-                reconnect_delay = 5  # reset backoff on successful connect
+                reconnect_delay = 3  # reset backoff on successful connect
                 for sym in symbols:
                     await ws.send(_json.dumps({"type": "subscribe", "symbol": _sym_to_finnhub(sym)}))
                     _pf_subscribed.add(sym)
@@ -716,10 +780,13 @@ async def _finnhub_price_feed():
             _pf_ws = None
             _pf_subscribed.clear()
         await asyncio.sleep(reconnect_delay)
-        reconnect_delay = min(reconnect_delay * 2, 60)  # backoff up to 60s
+        reconnect_delay = min(reconnect_delay * 2, 45)  # backoff up to 45s (was 60s)
 
 async def _pf_subscribe_sym(sym: str):
-    """Subscribe one new symbol to the backend price feed."""
+    """Subscribe one new stock symbol to the Finnhub feed.
+    Crypto symbols are ignored here — they stream via _binance_price_feed."""
+    if '-USD' in sym or '/' in sym:
+        return  # crypto: covered by Binance WS
     if sym in _pf_subscribed:
         return
     await _pf_init_prev_closes([sym])
@@ -1449,7 +1516,8 @@ async def _warmup_cache():
 async def start_scanner_loop():
     asyncio.create_task(_scanner_background_loop())
     asyncio.create_task(_zone_background_loop())
-    asyncio.create_task(_finnhub_price_feed())
+    asyncio.create_task(_binance_price_feed())   # crypto: free, sub-100ms, always-on
+    asyncio.create_task(_finnhub_price_feed())   # stocks: real-time during market hours
     asyncio.create_task(_background_price_refresh())
     asyncio.create_task(_warmup_cache())
 
