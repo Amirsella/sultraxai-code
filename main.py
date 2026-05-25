@@ -238,7 +238,7 @@ def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 @app.post("/api/register")
-async def register(user: UserRegister, background_tasks: BackgroundTasks):
+async def register(user: UserRegister):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     email_clean = user.email.strip().lower()
@@ -274,8 +274,7 @@ async def register(user: UserRegister, background_tasks: BackgroundTasks):
                    (email_clean, code, expiry))
     conn.commit()
     conn.close()
-    print(f"New user registered: id={user_id}, email={email_clean}, code={code}")
-    background_tasks.add_task(send_verification_email, email_clean, code)
+    print(f"New user registered: id={user_id}, email={email_clean}")
     return {"status": "success", "user_id": user_id}
 @app.post("/api/complete-onboarding")
 async def complete_onboarding(data: OnboardingData):

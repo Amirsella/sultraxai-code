@@ -85,12 +85,11 @@ export default function App() {
     else localStorage.removeItem('pendingEmail');
   }, [pendingEmail]);
 
- const handleRegisterSuccess = (id, email) => {
+ const handleRegisterSuccess = (id) => {
     setUserId(id);
-    setPendingEmail(email); // שומר את המייל
     setSelectedAssets([]);
     setOnboardingStep(1);
-    setCurrentView('verify');
+    setCurrentView('onboarding');
   };
 
   const handleSignOut = () => {
@@ -600,7 +599,7 @@ function SignUpForm({ isNative, onBack, onRegisterSuccess, setErrorMessage, erro
         })
       });
       const data = await res.json();
-      if (res.ok) onRegisterSuccess(data.user_id, email);
+      if (res.ok) onRegisterSuccess(data.user_id);
       else setErrorMessage(data.detail);
     } catch (err) {
       setErrorMessage("Connection error. Please try again.");
