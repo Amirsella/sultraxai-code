@@ -466,6 +466,16 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
     localStorage.setItem('sultrax_sound_muted', soundMuted);
   }, [soundMuted]);
 
+  useEffect(() => {
+    const unlock = () => {
+      if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
+    };
+    window.addEventListener('click', unlock, { once: true });
+    window.addEventListener('touchstart', unlock, { once: true });
+    return () => { window.removeEventListener('click', unlock); window.removeEventListener('touchstart', unlock); };
+  }, []);
+
   const playBeep = useCallback(() => {
     if (soundMutedRef.current) return;
     try {
