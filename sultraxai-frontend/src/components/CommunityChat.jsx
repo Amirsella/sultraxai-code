@@ -85,6 +85,7 @@ export default function CommunityChat({ userId, sessionToken }) {
   const [input, setInput]         = useState('');
   const [connected, setConnected] = useState(false);
   const [unread, setUnread]       = useState(0);
+  const [hasMention, setHasMention] = useState(false);
   const [chatError, setChatError] = useState('');
   const [mentionQuery, setMentionQuery] = useState(null);
   const [mentionIndex, setMentionIndex] = useState(0);
@@ -98,6 +99,15 @@ export default function CommunityChat({ userId, sessionToken }) {
   const roomRef      = useRef(room);
   openRef.current = open;
   roomRef.current = room;
+
+  // Inject pulse keyframe once
+  useEffect(() => {
+    if (document.getElementById('cc-mention-kf')) return;
+    const s = document.createElement('style');
+    s.id = 'cc-mention-kf';
+    s.textContent = '@keyframes cc-mention-pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,200,0,0.8),0 2px 8px rgba(255,51,51,0.5)}60%{box-shadow:0 0 0 7px rgba(255,200,0,0),0 2px 8px rgba(255,51,51,0.5)}}';
+    document.head.appendChild(s);
+  }, []);
 
   // Close room dropdown on outside click
   useEffect(() => {
@@ -129,6 +139,8 @@ export default function CommunityChat({ userId, sessionToken }) {
           data.message.toLowerCase().includes(`@${myUsernameRef.current.toLowerCase()}`);
         if (mentioned || !openRef.current || roomRef.current !== targetRoom)
           setUnread(n => n + 1);
+        if (mentioned && !openRef.current)
+          setHasMention(true);
       } else if (data.type === 'error') {
         setChatError(data.message);
         setTimeout(() => setChatError(''), 4000);
@@ -150,7 +162,7 @@ export default function CommunityChat({ userId, sessionToken }) {
   };
 
   useEffect(() => {
-    if (open) { setUnread(0); setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 60); }
+    if (open) { setUnread(0); setHasMention(false); setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 60); }
   }, [open, room]);
 
   useEffect(() => {
@@ -372,7 +384,12 @@ export default function CommunityChat({ userId, sessionToken }) {
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
         </svg>
-        {unread > 0 && !open && (
+        {hasMention && !open && (
+          <span style={{ position: 'absolute', top: '-5px', right: '-5px', background: 'linear-gradient(135deg, #e6a800, #ffd000)', color: '#000', borderRadius: '50%', width: '20px', height: '20px', fontSize: '0.72rem', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #080808', animation: 'cc-mention-pulse 1.6s ease-in-out infinite', letterSpacing: '-0.5px' }}>
+            @
+          </span>
+        )}
+        {!hasMention && unread > 0 && !open && (
           <span style={{ position: 'absolute', top: '-3px', right: '-3px', background: 'linear-gradient(135deg, #ff2222, #ff5555)', color: '#fff', borderRadius: '50%', width: '19px', height: '19px', fontSize: '0.6rem', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #080808', boxShadow: '0 2px 8px rgba(255,51,51,0.5)' }}>
             {unread > 9 ? '9+' : unread}
           </span>
