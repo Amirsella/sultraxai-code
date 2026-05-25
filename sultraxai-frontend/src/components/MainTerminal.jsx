@@ -1058,7 +1058,10 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                             <span style={{ fontWeight: '700', color: '#e8e8e8', fontSize: '0.9rem' }}>{a.symbol}</span>
                             <span style={{ fontSize: '0.63rem', fontWeight: '700', color: accent, background: `${accent}18`, padding: '2px 8px', borderRadius: '6px' }}>{label}</span>
                           </div>
-                          <span style={{ fontSize: '0.62rem', color: '#444' }}>{a.time}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {a.price != null && <span style={{ fontSize: '0.72rem', fontWeight: '700', color: '#ccc', fontVariantNumeric: 'tabular-nums' }}>${fmtPrice(a.price)}</span>}
+                            <span style={{ fontSize: '0.62rem', color: '#444' }}>{a.time}</span>
+                          </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <div style={{ flex: 1, height: '3px', background: '#1a1a1a', borderRadius: '2px', overflow: 'hidden' }}>
@@ -1071,10 +1074,10 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                         {isExpanded && (
                           <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: `1px solid ${accent}22` }}>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                              {[['Volume spike', `×${a.volMultiplier ?? '–'} above avg`], ['Order flow', `${Math.round((a.flowRatio || 0) * 100)}% buyers`], ['vs VWAP', `${(a.price || 0) >= (a.vwap || 0) ? 'above ↑' : 'below ↓'} avg`]].map(([lbl, val]) => (
+                              {[['Entry price', a.price != null ? `$${fmtPrice(a.price)}` : '—'], ['Volume spike', `×${a.volMultiplier ?? '–'} above avg`], ['Order flow', `${Math.round((a.flowRatio || 0) * 100)}% buyers`], ['vs VWAP', `${(a.price || 0) >= (a.vwap || 0) ? 'above ↑' : 'below ↓'} avg`]].map(([lbl, val]) => (
                                 <div key={lbl} style={{ display: 'flex', justifyContent: 'space-between' }}>
                                   <span style={{ fontSize: '0.72rem', color: '#444' }}>{lbl}</span>
-                                  <span style={{ fontSize: '0.72rem', color: '#888', fontWeight: '600' }}>{val}</span>
+                                  <span style={{ fontSize: '0.72rem', color: lbl === 'Entry price' ? '#ddd' : '#888', fontWeight: '600' }}>{val}</span>
                                 </div>
                               ))}
                               <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '6px', borderTop: `1px solid ${accent}18` }}>
@@ -1331,7 +1334,10 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                           <span style={{ fontWeight: '700', color: '#e8e8e8', fontSize: '0.85rem' }}>{a.symbol}</span>
                           <span style={{ fontSize: '0.62rem', fontWeight: '700', color: accent, background: `${accent}18`, padding: '1px 6px', borderRadius: '5px' }}>{label}</span>
                         </div>
-                        <span style={{ fontSize: '0.6rem', color: '#444', flexShrink: 0 }}>{a.time}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                          {a.price != null && <span style={{ fontSize: '0.68rem', fontWeight: '700', color: '#ccc', fontVariantNumeric: 'tabular-nums' }}>${fmtPrice(a.price)}</span>}
+                          <span style={{ fontSize: '0.6rem', color: '#444' }}>{a.time}</span>
+                        </div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
                         <div style={{ flex: 1, height: '3px', background: '#1a1a1a', borderRadius: '2px', overflow: 'hidden' }}>
@@ -1344,10 +1350,10 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                       {isExpanded && (
                         <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${accent}22` }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                            {[['Volume spike', `×${a.volMultiplier ?? '–'} above avg`], ['Order flow', `${Math.round((a.flowRatio || 0) * 100)}% buyers`], ['vs VWAP', `${(a.price || 0) >= (a.vwap || 0) ? 'above ↑' : 'below ↓'} avg`]].map(([lbl, val]) => (
+                            {[['Entry price', a.price != null ? `$${fmtPrice(a.price)}` : '—'], ['Volume spike', `×${a.volMultiplier ?? '–'} above avg`], ['Order flow', `${Math.round((a.flowRatio || 0) * 100)}% buyers`], ['vs VWAP', `${(a.price || 0) >= (a.vwap || 0) ? 'above ↑' : 'below ↓'} avg`]].map(([lbl, val]) => (
                               <div key={lbl} style={{ display: 'flex', justifyContent: 'space-between' }}>
                                 <span style={{ fontSize: '0.65rem', color: '#444' }}>{lbl}</span>
-                                <span style={{ fontSize: '0.65rem', color: '#888', fontWeight: '600' }}>{val}</span>
+                                <span style={{ fontSize: '0.65rem', color: lbl === 'Entry price' ? '#ddd' : '#888', fontWeight: '600' }}>{val}</span>
                               </div>
                             ))}
                             <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '5px', borderTop: `1px solid ${accent}18` }}>
