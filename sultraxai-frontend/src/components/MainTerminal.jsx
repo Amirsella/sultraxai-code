@@ -1058,18 +1058,16 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                             <span style={{ fontWeight: '700', color: '#e8e8e8', fontSize: '0.9rem' }}>{a.symbol}</span>
                             <span style={{ fontSize: '0.63rem', fontWeight: '700', color: accent, background: `${accent}18`, padding: '2px 8px', borderRadius: '6px' }}>{label}</span>
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            {a.price != null && <span style={{ fontSize: '0.72rem', fontWeight: '700', color: '#ccc', fontVariantNumeric: 'tabular-nums' }}>${fmtPrice(a.price)}</span>}
-                            <span style={{ fontSize: '0.62rem', color: '#444' }}>{a.time}</span>
-                          </div>
+                          <span style={{ fontSize: '0.62rem', color: '#444' }}>{a.time}</span>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                          {a.price != null && <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#bbb', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>${fmtPrice(a.price)}</span>}
                           <div style={{ flex: 1, height: '3px', background: '#1a1a1a', borderRadius: '2px', overflow: 'hidden' }}>
                             <div style={{ width: `${score}%`, height: '100%', background: `linear-gradient(to right, ${accent}66, ${accent})` }} />
                           </div>
-                          <span style={{ fontSize: '0.65rem', color: '#666' }}>{score}/100</span>
-                          <span style={{ fontSize: '0.62rem', color: '#444' }}>×{a.volMultiplier ?? '–'}</span>
-                          <span style={{ fontSize: '0.75rem', color: confirmColor }}>{confirmIcon}</span>
+                          <span style={{ fontSize: '0.65rem', color: '#666', flexShrink: 0 }}>{score}/100</span>
+                          <span style={{ fontSize: '0.62rem', color: '#444', flexShrink: 0 }}>×{a.volMultiplier ?? '–'}</span>
+                          <span style={{ fontSize: '0.75rem', color: confirmColor, flexShrink: 0 }}>{confirmIcon}</span>
                         </div>
                         {isExpanded && (
                           <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: `1px solid ${accent}22` }}>
@@ -1334,18 +1332,16 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                           <span style={{ fontWeight: '700', color: '#e8e8e8', fontSize: '0.85rem' }}>{a.symbol}</span>
                           <span style={{ fontSize: '0.62rem', fontWeight: '700', color: accent, background: `${accent}18`, padding: '1px 6px', borderRadius: '5px' }}>{label}</span>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                          {a.price != null && <span style={{ fontSize: '0.68rem', fontWeight: '700', color: '#ccc', fontVariantNumeric: 'tabular-nums' }}>${fmtPrice(a.price)}</span>}
-                          <span style={{ fontSize: '0.6rem', color: '#444' }}>{a.time}</span>
-                        </div>
+                        <span style={{ fontSize: '0.6rem', color: '#444', flexShrink: 0 }}>{a.time}</span>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginTop: '6px' }}>
+                        {a.price != null && <span style={{ fontSize: '0.72rem', fontWeight: '700', color: '#bbb', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>${fmtPrice(a.price)}</span>}
                         <div style={{ flex: 1, height: '3px', background: '#1a1a1a', borderRadius: '2px', overflow: 'hidden' }}>
                           <div style={{ width: `${score}%`, height: '100%', background: `linear-gradient(to right, ${accent}66, ${accent})`, borderRadius: '2px' }} />
                         </div>
-                        <span style={{ fontSize: '0.63rem', color: '#666', whiteSpace: 'nowrap' }}>{score}/100</span>
-                        <span style={{ fontSize: '0.6rem', color: '#444', whiteSpace: 'nowrap' }}>×{a.volMultiplier ?? '–'}</span>
-                        <span style={{ fontSize: '0.7rem', color: confirmColor }}>{confirmIcon}</span>
+                        <span style={{ fontSize: '0.63rem', color: '#666', whiteSpace: 'nowrap', flexShrink: 0 }}>{score}/100</span>
+                        <span style={{ fontSize: '0.6rem', color: '#444', whiteSpace: 'nowrap', flexShrink: 0 }}>×{a.volMultiplier ?? '–'}</span>
+                        <span style={{ fontSize: '0.7rem', color: confirmColor, flexShrink: 0 }}>{confirmIcon}</span>
                       </div>
                       {isExpanded && (
                         <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: `1px solid ${accent}22` }}>
