@@ -1320,8 +1320,8 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
         </div>
 
         {/* ── RIGHT COLUMN ── */}
-        <div style={{ width: '300px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div style={{ background: '#0a0a0a', borderRadius: '16px', border: '1px solid #1c1c1c', padding: '1rem 1rem 0.75rem' }}>
+        <div style={{ width: '300px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '14px', position: 'sticky', top: '80px', alignSelf: 'flex-start', maxHeight: 'calc(100vh - 100px)', overflowY: 'auto' }}>
+          <div style={{ background: '#0a0a0a', borderRadius: '16px', border: '1px solid #1c1c1c', padding: '1rem 1rem 0.75rem', flexShrink: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <h3 style={{ margin: 0, fontSize: '0.7rem', fontWeight: '700', color: '#444', letterSpacing: '0.12em', textTransform: 'uppercase' }}>Signal Feed</h3>
@@ -1338,7 +1338,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                 <p style={{ color: '#2a2a2a', fontSize: '0.73rem', margin: 0, lineHeight: 1.6 }}>Scanning for anomalous<br />order flow activity.</p>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '400px', overflowY: 'auto', paddingBottom: '0.25rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '320px', overflowY: 'auto', paddingBottom: '0.25rem' }}>
                 {signals.map((a, i) => {
                   const isBuy = a.dir === 'buy';
                   const score = a.score || 0;
