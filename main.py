@@ -146,13 +146,13 @@ _db_local = threading.local()
 
 def _get_db() -> sqlite3.Connection:
     if not hasattr(_db_local, 'conn'):
-        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False, isolation_level=None)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.execute("PRAGMA cache_size=10000")
         conn.execute("PRAGMA temp_store=MEMORY")
-        conn.execute("PRAGMA mmap_size=268435456")  # 256 MB memory-mapped I/O
+        conn.execute("PRAGMA mmap_size=268435456")
         _db_local.conn = conn
     return _db_local.conn
 
