@@ -517,16 +517,21 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
         const ts = parseInt((a.id || '').split('-').pop());
         return !isNaN(ts) && ts >= mountTimeRef.current && Date.now() - ts < 60000;
       });
-      if (hasNew) {
-        setFlashOn(v => {
-          if (!v) playBeep();
-          return !v;
-        });
-      } else {
-        setFlashOn(false);
-      }
+      if (hasNew) setFlashOn(v => !v);
+      else setFlashOn(false);
     }, 500);
     return () => clearInterval(id);
+  }, [alerts]);
+
+  const lastSoundIdRef = useRef(null);
+  useEffect(() => {
+    const newest = alerts.find(a => a.type === 'signal');
+    if (!newest) return;
+    const ts = parseInt((newest.id || '').split('-').pop());
+    if (!isNaN(ts) && ts >= mountTimeRef.current && newest.id !== lastSoundIdRef.current) {
+      lastSoundIdRef.current = newest.id;
+      playBeep();
+    }
   }, [alerts, playBeep]);
 
   useEffect(() => {
