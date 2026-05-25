@@ -45,6 +45,7 @@ export default function AccountSettings({ userId, onBack, onSignOut, isNative, o
   const [cancelConfirm, setCancelConfirm] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [cancelDone, setCancelDone] = useState(false);
+  const [cancelError, setCancelError] = useState('');
 
   useEffect(() => {
     fetch(`${API_BASE}/api/user/${userId}`)
@@ -128,18 +129,23 @@ export default function AccountSettings({ userId, onBack, onSignOut, isNative, o
   };
 
   const cancelSubscription = async () => {
-    setCancelling(true);
+    setCancelling(true); setCancelError('');
     try {
       const res = await fetch(`${API_BASE}/api/cancel-subscription`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ user_id: parseInt(userId) }),
       });
+      const data = await res.json();
       if (res.ok) {
         setCancelDone(true);
         setCancelConfirm(false);
         setUser(prev => ({ ...prev, subscription_cancel_pending: true }));
+      } else {
+        setCancelError(data.detail || 'Failed to cancel. Please try again.');
       }
-    } catch {}
+    } catch {
+      setCancelError('Connection error. Please try again.');
+    }
     setCancelling(false);
   };
 
@@ -420,7 +426,8 @@ export default function AccountSettings({ userId, onBack, onSignOut, isNative, o
             <h3 style={{ margin: '0 0 8px', fontSize: '1rem', fontWeight: '900', color: '#fff' }}>Cancel subscription?</h3>
             <p style={{ color: '#555', fontSize: '0.82rem', margin: '0 0 6px', lineHeight: 1.6 }}>You'll keep full access until</p>
             <p style={{ color: '#ff9900', fontSize: '0.95rem', fontWeight: '700', margin: '0 0 1.25rem' }}>{fmtDate(user?.subscription_expires)}</p>
-            <p style={{ color: '#333', fontSize: '0.75rem', margin: '0 0 1.5rem', lineHeight: 1.6 }}>After that, you'll need to subscribe again to regain access.</p>
+            <p style={{ color: '#333', fontSize: '0.75rem', margin: '0 0 1.25rem', lineHeight: 1.6 }}>After that, you'll need to subscribe again to regain access.</p>
+            {cancelError && <div style={{ background: 'rgba(255,51,51,0.08)', border: '1px solid rgba(255,51,51,0.2)', borderRadius: '8px', padding: '8px 12px', fontSize: '0.78rem', color: '#ff4444', marginBottom: '1rem' }}>{cancelError}</div>}
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
               <button onClick={() => setCancelConfirm(false)} style={{ padding: '9px 22px', background: 'none', border: '1px solid #2a2a2a', color: '#555', borderRadius: '8px', cursor: 'pointer', fontSize: '0.82rem', fontFamily: SYS_FONT }}>
                 Keep subscription

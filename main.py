@@ -924,10 +924,27 @@ def _check_subscriptions_sync():
                 print(f"[SubChecker] user={user_id} sub={sub_id} HTTP {res.status_code}")
         except Exception as e:
             print(f"[SubChecker] user={user_id} error: {e}")
+    # Also revoke cancel_pending subs whose expiry date has passed (no PayPal call needed)
+    try:
+        conn2 = sqlite3.connect(DB_PATH)
+        c2 = conn2.cursor()
+        c2.execute(
+            "SELECT id FROM users WHERE subscription_cancel_pending=1 AND subscription_status='active' "
+            "AND subscription_expires != '' AND subscription_expires IS NOT NULL AND subscription_expires < ?",
+            (now.isoformat(),)
+        )
+        date_expired = [r[0] for r in c2.fetchall()]
+        conn2.close()
+        expired.extend(date_expired)
+        if date_expired:
+            print(f"[SubChecker] {len(date_expired)} cancel_pending sub(s) expired by date")
+    except Exception as e:
+        print(f"[SubChecker] date-check error: {e}")
+
     if expired or updates:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        for uid in expired:
+        for uid in set(expired):
             cursor.execute("UPDATE users SET subscription_status='' WHERE id=?", (uid,))
         for next_billing, uid in updates:
             cursor.execute("UPDATE users SET subscription_expires=? WHERE id=?", (next_billing, uid))
@@ -1049,17 +1066,21 @@ async def cancel_subscription(data: dict):
             json={"reason": "Cancelled by user"},
             timeout=10
         )
-        if res.status_code not in (200, 204):
+        # 204 = success, 422 = already cancelled — both are acceptable
+        if res.status_code not in (200, 204, 422):
             raise Exception(f"PayPal returned {res.status_code}: {res.text}")
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("UPDATE users SET subscription_cancel_pending=1 WHERE id=?", (user_id,))
-        conn.commit()
-        conn.close()
-        print(f"[Cancel] user={user_id} cancelled, access until {expires}")
-        return {"status": "cancelled", "access_until": expires or ""}
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=503, detail=f"Could not reach PayPal: {e}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET subscription_cancel_pending=1 WHERE id=?", (user_id,))
+    conn.commit()
+    conn.close()
+    print(f"[Cancel] user={user_id} cancelled, access until {expires}")
+    return {"status": "cancelled", "access_until": expires or ""}
 
 @app.post("/api/admin/grant-subscription")
 async def admin_grant_subscription(data: dict, key: str = ""):
