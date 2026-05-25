@@ -23,6 +23,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 import email.utils
 import json as _json
+import websockets as _ws_lib
 import yfinance as yf
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
@@ -582,6 +583,111 @@ async def complete_onboarding(data: OnboardingData):
         return JSONResponse(status_code=500, content={"detail": str(e)})
     return {"status": "success"}
 
+# ── BACKEND FINNHUB PRICE FEED ─────────────────────────────────────────────
+# One persistent WebSocket connection to Finnhub maintained server-side.
+# Keeps _live_prices updated in real-time. /api/prices reads from this dict
+# (instant memory read) instead of calling yfinance on every request.
+
+_live_prices: dict[str, dict] = {}   # sym → {price, change_pct, prev_close}
+_pf_subscribed: set[str] = set()     # symbols currently subscribed on the feed WS
+_pf_ws = None                         # active websockets connection, or None
+
+def _sym_to_finnhub(sym: str) -> str:
+    if sym.endswith('-USD'):
+        return f"BINANCE:{sym[:-4]}USDT"
+    return sym
+
+def _finnhub_to_sym(fs: str) -> str:
+    if fs.startswith('BINANCE:') and fs.endswith('USDT'):
+        return f"{fs[8:-4]}-USD"
+    return fs
+
+async def _pf_init_prev_closes(symbols: list):
+    """Fetch prev_close for symbols via Finnhub REST so the dict is seeded correctly."""
+    loop = asyncio.get_event_loop()
+    async def _one(sym):
+        if sym in _live_prices:
+            return
+        try:
+            res = await loop.run_in_executor(None, lambda: requests.get(
+                "https://finnhub.io/api/v1/quote",
+                params={"symbol": _sym_to_finnhub(sym), "token": FINNHUB_KEY},
+                timeout=5,
+            ))
+            d = res.json()
+            price = d.get("c") or 0
+            prev  = d.get("pc") or 0
+            if price > 0:
+                cp = ((price - prev) / prev * 100) if prev else 0
+                _live_prices[sym] = {
+                    "price": round(price, 4),
+                    "change_pct": round(cp, 4),
+                    "prev_close": round(prev, 4),
+                }
+        except Exception as e:
+            print(f"[PriceFeed] REST init {sym}: {e}")
+    await asyncio.gather(*[_one(s) for s in symbols])
+
+async def _finnhub_price_feed():
+    """Persistent backend WebSocket to Finnhub — reconnects forever on failure."""
+    global _pf_ws
+    while True:
+        try:
+            if not FINNHUB_KEY:
+                await asyncio.sleep(60)
+                continue
+
+            conn = _get_db()
+            rows = conn.execute("SELECT DISTINCT symbol FROM user_assets").fetchall()
+            symbols = [r[0] for r in rows]
+
+            if symbols:
+                await _pf_init_prev_closes(symbols)
+
+            uri = f"wss://ws.finnhub.io?token={FINNHUB_KEY}"
+            async with _ws_lib.connect(uri, ping_interval=25, ping_timeout=10) as ws:
+                _pf_ws = ws
+                for sym in symbols:
+                    await ws.send(_json.dumps({"type": "subscribe", "symbol": _sym_to_finnhub(sym)}))
+                    _pf_subscribed.add(sym)
+                print(f"[PriceFeed] Connected, subscribed to {len(symbols)} symbols")
+
+                async for raw in ws:
+                    msg = _json.loads(raw)
+                    if msg.get("type") != "trade":
+                        continue
+                    for trade in msg.get("data", []):
+                        sym = _finnhub_to_sym(trade.get("s", ""))
+                        price = trade.get("p")
+                        if not price:
+                            continue
+                        existing = _live_prices.get(sym)
+                        prev = existing["prev_close"] if existing else price
+                        cp = ((price - prev) / prev * 100) if prev else 0
+                        _live_prices[sym] = {
+                            "price": round(price, 4),
+                            "change_pct": round(cp, 4),
+                            "prev_close": round(prev, 4),
+                        }
+        except Exception as e:
+            print(f"[PriceFeed] Error: {e}")
+        finally:
+            _pf_ws = None
+        await asyncio.sleep(5)
+
+async def _pf_subscribe_sym(sym: str):
+    """Subscribe one new symbol to the backend price feed."""
+    if sym in _pf_subscribed:
+        return
+    await _pf_init_prev_closes([sym])
+    ws = _pf_ws
+    if ws is not None:
+        try:
+            await ws.send(_json.dumps({"type": "subscribe", "symbol": _sym_to_finnhub(sym)}))
+            _pf_subscribed.add(sym)
+        except Exception:
+            pass  # will be subscribed on next reconnect
+
 def _fetch_one(sym):
     cached = _cache_get(f'price:{sym}', _PRICE_TTL)
     if cached is not None:
@@ -603,9 +709,29 @@ async def get_prices(symbols: str = ""):
     if not symbols:
         return {"prices": {}}
     symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
-    with ThreadPoolExecutor(max_workers=min(len(symbol_list), 5)) as ex:
-        results = ex.map(_fetch_one, symbol_list)
-    return {"prices": {sym: data for sym, data in results if data}}
+
+    # Fast path: read from backend live price feed (instant, no network call)
+    result = {}
+    missing = []
+    for sym in symbol_list:
+        if sym in _live_prices:
+            result[sym] = _live_prices[sym]
+        else:
+            missing.append(sym)
+
+    if missing:
+        # Subscribe new symbols to the backend WS feed for future requests
+        for sym in missing:
+            asyncio.create_task(_pf_subscribe_sym(sym))
+        # Fall back to yfinance for this request
+        with ThreadPoolExecutor(max_workers=min(len(missing), 5)) as ex:
+            fallback = ex.map(_fetch_one, missing)
+        for sym, data in fallback:
+            if data:
+                result[sym] = data
+                _live_prices[sym] = data  # seed the dict
+
+    return {"prices": result}
 
 def _fetch_avg_volume_one(sym):
     cached = _cache_get(f'vol:{sym}', _VOL_TTL)
@@ -706,6 +832,11 @@ async def update_assets(data: UpdateAssets):
         conn.commit()
     except Exception as e:
         return JSONResponse(status_code=500, content={"detail": str(e)})
+    # Subscribe any new symbols to the backend price feed
+    for asset in data.assets:
+        sym = asset['symbol']
+        if sym not in _pf_subscribed:
+            asyncio.create_task(_pf_subscribe_sym(sym))
     return {"status": "success"}
 
 @app.get("/api/user/{user_id}")
@@ -979,8 +1110,9 @@ async def _zone_background_loop():
         await asyncio.sleep(10 * 60)
 
 async def _warmup_cache():
-    """Pre-fetch prices/history/avg-volumes for all user symbols so first page load is instant."""
-    await asyncio.sleep(3)  # let scanner start first
+    """Pre-fetch history/avg-volumes for all user symbols.
+    Prices are handled by _finnhub_price_feed via REST+WS — no yfinance needed there."""
+    await asyncio.sleep(4)  # let price feed initialize first
     try:
         loop = asyncio.get_event_loop()
         conn = _get_db()
@@ -988,22 +1120,18 @@ async def _warmup_cache():
         symbols = [r[0] for r in rows]
         if not symbols:
             return
-        print(f"[Warmup] Pre-warming cache for {len(symbols)} symbols...")
-        # Process 4 symbols at a time to avoid Yahoo Finance rate limits
-        for i in range(0, len(symbols), 4):
-            batch = symbols[i:i+4]
-            await asyncio.gather(*[
-                loop.run_in_executor(None, _fetch_one, s) for s in batch
-            ])
+        print(f"[Warmup] Pre-warming history/volumes for {len(symbols)} symbols...")
+        # Fetch history and avg-vol in parallel per symbol, 5 at a time
+        for i in range(0, len(symbols), 5):
+            batch = symbols[i:i+5]
             await asyncio.gather(*[
                 loop.run_in_executor(None, _fetch_history_one, s) for s in batch
-            ])
-            await asyncio.gather(*[
+            ] + [
                 loop.run_in_executor(None, _fetch_avg_volume_one, s) for s in batch
             ])
-            if i + 4 < len(symbols):
-                await asyncio.sleep(1.5)  # throttle between batches
-        print(f"[Warmup] Done — {len(symbols)} symbols cached.")
+            if i + 5 < len(symbols):
+                await asyncio.sleep(1.0)
+        print(f"[Warmup] Done.")
     except Exception as e:
         print(f"[Warmup] Error: {e}")
 
@@ -1011,6 +1139,7 @@ async def _warmup_cache():
 async def start_scanner_loop():
     asyncio.create_task(_scanner_background_loop())
     asyncio.create_task(_zone_background_loop())
+    asyncio.create_task(_finnhub_price_feed())
     asyncio.create_task(_warmup_cache())
 
 @app.get("/api/scanner")
