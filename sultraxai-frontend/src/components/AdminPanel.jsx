@@ -24,6 +24,10 @@ export default function AdminPanel({ onExit }) {
   const [expanded, setExpanded] = useState(null);
   const [deleteMsg, setDeleteMsg] = useState('');
 
+  const [blockedWords, setBlockedWords] = useState([]);
+  const [newWord, setNewWord] = useState('');
+  const [wordMsg, setWordMsg] = useState('');
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -38,9 +42,35 @@ export default function AdminPanel({ onExit }) {
     setLoading(false);
   }, []);
 
+  const loadWords = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/blocked-words?key=${ADMIN_KEY}`);
+      const data = await res.json();
+      setBlockedWords(data.words || []);
+    } catch {}
+  }, []);
+
   useEffect(() => {
-    if (authed) load();
-  }, [authed, load]);
+    if (authed) { load(); loadWords(); }
+  }, [authed, load, loadWords]);
+
+  const addWord = async () => {
+    const w = newWord.trim().toLowerCase();
+    if (!w) return;
+    const res = await fetch(`${API_BASE}/api/admin/blocked-words?key=${ADMIN_KEY}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ word: w }),
+    });
+    const data = await res.json();
+    if (res.ok) { setNewWord(''); loadWords(); setWordMsg(`"${w}" added`); }
+    else setWordMsg(data.detail || 'Error');
+    setTimeout(() => setWordMsg(''), 3000);
+  };
+
+  const removeWord = async (word) => {
+    await fetch(`${API_BASE}/api/admin/blocked-words/${encodeURIComponent(word)}?key=${ADMIN_KEY}`, { method: 'DELETE' });
+    loadWords();
+  };
 
   const handleLogin = (e) => {
     e.preventDefault();
@@ -280,6 +310,54 @@ export default function AdminPanel({ onExit }) {
             ))}
           </div>
         )}
+
+        {/* Blocked Words */}
+        <div style={{ marginTop: '2.5rem', background: '#080808', border: '1px solid #111', borderRadius: '14px', padding: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+            <div>
+              <div style={{ fontSize: '0.65rem', fontWeight: '800', letterSpacing: '0.1em', color: '#ff3333', marginBottom: '3px' }}>CHAT MODERATION</div>
+              <div style={{ fontSize: '0.75rem', color: '#444' }}>Blocked words — messages containing these will be rejected</div>
+            </div>
+            <span style={{ fontSize: '0.7rem', color: '#333', fontWeight: '700' }}>{blockedWords.length} words</span>
+          </div>
+
+          {/* Add word */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '1rem' }}>
+            <input
+              value={newWord} onChange={e => setNewWord(e.target.value.toLowerCase())}
+              onKeyDown={e => e.key === 'Enter' && addWord()}
+              placeholder="Add a word to block..."
+              maxLength={40}
+              style={{ flex: 1, padding: '9px 14px', background: '#0d0d0d', border: '1px solid #1e1e1e', borderRadius: '8px', color: '#fff', fontSize: '0.82rem', outline: 'none', fontFamily: 'inherit' }}
+            />
+            <button onClick={addWord} disabled={!newWord.trim()}
+              style={{ padding: '9px 20px', background: newWord.trim() ? '#ff3333' : '#111', border: 'none', borderRadius: '8px', color: newWord.trim() ? '#fff' : '#333', cursor: newWord.trim() ? 'pointer' : 'default', fontSize: '0.78rem', fontWeight: '700', fontFamily: 'inherit', transition: 'all 0.15s' }}>
+              + Add
+            </button>
+          </div>
+
+          {wordMsg && (
+            <div style={{ fontSize: '0.75rem', color: '#44cc44', marginBottom: '10px' }}>{wordMsg}</div>
+          )}
+
+          {/* Word tags */}
+          {blockedWords.length === 0 ? (
+            <div style={{ fontSize: '0.75rem', color: '#2a2a2a', textAlign: 'center', padding: '1.5rem 0' }}>No custom blocked words yet</div>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {blockedWords.map(({ word }) => (
+                <div key={word} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,51,51,0.06)', border: '1px solid rgba(255,51,51,0.15)', borderRadius: '6px', padding: '4px 10px' }}>
+                  <span style={{ fontSize: '0.78rem', color: '#cc4444', fontWeight: '600' }}>{word}</span>
+                  <button onClick={() => removeWord(word)}
+                    style={{ background: 'none', border: 'none', color: '#553333', cursor: 'pointer', fontSize: '0.85rem', lineHeight: 1, padding: '0 2px' }}>
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
       </div>
 
       {/* Delete confirmation modal */}

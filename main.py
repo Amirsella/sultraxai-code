@@ -140,6 +140,13 @@ def init_db():
         )
     """)
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chat_blocked_words (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            word TEXT UNIQUE NOT NULL,
+            added_at TEXT
+        )
+    """)
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS chat_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
@@ -186,12 +193,29 @@ _LINK_RE = re.compile(
 _REPEAT_CHAR_RE = re.compile(r'(.)\1{6,}')
 
 _user_msg_log: dict = {}
+_custom_words_cache: set = set()
+_custom_words_cache_ts: float = 0.0
+
+def _get_custom_blocked_words() -> set:
+    global _custom_words_cache, _custom_words_cache_ts
+    now = datetime.now(timezone.utc).timestamp()
+    if now - _custom_words_cache_ts > 60:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT word FROM chat_blocked_words")
+        _custom_words_cache = {r[0].lower() for r in cursor.fetchall()}
+        conn.close()
+        _custom_words_cache_ts = now
+    return _custom_words_cache
 
 def _moderate_chat(user_id: int, text: str):
     """Returns error string or None if message is allowed."""
     if _LINK_RE.search(text):
         return "Links are not allowed in the chat"
-    if any(term in _leet_normalize(text) for term in _BLOCKED_CHAT_TERMS):
+    normalized = _leet_normalize(text)
+    if any(term in normalized for term in _BLOCKED_CHAT_TERMS):
+        return "Message contains prohibited content"
+    if any(word in normalized for word in _get_custom_blocked_words()):
         return "Message contains prohibited content"
     if _REPEAT_CHAR_RE.search(text):
         return "Please avoid spamming repeated characters"
@@ -1214,6 +1238,48 @@ async def admin_grant_subscription(data: dict, key: str = ""):
     cursor.execute("UPDATE users SET subscription_status = 'active' WHERE id = ?", (user_id,))
     conn.commit()
     conn.close()
+    return {"status": "ok"}
+
+@app.get("/api/admin/blocked-words")
+async def admin_get_blocked_words(key: str = ""):
+    _admin_auth(key)
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT word, added_at FROM chat_blocked_words ORDER BY added_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    return {"words": [{"word": r[0], "added_at": r[1]} for r in rows]}
+
+@app.post("/api/admin/blocked-words")
+async def admin_add_blocked_word(data: dict, key: str = ""):
+    _admin_auth(key)
+    word = (data.get("word") or "").strip().lower()
+    if not word:
+        return JSONResponse(status_code=400, content={"detail": "Word is required"})
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT INTO chat_blocked_words (word, added_at) VALUES (?, ?)",
+                       (word, datetime.now().isoformat()))
+        conn.commit()
+    except Exception:
+        conn.close()
+        return JSONResponse(status_code=400, content={"detail": "Word already exists"})
+    conn.close()
+    global _custom_words_cache_ts
+    _custom_words_cache_ts = 0.0
+    return {"status": "ok", "word": word}
+
+@app.delete("/api/admin/blocked-words/{word}")
+async def admin_delete_blocked_word(word: str, key: str = ""):
+    _admin_auth(key)
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM chat_blocked_words WHERE word = ?", (word.lower(),))
+    conn.commit()
+    conn.close()
+    global _custom_words_cache_ts
+    _custom_words_cache_ts = 0.0
     return {"status": "ok"}
 
 # ─── COMMUNITY CHAT ───────────────────────────────────────────────────────────
