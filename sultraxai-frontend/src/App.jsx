@@ -247,7 +247,16 @@ export default function App() {
           <nav className="sultrax-nav">
             <h1 className="nav-logo" onClick={() => { if (!['main_app', 'zone', 'scanner', 'settings'].includes(currentView)) setCurrentView('landing'); }}
               style={{ cursor: ['main_app', 'zone', 'settings'].includes(currentView) ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <img src={`${import.meta.env.BASE_URL}sword-logo.png`} alt="" style={{ height: '22px', width: 'auto', opacity: 0.9 }} />
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" style={{ width: '20px', height: '20px', flexShrink: 0 }}>
+                <g fill="none" stroke="#FF2E2E" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" transform="translate(1,1)">
+                  <path d="M15,5 L16.5,5 L16.5,18 L15,18 Z" />
+                  <path d="M13.5,5 L15,2 L16.5,5 Z" />
+                  <path d="M10,19 L20,19 L18,21 L12,21 Z" />
+                  <path d="M10,19 L8,18.5" /><path d="M20,19 L22,18.5" />
+                  <line x1="15" y1="21" x2="15" y2="25" />
+                  <path d="M15,25 L13.5,26.5 L15,28 L16.5,26.5 Z" fill="#FF2E2E" />
+                </g>
+              </svg>
               SULTRAXAI
             </h1>
 
