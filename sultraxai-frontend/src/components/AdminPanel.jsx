@@ -31,7 +31,6 @@ const WorldMap = memo(({ countries }) => {
 });
 
 const API_BASE = 'http://38.180.137.122:8000';
-const ADMIN_KEY = 'sultrax_admin_key_2026';
 
 function fmt(iso) {
   if (!iso) return '—';
@@ -43,8 +42,11 @@ function fmt(iso) {
 }
 
 export default function AdminPanel({ onExit }) {
-  const [authed, setAuthed] = useState(() => sessionStorage.getItem('admin_authed') === '1');
+  const [adminToken, setAdminToken] = useState(() => sessionStorage.getItem('admin_token') || '');
+  const [authed, setAuthed] = useState(() => !!sessionStorage.getItem('admin_token'));
   const [keyInput, setKeyInput] = useState('');
+
+  const authH = () => ({ Authorization: `Bearer ${adminToken}` });
   const [keyError, setKeyError] = useState('');
   const [users, setUsers] = useState([]);
   const [total, setTotal] = useState(0);
@@ -70,7 +72,7 @@ export default function AdminPanel({ onExit }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/users?key=${ADMIN_KEY}`);
+      const res = await fetch(`${API_BASE}/api/admin/users`, { headers: authH() });
       if (!res.ok) throw new Error();
       const data = await res.json();
       setUsers(data.users || []);
@@ -79,44 +81,44 @@ export default function AdminPanel({ onExit }) {
       setKeyError('Failed to load users. Check server connection.');
     }
     setLoading(false);
-  }, []);
+  }, [adminToken]);
 
   const loadWords = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/admin/blocked-words?key=${ADMIN_KEY}`);
+      const res = await fetch(`${API_BASE}/api/admin/blocked-words`, { headers: authH() });
       const data = await res.json();
       setBlockedWords(data.words || []);
     } catch {}
-  }, []);
+  }, [adminToken]);
 
   const loadChatMessages = useCallback(async (room) => {
     setChatLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/chat-messages?key=${ADMIN_KEY}&room=${room}&limit=50`);
+      const res = await fetch(`${API_BASE}/api/admin/chat-messages?room=${room}&limit=50`, { headers: authH() });
       const data = await res.json();
       setChatMessages(data.messages || []);
     } catch {}
     setChatLoading(false);
-  }, []);
+  }, [adminToken]);
 
   const deleteChatMessage = async (id) => {
-    await fetch(`${API_BASE}/api/admin/chat-messages/${id}?key=${ADMIN_KEY}`, { method: 'DELETE' });
+    await fetch(`${API_BASE}/api/admin/chat-messages/${id}`, { method: 'DELETE', headers: authH() });
     setChatMessages(prev => prev.filter(m => m.id !== id));
   };
 
   const loadUsernameWords = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/admin/username-blocked-words?key=${ADMIN_KEY}`);
+      const res = await fetch(`${API_BASE}/api/admin/username-blocked-words`, { headers: authH() });
       const data = await res.json();
       setUsernameBlockedWords(data.words || []);
     } catch {}
-  }, []);
+  }, [adminToken]);
 
   const addUsernameWord = async () => {
     const w = newUsernameWord.trim().toLowerCase();
     if (!w) return;
-    const res = await fetch(`${API_BASE}/api/admin/username-blocked-words?key=${ADMIN_KEY}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+    const res = await fetch(`${API_BASE}/api/admin/username-blocked-words`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...authH() },
       body: JSON.stringify({ word: w }),
     });
     const data = await res.json();
@@ -126,16 +128,16 @@ export default function AdminPanel({ onExit }) {
   };
 
   const removeUsernameWord = async (word) => {
-    await fetch(`${API_BASE}/api/admin/username-blocked-words/${encodeURIComponent(word)}?key=${ADMIN_KEY}`, { method: 'DELETE' });
+    await fetch(`${API_BASE}/api/admin/username-blocked-words/${encodeURIComponent(word)}`, { method: 'DELETE', headers: authH() });
     loadUsernameWords();
   };
 
   const loadStats = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/admin/stats?key=${ADMIN_KEY}`);
+      const res = await fetch(`${API_BASE}/api/admin/stats`, { headers: authH() });
       if (res.ok) setOnlineStats(await res.json());
     } catch {}
-  }, []);
+  }, [adminToken]);
 
   useEffect(() => {
     if (authed) { load(); loadWords(); loadUsernameWords(); loadChatMessages('crypto'); loadStats(); }
@@ -154,8 +156,8 @@ export default function AdminPanel({ onExit }) {
   const addWord = async () => {
     const w = newWord.trim().toLowerCase();
     if (!w) return;
-    const res = await fetch(`${API_BASE}/api/admin/blocked-words?key=${ADMIN_KEY}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+    const res = await fetch(`${API_BASE}/api/admin/blocked-words`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...authH() },
       body: JSON.stringify({ word: w }),
     });
     const data = await res.json();
@@ -165,24 +167,31 @@ export default function AdminPanel({ onExit }) {
   };
 
   const removeWord = async (word) => {
-    await fetch(`${API_BASE}/api/admin/blocked-words/${encodeURIComponent(word)}?key=${ADMIN_KEY}`, { method: 'DELETE' });
+    await fetch(`${API_BASE}/api/admin/blocked-words/${encodeURIComponent(word)}`, { method: 'DELETE', headers: authH() });
     loadWords();
   };
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (keyInput === ADMIN_KEY) {
-      sessionStorage.setItem('admin_authed', '1');
+    setKeyError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/auth`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: keyInput }),
+      });
+      if (!res.ok) { setKeyError('Invalid admin key.'); return; }
+      const { token } = await res.json();
+      sessionStorage.setItem('admin_token', token);
+      setAdminToken(token);
       setAuthed(true);
-      setKeyError('');
-    } else {
-      setKeyError('Invalid admin key.');
+    } catch {
+      setKeyError('Connection error.');
     }
   };
 
   const handleDelete = async (id) => {
     try {
-      const res = await fetch(`${API_BASE}/api/admin/users/${id}?key=${ADMIN_KEY}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE}/api/admin/users/${id}`, { method: 'DELETE', headers: authH() });
       if (!res.ok) throw new Error();
       setDeleteMsg(`User #${id} deleted.`);
       setConfirmDelete(null);
@@ -196,9 +205,9 @@ export default function AdminPanel({ onExit }) {
 
   const handleGrantSub = async (id) => {
     try {
-      const res = await fetch(`${API_BASE}/api/admin/grant-subscription?key=${ADMIN_KEY}`, {
+      const res = await fetch(`${API_BASE}/api/admin/grant-subscription`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authH() },
         body: JSON.stringify({ user_id: id }),
       });
       if (!res.ok) throw new Error();

@@ -1027,8 +1027,28 @@ async def contact(msg: ContactMessage):
         print(f"Contact email error: {e}")
     return {"status": "ok"}
 
-def _admin_auth(key: str):
-    if not hmac.compare_digest(key, ADMIN_KEY):
+# Admin sessions: short-lived tokens issued by /api/admin/auth (never leave the server)
+_admin_sessions: dict[str, datetime] = {}  # token -> expiry
+
+@app.post("/api/admin/auth")
+@limiter.limit("5/minute")
+async def admin_auth_endpoint(request: Request, data: dict):
+    password = data.get("password", "")
+    if not hmac.compare_digest(password, ADMIN_KEY):
+        print(f"[Security] Failed admin auth attempt from {get_remote_address(request)}")
+        raise HTTPException(status_code=403, detail="Forbidden")
+    token = str(uuid.uuid4())
+    _admin_sessions[token] = datetime.now(timezone.utc) + timedelta(hours=8)
+    return {"token": token}
+
+def _admin_auth(request: Request):
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    token = auth[7:]
+    expiry = _admin_sessions.get(token)
+    if not expiry or datetime.now(timezone.utc) > expiry:
+        _admin_sessions.pop(token, None)
         raise HTTPException(status_code=403, detail="Forbidden")
 
 def _validate_session(user_id: int, session_token: str):
@@ -1043,8 +1063,8 @@ def _validate_session(user_id: int, session_token: str):
         raise HTTPException(status_code=401, detail="session_replaced")
 
 @app.get("/api/admin/users")
-async def admin_list_users(key: str = ""):
-    _admin_auth(key)
+async def admin_list_users(request: Request):
+    _admin_auth(request)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
@@ -1065,8 +1085,8 @@ async def admin_list_users(key: str = ""):
     return {"users": [dict(r) for r in rows], "total": len(rows)}
 
 @app.delete("/api/admin/users/{user_id}")
-async def admin_delete_user(user_id: int, key: str = ""):
-    _admin_auth(key)
+async def admin_delete_user(user_id: int, request: Request):
+    _admin_auth(request)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("DELETE FROM user_assets WHERE user_id = ?", (user_id,))
@@ -1367,8 +1387,8 @@ async def cancel_subscription(data: dict):
     return {"status": "cancelled", "access_until": expires or ""}
 
 @app.post("/api/admin/grant-subscription")
-async def admin_grant_subscription(data: dict, key: str = ""):
-    _admin_auth(key)
+async def admin_grant_subscription(request: Request, data: dict):
+    _admin_auth(request)
     user_id = data.get("user_id")
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -1378,8 +1398,8 @@ async def admin_grant_subscription(data: dict, key: str = ""):
     return {"status": "ok"}
 
 @app.get("/api/admin/blocked-words")
-async def admin_get_blocked_words(key: str = ""):
-    _admin_auth(key)
+async def admin_get_blocked_words(request: Request):
+    _admin_auth(request)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT word, added_at FROM chat_blocked_words ORDER BY added_at DESC")
@@ -1388,8 +1408,8 @@ async def admin_get_blocked_words(key: str = ""):
     return {"words": [{"word": r[0], "added_at": r[1]} for r in rows]}
 
 @app.post("/api/admin/blocked-words")
-async def admin_add_blocked_word(data: dict, key: str = ""):
-    _admin_auth(key)
+async def admin_add_blocked_word(request: Request, data: dict):
+    _admin_auth(request)
     word = (data.get("word") or "").strip().lower()
     if not word:
         return JSONResponse(status_code=400, content={"detail": "Word is required"})
@@ -1408,8 +1428,8 @@ async def admin_add_blocked_word(data: dict, key: str = ""):
     return {"status": "ok", "word": word}
 
 @app.get("/api/admin/chat-messages")
-async def admin_get_chat_messages(key: str = "", room: str = "crypto", limit: int = 50):
-    _admin_auth(key)
+async def admin_get_chat_messages(request: Request, room: str = "crypto", limit: int = 50):
+    _admin_auth(request)
     room = room if room in ("crypto", "stocks") else "crypto"
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -1422,8 +1442,8 @@ async def admin_get_chat_messages(key: str = "", room: str = "crypto", limit: in
     return {"messages": [{"id": r[0], "user_id": r[1], "username": r[2], "message": r[3], "created_at": r[4]} for r in rows]}
 
 @app.delete("/api/admin/chat-messages/{message_id}")
-async def admin_delete_chat_message(message_id: int, key: str = ""):
-    _admin_auth(key)
+async def admin_delete_chat_message(message_id: int, request: Request):
+    _admin_auth(request)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("DELETE FROM chat_messages WHERE id = ?", (message_id,))
@@ -1432,8 +1452,8 @@ async def admin_delete_chat_message(message_id: int, key: str = ""):
     return {"status": "ok"}
 
 @app.delete("/api/admin/blocked-words/{word}")
-async def admin_delete_blocked_word(word: str, key: str = ""):
-    _admin_auth(key)
+async def admin_delete_blocked_word(word: str, request: Request):
+    _admin_auth(request)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("DELETE FROM chat_blocked_words WHERE word = ?", (word.lower(),))
@@ -1444,8 +1464,8 @@ async def admin_delete_blocked_word(word: str, key: str = ""):
     return {"status": "ok"}
 
 @app.get("/api/admin/username-blocked-words")
-async def admin_get_username_blocked_words(key: str = ""):
-    _admin_auth(key)
+async def admin_get_username_blocked_words(request: Request):
+    _admin_auth(request)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT word, added_at FROM username_blocked_words ORDER BY added_at DESC")
@@ -1454,8 +1474,8 @@ async def admin_get_username_blocked_words(key: str = ""):
     return {"words": [{"word": r[0], "added_at": r[1]} for r in rows]}
 
 @app.post("/api/admin/username-blocked-words")
-async def admin_add_username_blocked_word(data: dict, key: str = ""):
-    _admin_auth(key)
+async def admin_add_username_blocked_word(request: Request, data: dict):
+    _admin_auth(request)
     word = (data.get("word") or "").strip().lower()
     if not word:
         return JSONResponse(status_code=400, content={"detail": "Word is required"})
@@ -1474,8 +1494,8 @@ async def admin_add_username_blocked_word(data: dict, key: str = ""):
     return {"status": "ok", "word": word}
 
 @app.delete("/api/admin/username-blocked-words/{word}")
-async def admin_delete_username_blocked_word(word: str, key: str = ""):
-    _admin_auth(key)
+async def admin_delete_username_blocked_word(word: str, request: Request):
+    _admin_auth(request)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("DELETE FROM username_blocked_words WHERE word = ?", (word.lower(),))
@@ -1547,9 +1567,9 @@ async def logout(user_id: int):
     return {"status": "ok"}
 
 @app.get("/api/admin/stats")
-async def admin_stats(key: str = ""):
+async def admin_stats(request: Request):
     import time
-    _admin_auth(key)
+    _admin_auth(request)
     now = time.time()
     sessions_5m  = [s for s in _active_sessions.values() if now - s["last_seen"] < 300]
     sessions_15m = [s for s in _active_sessions.values() if now - s["last_seen"] < 900]
