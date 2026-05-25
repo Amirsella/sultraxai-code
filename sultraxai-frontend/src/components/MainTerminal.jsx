@@ -668,12 +668,14 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
     }, 700);
   };
 
-  const connectWS = (key, symbols) => {
+  const connectWS = (symbols) => {
     clearTimeout(reconnectTimerRef.current);
     if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); }
 
     setWsStatus('connecting');
-    const ws = new WebSocket(`wss://ws.finnhub.io?token=${key}`);
+    // Connect to backend relay — backend owns the single Finnhub WS connection
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${proto}//${window.location.host}/ws/prices`);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -961,7 +963,7 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
       // Never stop retrying — cap backoff at 30s after 10 attempts
       reconnectCountRef.current++;
       const delay = Math.min(3000 * Math.min(reconnectCountRef.current, 10), 30000);
-      reconnectTimerRef.current = setTimeout(() => connectWS(key, watchlistRef.current), delay);
+      reconnectTimerRef.current = setTimeout(() => connectWS(watchlistRef.current), delay);
     };
   };
 
@@ -999,16 +1001,10 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
     if (!selectedAssets.length) return;
     let cancelled = false;
 
-    // Step 1 — get Finnhub key and connect WebSocket immediately (fast, ~100ms)
-    fetch(`${API_BASE}/api/config?user_id=${userId}&session_token=${encodeURIComponent(sessionToken || '')}`)
-      .then(r => { if (!r.ok) throw new Error(`config ${r.status}`); return r.json(); })
-      .then(cfg => {
-        if (cancelled) return;
-        connectWS(cfg.finnhub_key, selectedAssets);
-      })
-      .catch(err => { console.error('Config error:', err); setLoading(false); });
+    // Connect WebSocket directly to backend relay (no API-key roundtrip needed)
+    connectWS(selectedAssets);
 
-    // Step 2 — fetch initial price snapshot in parallel (cached after first load)
+    // Fetch initial price snapshot in parallel (memory-read on backend, ~5ms)
     fetch(`${API_BASE}/api/prices?symbols=${selectedAssets.join(',')}`)
       .then(r => r.json())
       .then(data => {

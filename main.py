@@ -591,6 +591,7 @@ async def complete_onboarding(data: OnboardingData):
 _live_prices: dict[str, dict] = {}   # sym → {price, change_pct, prev_close}
 _pf_subscribed: set[str] = set()     # symbols currently subscribed on the feed WS
 _pf_ws = None                         # active websockets connection, or None
+_price_ws_clients: set = set()        # frontend WebSocket connections receiving trade broadcasts
 
 def _sym_to_finnhub(sym: str) -> str:
     if sym.endswith('-USD'):
@@ -669,6 +670,16 @@ async def _finnhub_price_feed():
                             "change_pct": round(cp, 4),
                             "prev_close": round(prev, 4),
                         }
+                    # Broadcast raw trade message to all connected frontend clients
+                    if _price_ws_clients:
+                        clients = list(_price_ws_clients)
+                        results = await asyncio.gather(
+                            *[c.send_text(raw) for c in clients],
+                            return_exceptions=True,
+                        )
+                        dead = {c for c, r in zip(clients, results) if isinstance(r, Exception)}
+                        if dead:
+                            _price_ws_clients.difference_update(dead)
         except Exception as e:
             print(f"[PriceFeed] Error: {e}")
         finally:
@@ -687,6 +698,31 @@ async def _pf_subscribe_sym(sym: str):
             _pf_subscribed.add(sym)
         except Exception:
             pass  # will be subscribed on next reconnect
+
+@app.websocket("/ws/prices")
+async def ws_prices(websocket: WebSocket):
+    """Frontend connects here instead of Finnhub directly.
+    Receives the same raw trade messages Finnhub sends, so all signal-detection
+    code in the frontend works unchanged."""
+    await websocket.accept()
+    _price_ws_clients.add(websocket)
+    try:
+        while True:
+            try:
+                text = await asyncio.wait_for(websocket.receive_text(), timeout=30)
+                msg = _json.loads(text)
+                # Frontend sends subscribe messages — forward new symbols to the feed
+                if msg.get("type") == "subscribe":
+                    fs = msg.get("symbol", "")
+                    sym = _finnhub_to_sym(fs) if fs.startswith("BINANCE:") else fs
+                    if sym:
+                        asyncio.create_task(_pf_subscribe_sym(sym))
+            except asyncio.TimeoutError:
+                await websocket.send_json({"type": "ping"})
+    except (WebSocketDisconnect, Exception):
+        pass
+    finally:
+        _price_ws_clients.discard(websocket)
 
 def _fetch_one(sym):
     cached = _cache_get(f'price:{sym}', _PRICE_TTL)
