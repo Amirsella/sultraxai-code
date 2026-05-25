@@ -269,16 +269,32 @@ const Sparkline = React.memo(function Sparkline({ sym, prices }) {
 
 function TopMoversTicker({ onMoverClick }) {
   const [movers, setMovers] = useState([]);
+  const hasDataRef = useRef(false);
 
   useEffect(() => {
+    let retryId = null;
+    let intervalId = null;
+
     const load = () =>
       fetch(`${API_BASE}/api/scanner?threshold=0.1`)
         .then(r => r.json())
-        .then(d => setMovers((d.movers || []).slice(0, 20)))
+        .then(d => {
+          const m = (d.movers || []).slice(0, 20);
+          setMovers(m);
+          if (m.length > 0 && !hasDataRef.current) {
+            // Scanner just populated — switch to slow 60s poll
+            hasDataRef.current = true;
+            clearInterval(retryId);
+            retryId = null;
+            intervalId = setInterval(load, 60000);
+          }
+        })
         .catch(() => {});
+
     load();
-    const id = setInterval(load, 60000);
-    return () => clearInterval(id);
+    // Fast retry every 8s until scanner cache is populated, then slow 60s poll
+    retryId = setInterval(load, 8000);
+    return () => { clearInterval(retryId); clearInterval(intervalId); };
   }, []);
 
   if (!movers.length) return null;

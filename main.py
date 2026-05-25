@@ -603,7 +603,7 @@ async def get_prices(symbols: str = ""):
     if not symbols:
         return {"prices": {}}
     symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
-    with ThreadPoolExecutor(max_workers=len(symbol_list)) as ex:
+    with ThreadPoolExecutor(max_workers=min(len(symbol_list), 5)) as ex:
         results = ex.map(_fetch_one, symbol_list)
     return {"prices": {sym: data for sym, data in results if data}}
 
@@ -668,7 +668,7 @@ async def init_data(user_id: int, session_token: str = ""):
     if not symbols:
         return {"thresholds": {}, "history": {}, "avg_volumes": {}}
 
-    with ThreadPoolExecutor(max_workers=min(len(symbols) * 2, 12)) as ex:
+    with ThreadPoolExecutor(max_workers=min(len(symbols), 6)) as ex:
         hist_futs = [ex.submit(_fetch_history_one, s) for s in symbols]
         vol_futs  = [ex.submit(_fetch_avg_volume_one, s) for s in symbols]
         hist_results = [f.result() for f in hist_futs]
@@ -978,10 +978,40 @@ async def _zone_background_loop():
             print(f"Zone background error: {e}")
         await asyncio.sleep(10 * 60)
 
+async def _warmup_cache():
+    """Pre-fetch prices/history/avg-volumes for all user symbols so first page load is instant."""
+    await asyncio.sleep(3)  # let scanner start first
+    try:
+        loop = asyncio.get_event_loop()
+        conn = _get_db()
+        rows = conn.execute("SELECT DISTINCT symbol FROM user_assets").fetchall()
+        symbols = [r[0] for r in rows]
+        if not symbols:
+            return
+        print(f"[Warmup] Pre-warming cache for {len(symbols)} symbols...")
+        # Process 4 symbols at a time to avoid Yahoo Finance rate limits
+        for i in range(0, len(symbols), 4):
+            batch = symbols[i:i+4]
+            await asyncio.gather(*[
+                loop.run_in_executor(None, _fetch_one, s) for s in batch
+            ])
+            await asyncio.gather(*[
+                loop.run_in_executor(None, _fetch_history_one, s) for s in batch
+            ])
+            await asyncio.gather(*[
+                loop.run_in_executor(None, _fetch_avg_volume_one, s) for s in batch
+            ])
+            if i + 4 < len(symbols):
+                await asyncio.sleep(1.5)  # throttle between batches
+        print(f"[Warmup] Done — {len(symbols)} symbols cached.")
+    except Exception as e:
+        print(f"[Warmup] Error: {e}")
+
 @app.on_event("startup")
 async def start_scanner_loop():
     asyncio.create_task(_scanner_background_loop())
     asyncio.create_task(_zone_background_loop())
+    asyncio.create_task(_warmup_cache())
 
 @app.get("/api/scanner")
 async def get_scanner(threshold: float = 1.0):
