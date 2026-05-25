@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
 const WS_BASE = 'ws://38.180.137.122:8000';
 
@@ -15,30 +15,53 @@ function avatarColor(name) {
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
-export default function CommunityChat({ userId }) {
-  const [open, setOpen]         = useState(false);
-  const [room, setRoom]         = useState('crypto');
-  const [dropdown, setDropdown] = useState(false);
-  const [messages, setMessages] = useState({ crypto: [], stocks: [] });
-  const [input, setInput]       = useState('');
-  const [connected, setConnected] = useState(false);
-  const [unread, setUnread]     = useState(0);
-  const [chatError, setChatError] = useState('');
+function renderText(text, roomColor, myUsername) {
+  const parts = text.split(/(@\w+)/g);
+  return parts.map((part, i) => {
+    if (/^@\w+$/.test(part)) {
+      const isMe = myUsername && part.slice(1).toLowerCase() === myUsername.toLowerCase();
+      return (
+        <span key={i} style={{
+          color: isMe ? '#fff' : roomColor,
+          background: isMe ? roomColor + '44' : roomColor + '18',
+          borderRadius: '4px', padding: '0 3px', fontWeight: '700',
+        }}>
+          {part}
+        </span>
+      );
+    }
+    return part;
+  });
+}
 
-  const wsRef      = useRef(null);
-  const bottomRef  = useRef(null);
-  const dropRef    = useRef(null);
-  const openRef    = useRef(open);
-  const roomRef    = useRef(room);
+export default function CommunityChat({ userId }) {
+  const [open, setOpen]           = useState(false);
+  const [room, setRoom]           = useState('crypto');
+  const [dropdown, setDropdown]   = useState(false);
+  const [messages, setMessages]   = useState({ crypto: [], stocks: [] });
+  const [input, setInput]         = useState('');
+  const [connected, setConnected] = useState(false);
+  const [unread, setUnread]       = useState(0);
+  const [chatError, setChatError] = useState('');
+  const [mentionQuery, setMentionQuery] = useState(null); // null = closed, '' = show all
+  const [mentionIndex, setMentionIndex] = useState(0);
+
+  const wsRef        = useRef(null);
+  const bottomRef    = useRef(null);
+  const dropRef      = useRef(null);
+  const inputRef     = useRef(null);
+  const myUsernameRef = useRef('');
+  const openRef      = useRef(open);
+  const roomRef      = useRef(room);
   openRef.current = open;
   roomRef.current = room;
 
-  // Close dropdown when clicking outside
+  // Close room dropdown on outside click
   useEffect(() => {
     if (!dropdown) return;
-    const handler = (e) => { if (dropRef.current && !dropRef.current.contains(e.target)) setDropdown(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    const h = (e) => { if (dropRef.current && !dropRef.current.contains(e.target)) setDropdown(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
   }, [dropdown]);
 
   const connect = useCallback((targetRoom) => {
@@ -51,9 +74,18 @@ export default function CommunityChat({ userId }) {
       const data = JSON.parse(e.data);
       if (data.type === 'history') {
         setMessages(prev => ({ ...prev, [targetRoom]: data.messages }));
+        if (!myUsernameRef.current) {
+          const mine = data.messages.find(m => String(m.user_id) === String(userId));
+          if (mine) myUsernameRef.current = mine.first_name;
+        }
       } else if (data.type === 'message') {
+        if (String(data.user_id) === String(userId) && !myUsernameRef.current)
+          myUsernameRef.current = data.first_name;
         setMessages(prev => ({ ...prev, [targetRoom]: [...prev[targetRoom], data] }));
-        if (!openRef.current || roomRef.current !== targetRoom) setUnread(n => n + 1);
+        const mentioned = myUsernameRef.current &&
+          data.message.toLowerCase().includes(`@${myUsernameRef.current.toLowerCase()}`);
+        if (mentioned || !openRef.current || roomRef.current !== targetRoom)
+          setUnread(n => n + 1);
       } else if (data.type === 'error') {
         setChatError(data.message);
         setTimeout(() => setChatError(''), 4000);
@@ -82,14 +114,59 @@ export default function CommunityChat({ userId }) {
     if (open) bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, open]);
 
+  // Build list of mentionable users from all loaded messages
+  const mentionableUsers = useMemo(() => {
+    const seen = new Set();
+    const list = [];
+    for (const msgs of Object.values(messages)) {
+      for (const m of msgs) {
+        if (String(m.user_id) !== String(userId) && m.first_name && !seen.has(m.first_name)) {
+          seen.add(m.first_name);
+          list.push(m.first_name);
+        }
+      }
+    }
+    return list;
+  }, [messages, userId]);
+
+  const filteredMentions = mentionQuery !== null
+    ? mentionableUsers.filter(u => u.toLowerCase().startsWith(mentionQuery.toLowerCase()))
+    : [];
+
+  const onInputChange = (e) => {
+    const val = e.target.value;
+    setInput(val);
+    const cursor = e.target.selectionStart;
+    const match = val.slice(0, cursor).match(/@(\w*)$/);
+    if (match) { setMentionQuery(match[1]); setMentionIndex(0); }
+    else setMentionQuery(null);
+  };
+
+  const insertMention = (username) => {
+    const cursor = inputRef.current?.selectionStart ?? input.length;
+    const replaced = input.slice(0, cursor).replace(/@(\w*)$/, `@${username} `);
+    setInput(replaced + input.slice(cursor));
+    setMentionQuery(null);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
   const send = () => {
     const text = input.trim();
     if (!text || wsRef.current?.readyState !== WebSocket.OPEN) return;
     wsRef.current.send(JSON.stringify({ message: text }));
     setInput('');
+    setMentionQuery(null);
   };
 
-  const onKey = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } };
+  const onKey = (e) => {
+    if (mentionQuery !== null && filteredMentions.length > 0) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setMentionIndex(i => Math.min(i + 1, filteredMentions.length - 1)); return; }
+      if (e.key === 'ArrowUp')   { e.preventDefault(); setMentionIndex(i => Math.max(i - 1, 0)); return; }
+      if (e.key === 'Enter')     { e.preventDefault(); insertMention(filteredMentions[mentionIndex]); return; }
+      if (e.key === 'Escape')    { setMentionQuery(null); return; }
+    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  };
 
   const activeRoom = ROOMS.find(r => r.id === room);
   const currentMessages = messages[room] || [];
@@ -97,54 +174,39 @@ export default function CommunityChat({ userId }) {
   return (
     <div style={{ position: 'fixed', bottom: '24px', left: '24px', zIndex: 9000, fontFamily: '-apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>
 
-      {/* Chat panel */}
       {open && (
         <div style={{ position: 'absolute', bottom: '56px', left: 0, width: '300px', height: '440px', background: '#080808', border: '1px solid #1a1a1a', borderRadius: '16px', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}>
 
           {/* Header */}
           <div style={{ padding: '10px 14px', borderBottom: '1px solid #111', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-
-            {/* Left: title + online dot */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span style={{ fontSize: '0.65rem', fontWeight: '800', letterSpacing: '0.1em', color: '#fff' }}>COMMUNITY</span>
               <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: connected ? '#44cc44' : '#444', boxShadow: connected ? '0 0 6px #44cc44' : 'none', display: 'inline-block' }} />
             </div>
-
-            {/* Right: room dropdown + close */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <div ref={dropRef} style={{ position: 'relative' }}>
-                <button
-                  onClick={() => setDropdown(d => !d)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 6px', borderRadius: '6px', transition: 'background 0.15s' }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#111'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                >
-                  <span style={{ fontSize: '0.68rem', fontWeight: '800', color: activeRoom.color, letterSpacing: '0.06em' }}>
-                    #{room.toUpperCase()}
-                  </span>
-                  <span style={{ fontSize: '0.5rem', color: '#444', marginTop: '1px' }}>▼</span>
+                <button onClick={() => setDropdown(d => !d)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 6px', borderRadius: '6px' }}
+                  onMouseEnter={e => e.currentTarget.style.background='#111'}
+                  onMouseLeave={e => e.currentTarget.style.background='none'}>
+                  <span style={{ fontSize: '0.68rem', fontWeight: '800', color: activeRoom.color, letterSpacing: '0.06em' }}>#{room.toUpperCase()}</span>
+                  <span style={{ fontSize: '0.5rem', color: '#444' }}>▼</span>
                 </button>
-
-                {/* Dropdown */}
                 {dropdown && (
                   <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, background: '#0d0d0d', border: '1px solid #1e1e1e', borderRadius: '10px', overflow: 'hidden', minWidth: '120px', boxShadow: '0 4px 20px rgba(0,0,0,0.5)', zIndex: 10 }}>
                     {ROOMS.map(r => (
                       <button key={r.id} onClick={() => switchRoom(r.id)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '9px 14px', background: room === r.id ? r.color + '14' : 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', transition: 'background 0.12s' }}
-                        onMouseEnter={e => { if (room !== r.id) e.currentTarget.style.background = '#161616'; }}
-                        onMouseLeave={e => { if (room !== r.id) e.currentTarget.style.background = 'none'; }}
-                      >
-                        <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: r.color, flexShrink: 0, boxShadow: room === r.id ? `0 0 6px ${r.color}` : 'none' }} />
-                        <span style={{ fontSize: '0.75rem', fontWeight: '700', color: room === r.id ? r.color : '#888' }}>
-                          {r.label}
-                        </span>
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', padding: '9px 14px', background: room === r.id ? r.color + '14' : 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
+                        onMouseEnter={e => { if (room !== r.id) e.currentTarget.style.background='#161616'; }}
+                        onMouseLeave={e => { if (room !== r.id) e.currentTarget.style.background='none'; }}>
+                        <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: r.color, flexShrink: 0 }} />
+                        <span style={{ fontSize: '0.75rem', fontWeight: '700', color: room === r.id ? r.color : '#888' }}>{r.label}</span>
                         {room === r.id && <span style={{ marginLeft: 'auto', fontSize: '0.6rem', color: r.color }}>✓</span>}
                       </button>
                     ))}
                   </div>
                 )}
               </div>
-
               <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: '#444', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: '2px 4px' }}>×</button>
             </div>
           </div>
@@ -152,15 +214,20 @@ export default function CommunityChat({ userId }) {
           {/* Messages */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
             {currentMessages.length === 0 && (
-              <div style={{ textAlign: 'center', color: '#2a2a2a', fontSize: '0.75rem', marginTop: '40px' }}>
-                No messages in #{room} yet.
-              </div>
+              <div style={{ textAlign: 'center', color: '#2a2a2a', fontSize: '0.75rem', marginTop: '40px' }}>No messages in #{room} yet.</div>
             )}
             {currentMessages.map((m, i) => {
               const isMe = String(m.user_id) === String(userId);
               const color = isMe ? activeRoom.color : avatarColor(m.first_name);
+              const isMentioned = myUsernameRef.current &&
+                m.message.toLowerCase().includes(`@${myUsernameRef.current.toLowerCase()}`);
               return (
-                <div key={m.id || i} style={{ display: 'flex', alignItems: 'flex-start', gap: '9px', padding: '5px 0' }}>
+                <div key={m.id || i} style={{
+                  display: 'flex', alignItems: 'flex-start', gap: '9px', padding: '5px 6px',
+                  borderRadius: '8px',
+                  background: isMentioned ? activeRoom.color + '14' : 'transparent',
+                  borderLeft: isMentioned ? `2px solid ${activeRoom.color}` : '2px solid transparent',
+                }}>
                   <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: color + '22', border: `1px solid ${color}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.62rem', fontWeight: '800', color, flexShrink: 0, marginTop: '1px' }}>
                     {(m.first_name || 'U').charAt(0).toUpperCase()}
                   </div>
@@ -169,7 +236,7 @@ export default function CommunityChat({ userId }) {
                       {m.first_name}
                     </span>
                     <span style={{ color: '#777', fontSize: '0.82rem', wordBreak: 'break-word' }}>
-                      {m.message}
+                      {renderText(m.message, activeRoom.color, myUsernameRef.current)}
                     </span>
                   </div>
                 </div>
@@ -185,17 +252,39 @@ export default function CommunityChat({ userId }) {
             </div>
           )}
 
-          {/* Input */}
-          <div style={{ padding: '10px 12px', borderTop: '1px solid #111', display: 'flex', gap: '8px', flexShrink: 0 }}>
-            <input
-              value={input} onChange={e => setInput(e.target.value)} onKeyDown={onKey}
-              placeholder={`Message #${room}...`} maxLength={500}
-              style={{ flex: 1, background: '#111', border: '1px solid #1e1e1e', borderRadius: '10px', color: '#fff', padding: '8px 12px', fontSize: '0.82rem', outline: 'none', fontFamily: 'inherit' }}
-            />
-            <button onClick={send} disabled={!input.trim() || !connected}
-              style={{ background: input.trim() && connected ? activeRoom.color : '#111', border: 'none', borderRadius: '10px', color: input.trim() && connected ? '#fff' : '#333', width: '36px', cursor: input.trim() && connected ? 'pointer' : 'default', fontSize: '1rem', transition: 'all 0.15s', flexShrink: 0 }}>
-              ↑
-            </button>
+          {/* Input + mention dropdown */}
+          <div style={{ padding: '10px 12px', borderTop: '1px solid #111', flexShrink: 0, position: 'relative' }}>
+
+            {/* Mention dropdown */}
+            {mentionQuery !== null && filteredMentions.length > 0 && (
+              <div style={{ position: 'absolute', bottom: '100%', left: '12px', right: '12px', marginBottom: '6px', background: '#0d0d0d', border: '1px solid #1e1e1e', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 -4px 20px rgba(0,0,0,0.5)', zIndex: 10, maxHeight: '160px', overflowY: 'auto' }}>
+                {filteredMentions.map((u, idx) => (
+                  <button key={u} onMouseDown={e => { e.preventDefault(); insertMention(u); }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '9px', width: '100%', padding: '8px 12px', background: idx === mentionIndex ? activeRoom.color + '18' : 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}
+                    onMouseEnter={() => setMentionIndex(idx)}>
+                    <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: avatarColor(u) + '33', border: `1px solid ${avatarColor(u)}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.58rem', fontWeight: '800', color: avatarColor(u), flexShrink: 0 }}>
+                      {u.charAt(0).toUpperCase()}
+                    </div>
+                    <span style={{ fontSize: '0.8rem', fontWeight: '700', color: idx === mentionIndex ? activeRoom.color : '#888' }}>
+                      @{u}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                ref={inputRef}
+                value={input} onChange={onInputChange} onKeyDown={onKey}
+                placeholder={`Message #${room}... (@ to mention)`} maxLength={500}
+                style={{ flex: 1, background: '#111', border: '1px solid #1e1e1e', borderRadius: '10px', color: '#fff', padding: '8px 12px', fontSize: '0.82rem', outline: 'none', fontFamily: 'inherit' }}
+              />
+              <button onClick={send} disabled={!input.trim() || !connected}
+                style={{ background: input.trim() && connected ? activeRoom.color : '#111', border: 'none', borderRadius: '10px', color: input.trim() && connected ? '#fff' : '#333', width: '36px', cursor: input.trim() && connected ? 'pointer' : 'default', fontSize: '1rem', transition: 'all 0.15s', flexShrink: 0 }}>
+                ↑
+              </button>
+            </div>
           </div>
         </div>
       )}
