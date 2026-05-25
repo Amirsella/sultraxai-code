@@ -141,7 +141,7 @@ export default function CommunityChat({ userId }) {
                     </div>
                   )}
                   <div style={{ maxWidth: '72%' }}>
-                    {!isMe && <div style={{ fontSize: '0.58rem', color: '#444', fontWeight: '700', marginBottom: '3px', paddingLeft: '2px' }}>{m.first_name}</div>}
+                    <div style={{ fontSize: '0.58rem', color: '#444', fontWeight: '700', marginBottom: '3px', paddingLeft: isMe ? 0 : '2px', textAlign: isMe ? 'right' : 'left' }}>{m.first_name}</div>
                     <div style={{
                       background: isMe ? activeRoom.color : '#111',
                       color: '#fff',
