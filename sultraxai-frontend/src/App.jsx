@@ -246,7 +246,10 @@ export default function App() {
         {['landing', 'signup', 'signin', 'main_app', 'zone', 'scanner', 'settings'].includes(currentView) && !isNative && (
           <nav className="sultrax-nav">
             <h1 className="nav-logo" onClick={() => { if (!['main_app', 'zone', 'scanner', 'settings'].includes(currentView)) setCurrentView('landing'); }}
-              style={{ cursor: ['main_app', 'zone', 'settings'].includes(currentView) ? 'default' : 'pointer' }}>SULTRAXAI</h1>
+              style={{ cursor: ['main_app', 'zone', 'settings'].includes(currentView) ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <img src="/sword-logo.png" alt="" style={{ height: '22px', width: 'auto', opacity: 0.9 }} />
+              SULTRAXAI
+            </h1>
 
             {['main_app', 'zone', 'scanner', 'settings'].includes(currentView) ? (
               <div className="nav-center">
