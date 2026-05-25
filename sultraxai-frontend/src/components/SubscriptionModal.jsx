@@ -25,6 +25,7 @@ export default function SubscriptionModal({ userId, onSuccess, onSignOut }) {
       });
       const data = await res.json();
       if (data.url) {
+        if (data.subscription_id) localStorage.setItem('paypal_sub_id', data.subscription_id);
         window.location.href = data.url;
       } else {
         setError(data.detail || 'Could not start checkout. Try again.');
@@ -92,7 +93,7 @@ export default function SubscriptionModal({ userId, onSuccess, onSignOut }) {
               {loading ? 'REDIRECTING TO CHECKOUT…' : 'SUBSCRIBE NOW →'}
             </button>
             <p style={{ margin: '10px 0 0', textAlign: 'center', fontSize: '0.62rem', color: '#2a2a2a' }}>
-              Secure payment via Stripe · SSL encrypted
+              Secure payment via PayPal · SSL encrypted
             </p>
           </div>
         </div>

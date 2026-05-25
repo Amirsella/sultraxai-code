@@ -33,9 +33,10 @@ import uvicorn
 BREVO_API_KEY      = os.environ.get("BREVO_API_KEY", "")
 FINNHUB_KEY        = os.environ.get("FINNHUB_KEY", "")
 GROQ_KEY           = os.environ.get("GROQ_KEY", "")
-LS_API_KEY     = os.environ.get("LS_API_KEY", "")
-LS_STORE_ID    = os.environ.get("LS_STORE_ID", "")
-LS_VARIANT_ID  = os.environ.get("LS_VARIANT_ID", "")
+PAYPAL_CLIENT_ID     = os.environ.get("PAYPAL_CLIENT_ID", "")
+PAYPAL_CLIENT_SECRET = os.environ.get("PAYPAL_CLIENT_SECRET", "")
+PAYPAL_PLAN_ID       = os.environ.get("PAYPAL_PLAN_ID", "")
+PAYPAL_BASE          = "https://api-m.paypal.com"
 APP_URL   = "http://38.180.137.122:8000"
 ADMIN_KEY = "sultrax_admin_key_2026"
 
@@ -823,10 +824,20 @@ async def login(user: UserLogin):
             "assets": assets, "subscription_status": subscription_status or ""}
 
     
+def _paypal_token():
+    res = requests.post(
+        f"{PAYPAL_BASE}/v1/oauth2/token",
+        auth=(PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET),
+        data={"grant_type": "client_credentials"},
+        timeout=10
+    )
+    res.raise_for_status()
+    return res.json()["access_token"]
+
 @app.post("/api/create-checkout-session")
 async def create_checkout_session(data: dict):
     user_id = data.get("user_id")
-    if not LS_API_KEY or not LS_STORE_ID or not LS_VARIANT_ID:
+    if not PAYPAL_CLIENT_ID or not PAYPAL_PLAN_ID:
         raise HTTPException(status_code=503, detail="Payments not configured")
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -836,64 +847,55 @@ async def create_checkout_session(data: dict):
     if not row:
         raise HTTPException(status_code=404, detail="User not found")
     try:
+        token = _paypal_token()
         res = requests.post(
-            "https://api.lemonsqueezy.com/v1/checkouts",
-            headers={"Authorization": f"Bearer {LS_API_KEY}", "Accept": "application/vnd.api+json", "Content-Type": "application/vnd.api+json"},
+            f"{PAYPAL_BASE}/v1/billing/subscriptions",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
             json={
-                "data": {
-                    "type": "checkouts",
-                    "attributes": {
-                        "checkout_data": {
-                            "email": row[0],
-                            "custom": {"user_id": str(user_id)}
-                        },
-                        "product_options": {
-                            "redirect_url": f"{APP_URL}/?payment=success&user_id={user_id}"
-                        }
-                    },
-                    "relationships": {
-                        "store":   {"data": {"type": "stores",   "id": str(LS_STORE_ID)}},
-                        "variant": {"data": {"type": "variants", "id": str(LS_VARIANT_ID)}}
-                    }
+                "plan_id": PAYPAL_PLAN_ID,
+                "custom_id": str(user_id),
+                "subscriber": {"email_address": row[0]},
+                "application_context": {
+                    "brand_name": "SultraxAI",
+                    "user_action": "SUBSCRIBE_NOW",
+                    "return_url": f"{APP_URL}/?payment=success&user_id={user_id}",
+                    "cancel_url": f"{APP_URL}/?payment=canceled",
                 }
             },
             timeout=10
         )
         res.raise_for_status()
-        url = res.json()["data"]["attributes"]["url"]
-        return {"url": url}
+        resp = res.json()
+        approval_url = next(l["href"] for l in resp["links"] if l["rel"] == "approve")
+        return {"url": approval_url, "subscription_id": resp["id"]}
     except Exception as e:
-        print(f"LemonSqueezy checkout error: {e}")
+        print(f"PayPal checkout error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/verify-payment")
 async def verify_payment(data: dict):
-    user_id = data.get("user_id")
-    if not LS_API_KEY:
+    user_id       = data.get("user_id")
+    subscription_id = data.get("subscription_id")
+    if not PAYPAL_CLIENT_ID or not subscription_id:
         raise HTTPException(status_code=503, detail="Payments not configured")
     try:
-        # Find the subscription by custom user_id metadata
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("SELECT email FROM users WHERE id = ?", (user_id,))
-        row = cursor.fetchone()
-        if not row:
-            conn.close()
-            raise HTTPException(status_code=404)
-        # Check subscriptions for this email
+        token = _paypal_token()
         res = requests.get(
-            "https://api.lemonsqueezy.com/v1/subscriptions",
-            headers={"Authorization": f"Bearer {LS_API_KEY}", "Accept": "application/vnd.api+json"},
-            params={"filter[user_email]": row[0]},
+            f"{PAYPAL_BASE}/v1/billing/subscriptions/{subscription_id}",
+            headers={"Authorization": f"Bearer {token}"},
             timeout=10
         )
-        subs = res.json().get("data", [])
-        active = any(s["attributes"]["status"] in ("active", "trialing") for s in subs)
+        res.raise_for_status()
+        sub = res.json()
+        active = sub.get("status") in ("ACTIVE", "TRIALING")
         if active:
-            cursor.execute("UPDATE users SET subscription_status = 'active' WHERE id = ?", (user_id,))
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("UPDATE users SET subscription_status = 'active', stripe_customer_id = ? WHERE id = ?",
+                           (subscription_id, user_id))
             conn.commit()
-            print(f"Subscription activated: user_id={user_id}")
-        conn.close()
+            conn.close()
+            print(f"PayPal subscription activated: user_id={user_id}, sub={subscription_id}")
         return {"status": "active" if active else "pending"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

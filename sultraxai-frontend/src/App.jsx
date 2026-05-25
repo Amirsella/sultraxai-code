@@ -53,18 +53,20 @@ export default function App() {
     localStorage.setItem('subscriptionStatus', subscriptionStatus);
   }, [subscriptionStatus]);
 
-  // Handle payment redirect back from Lemon Squeezy
+  // Handle payment redirect back from PayPal
   useEffect(() => {
     if (stripePayment === 'success' && stripeUserId) {
       window.history.replaceState({}, '', '/');
+      const subId = localStorage.getItem('paypal_sub_id') || '';
       fetch(`${API_BASE}/api/verify-payment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: parseInt(stripeUserId) }),
+        body: JSON.stringify({ user_id: parseInt(stripeUserId), subscription_id: subId }),
       })
         .then(r => r.json())
         .then(d => {
           if (d.status === 'active') {
+            localStorage.removeItem('paypal_sub_id');
             setSubscriptionStatus('active');
             setUserId(stripeUserId);
             setCurrentView('main_app');
