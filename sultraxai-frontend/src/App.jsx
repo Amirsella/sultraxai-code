@@ -247,15 +247,35 @@ export default function App() {
           <nav className="sultrax-nav">
             <h1 className="nav-logo" onClick={() => { if (!['main_app', 'zone', 'scanner', 'settings'].includes(currentView)) setCurrentView('landing'); }}
               style={{ cursor: ['main_app', 'zone', 'settings'].includes(currentView) ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" style={{ width: '20px', height: '20px', flexShrink: 0 }}>
-                <g fill="none" stroke="#FF2E2E" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" transform="translate(1,1)">
-                  <path d="M15,5 L16.5,5 L16.5,18 L15,18 Z" />
-                  <path d="M13.5,5 L15,2 L16.5,5 Z" />
-                  <path d="M10,19 L20,19 L18,21 L12,21 Z" />
-                  <path d="M10,19 L8,18.5" /><path d="M20,19 L22,18.5" />
-                  <line x1="15" y1="21" x2="15" y2="25" />
-                  <path d="M15,25 L13.5,26.5 L15,28 L16.5,26.5 Z" fill="#FF2E2E" />
-                </g>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 42" style={{ width: '11px', height: '32px', flexShrink: 0 }}>
+                <defs>
+                  <linearGradient id="navBlade" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#990000"/>
+                    <stop offset="38%" stopColor="#ff2e2e"/>
+                    <stop offset="52%" stopColor="#ff7070"/>
+                    <stop offset="100%" stopColor="#990000"/>
+                  </linearGradient>
+                  <linearGradient id="navGuard" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#550000"/>
+                    <stop offset="50%" stopColor="#cc1a1a"/>
+                    <stop offset="100%" stopColor="#550000"/>
+                  </linearGradient>
+                </defs>
+                {/* Blade tip diamond */}
+                <path d="M7 0 L5.8 2.8 L7 5.5 L8.2 2.8 Z" fill="#ff4444"/>
+                {/* Blade body */}
+                <path d="M5.8 2.8 L4.8 26 L9.2 26 L8.2 2.8 Z" fill="url(#navBlade)"/>
+                {/* Fuller – central groove highlight */}
+                <rect x="6.6" y="5" width="0.8" height="19" rx="0.4" fill="#ff9999" opacity="0.45"/>
+                {/* Crossguard */}
+                <path d="M0 26.5 L3.5 25.5 L7 27 L10.5 25.5 L14 26.5 L10.5 28.5 L7 27.5 L3.5 28.5 Z" fill="url(#navGuard)"/>
+                {/* Grip */}
+                <rect x="5.8" y="28.5" width="2.4" height="8.5" rx="1.2" fill="#6b0000"/>
+                <rect x="5.8" y="31" width="2.4" height="0.8" rx="0.4" fill="#aa1010" opacity="0.7"/>
+                <rect x="5.8" y="33.5" width="2.4" height="0.8" rx="0.4" fill="#aa1010" opacity="0.7"/>
+                {/* Pommel */}
+                <path d="M7 37 L4 39 L7 42 L10 39 Z" fill="url(#navGuard)"/>
+                <path d="M7 38.2 L5.5 39 L7 40.4 L8.5 39 Z" fill="#ff2e2e"/>
               </svg>
               SULTRAXAI
             </h1>
