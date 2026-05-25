@@ -402,7 +402,7 @@ async def update_assets(data: UpdateAssets):
 async def get_user(user_id: int):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("SELECT first_name, full_name, email, phone FROM users WHERE id = ?", (user_id,))
+    cursor.execute("SELECT first_name, full_name, email, phone, subscription_status FROM users WHERE id = ?", (user_id,))
     row = cursor.fetchone()
     if not row:
         conn.close()
@@ -412,6 +412,7 @@ async def get_user(user_id: int):
     conn.close()
     return {
         "first_name": row[0], "full_name": row[1], "email": row[2], "phone": row[3],
+        "subscription_status": row[4] or "",
         "experience": profile[0] if profile else "Beginner (0-1 yrs)",
         "frequency": profile[1] if profile else "Daily"
     }
@@ -824,6 +825,61 @@ async def login(user: UserLogin):
             "assets": assets, "subscription_status": subscription_status or ""}
 
     
+def _check_subscriptions_sync():
+    if not PAYPAL_CLIENT_ID:
+        return
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, stripe_customer_id FROM users "
+        "WHERE subscription_status='active' AND stripe_customer_id IS NOT NULL AND stripe_customer_id != ''"
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    if not rows:
+        return
+    try:
+        token = _paypal_token()
+    except Exception as e:
+        print(f"[SubChecker] PayPal token error: {e}")
+        return
+    expired = []
+    for user_id, sub_id in rows:
+        try:
+            res = requests.get(
+                f"{PAYPAL_BASE}/v1/billing/subscriptions/{sub_id}",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=10
+            )
+            if res.status_code == 200:
+                status = res.json().get("status", "")
+                if status not in ("ACTIVE", "TRIALING"):
+                    expired.append(user_id)
+                    print(f"[SubChecker] user={user_id} sub={sub_id} status={status} → revoked")
+            else:
+                print(f"[SubChecker] user={user_id} sub={sub_id} HTTP {res.status_code}")
+        except Exception as e:
+            print(f"[SubChecker] user={user_id} error: {e}")
+    if expired:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        for uid in expired:
+            cursor.execute("UPDATE users SET subscription_status='' WHERE id=?", (uid,))
+        conn.commit()
+        conn.close()
+        print(f"[SubChecker] Revoked {len(expired)} subscription(s)")
+
+async def _subscription_checker_loop():
+    loop = asyncio.get_event_loop()
+    while True:
+        print("[SubChecker] Running daily subscription check...")
+        await loop.run_in_executor(None, _check_subscriptions_sync)
+        await asyncio.sleep(24 * 60 * 60)
+
+@app.on_event("startup")
+async def _startup():
+    asyncio.create_task(_subscription_checker_loop())
+
 def _paypal_token():
     res = requests.post(
         f"{PAYPAL_BASE}/v1/oauth2/token",

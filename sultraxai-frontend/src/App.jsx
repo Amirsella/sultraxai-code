@@ -76,7 +76,7 @@ export default function App() {
     }
   }, []);
 
-  // Validate userId on startup — if the user no longer exists in DB, redirect to signin
+  // Validate userId on startup — check user exists and subscription is still active
   useEffect(() => {
     const storedId = localStorage.getItem('userId');
     const storedView = localStorage.getItem('currentView');
@@ -90,6 +90,17 @@ export default function App() {
           setSelectedAssets([]);
           setSessionError('Your session has expired. Please sign in again.');
           setCurrentView('signin');
+          return;
+        }
+        return res.json();
+      })
+      .then(data => {
+        if (!data) return;
+        const serverStatus = data.subscription_status || '';
+        setSubscriptionStatus(serverStatus);
+        localStorage.setItem('subscriptionStatus', serverStatus);
+        if (serverStatus !== 'active') {
+          setCurrentView('subscription');
         }
       })
       .catch(() => {});
