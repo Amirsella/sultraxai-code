@@ -1,6 +1,8 @@
 import sqlite3
 import hashlib
+import hmac
 import os
+import bcrypt
 import random
 import re
 import uuid
@@ -429,7 +431,17 @@ class UserLogin(BaseModel):
     email: str; password: str
 
 def hash_password(password: str) -> str:
+    """Hash a new password with bcrypt."""
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12)).decode()
+
+def _sha256(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
+
+def verify_password(plain: str, stored: str) -> bool:
+    """Verify password against bcrypt or legacy SHA256 hash."""
+    if stored.startswith("$2b$") or stored.startswith("$2a$"):
+        return bcrypt.checkpw(plain.encode(), stored.encode())
+    return hmac.compare_digest(stored, _sha256(plain))
 
 @app.post("/api/register")
 @limiter.limit("5/minute")
@@ -672,7 +684,7 @@ async def change_password_endpoint(data: dict):
     if not row:
         conn.close()
         return JSONResponse(status_code=404, content={"detail": "User not found"})
-    if row[0] != hash_password(current_password):
+    if not verify_password(current_password, row[0]):
         conn.close()
         return JSONResponse(status_code=400, content={"detail": "Current password is incorrect"})
     cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(new_password), user_id))
@@ -1046,10 +1058,13 @@ async def login(request: Request, user: UserLogin):
         return JSONResponse(status_code=401, content={"detail": "User not found"})
 
     user_id, first_name, stored_pwd_hash, subscription_status, sub_id = row
-    pwd_hash = hash_password(user.password)
-    if stored_pwd_hash != pwd_hash:
+    if not verify_password(user.password, stored_pwd_hash):
         conn.close()
         return JSONResponse(status_code=401, content={"detail": "Wrong password"})
+    # Transparent upgrade: re-hash SHA256 passwords to bcrypt on successful login
+    if not (stored_pwd_hash.startswith("$2b$") or stored_pwd_hash.startswith("$2a$")):
+        conn.execute("UPDATE users SET password_hash=? WHERE id=?", (hash_password(user.password), user_id))
+        conn.commit()
 
     cursor.execute("SELECT experience FROM user_profiles WHERE user_id = ?", (user_id,))
     has_profile = cursor.fetchone() is not None
