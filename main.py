@@ -29,6 +29,9 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import uvicorn
 
 BREVO_API_KEY      = os.environ.get("BREVO_API_KEY", "")
@@ -82,7 +85,11 @@ def send_verification_email(to_email: str, code: str) -> bool:
         print(f"Email error: {e}")
         return False
 dist_path = "/root/sultraxai/sultraxai-frontend/dist"
+
+limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 app = FastAPI()
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # In-memory active sessions: {user_id: {last_seen, country, country_code}}
 _active_sessions: dict[int, dict] = {}
@@ -340,7 +347,8 @@ async def search_stocks(q: str = ""):
         return {"results": []}
 
 @app.post("/api/verify-code")
-async def verify_code(data: dict):
+@limiter.limit("10/minute")
+async def verify_code(request: Request, data: dict):
     email = (data.get('email') or '').strip().lower()
     code = (data.get('code') or '').strip()
     conn = sqlite3.connect(DB_PATH)
@@ -365,7 +373,8 @@ async def verify_code(data: dict):
     return {"status": "success"}
 
 @app.post("/api/forgot-password")
-async def forgot_password(data: dict, background_tasks: BackgroundTasks):
+@limiter.limit("5/minute")
+async def forgot_password(request: Request, data: dict, background_tasks: BackgroundTasks):
     email = data.get("email", "").strip().lower()
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -383,7 +392,8 @@ async def forgot_password(data: dict, background_tasks: BackgroundTasks):
     return {"status": "success"}
 
 @app.post("/api/reset-password")
-async def reset_password(data: dict):
+@limiter.limit("5/minute")
+async def reset_password(request: Request, data: dict):
     token = data.get("token", "")
     new_password = data.get("password", "")
     conn = sqlite3.connect(DB_PATH)
@@ -422,7 +432,8 @@ def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 @app.post("/api/register")
-async def register(user: UserRegister, background_tasks: BackgroundTasks):
+@limiter.limit("5/minute")
+async def register(request: Request, user: UserRegister, background_tasks: BackgroundTasks):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     email_clean = user.email.strip().lower()
@@ -1021,7 +1032,8 @@ async def admin_delete_user(user_id: int, key: str = ""):
     return {"status": "success"}
 
 @app.post("/api/login")
-async def login(user: UserLogin):
+@limiter.limit("10/minute")
+async def login(request: Request, user: UserLogin):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
