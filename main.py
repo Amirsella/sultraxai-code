@@ -176,6 +176,33 @@ _BLOCKED_USERNAME_TERMS = {
     "admin","moderator","support","official","staff",
 }
 
+_BLOCKED_CHAT_TERMS = _BLOCKED_USERNAME_TERMS - {"admin","moderator","support","official","staff"}
+
+_LINK_RE = re.compile(
+    r'(https?://|www\.|'
+    r'[a-zA-Z0-9\-]+\.(com|net|org|io|co|ru|xyz|gg|tv|me|info|biz|uk|de|fr|es|ca|au|il)(\b|/))',
+    re.IGNORECASE
+)
+_REPEAT_CHAR_RE = re.compile(r'(.)\1{6,}')
+
+_user_msg_log: dict = {}
+
+def _moderate_chat(user_id: int, text: str):
+    """Returns error string or None if message is allowed."""
+    if _LINK_RE.search(text):
+        return "Links are not allowed in the chat"
+    if any(term in _leet_normalize(text) for term in _BLOCKED_CHAT_TERMS):
+        return "Message contains prohibited content"
+    if _REPEAT_CHAR_RE.search(text):
+        return "Please avoid spamming repeated characters"
+    now = datetime.now(timezone.utc).timestamp()
+    recent = [t for t in _user_msg_log.get(user_id, []) if now - t < 8]
+    if len(recent) >= 5:
+        return "You're sending messages too fast — please slow down"
+    recent.append(now)
+    _user_msg_log[user_id] = recent
+    return None
+
 def _leet_normalize(s: str) -> str:
     for a, b in [('0','o'),('1','i'),('3','e'),('4','a'),('5','s'),('$','s'),('@','a'),('!','i'),('7','t')]:
         s = s.replace(a, b)
@@ -1256,6 +1283,10 @@ async def chat_ws(ws: WebSocket, user_id: int = 0, room: str = "crypto"):
             data = await ws.receive_json()
             text = (data.get("message") or "").strip()[:500]
             if not text:
+                continue
+            err = _moderate_chat(user_id, text)
+            if err:
+                await ws.send_json({"type": "error", "message": err})
                 continue
             msg_id, ts = _chat_save(user_id, display_name, text, room)
             await chat_manager.broadcast({

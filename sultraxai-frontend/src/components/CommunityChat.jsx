@@ -22,6 +22,7 @@ export default function CommunityChat({ userId }) {
   const [input, setInput]     = useState('');
   const [connected, setConnected] = useState(false);
   const [unread, setUnread]   = useState(0);
+  const [chatError, setChatError] = useState('');
   const wsRef    = useRef(null);
   const bottomRef = useRef(null);
   const openRef  = useRef(open);
@@ -51,6 +52,9 @@ export default function CommunityChat({ userId }) {
         setMessages(prev => ({ ...prev, [targetRoom]: [...prev[targetRoom], data] }));
         if (!openRef.current || roomRef.current !== targetRoom)
           setUnread(n => n + 1);
+      } else if (data.type === 'error') {
+        setChatError(data.message);
+        setTimeout(() => setChatError(''), 4000);
       }
     };
     wsRef.current = ws;
@@ -155,6 +159,13 @@ export default function CommunityChat({ userId }) {
             })}
             <div ref={bottomRef} />
           </div>
+
+          {/* Moderation error */}
+          {chatError && (
+            <div style={{ margin: '0 12px 6px', padding: '7px 12px', background: 'rgba(255,51,51,0.1)', border: '1px solid rgba(255,51,51,0.25)', borderRadius: '8px', color: '#ff6666', fontSize: '0.72rem', flexShrink: 0 }}>
+              {chatError}
+            </div>
+          )}
 
           {/* Input */}
           <div style={{ padding: '10px 12px', borderTop: '1px solid #111', display: 'flex', gap: '8px', flexShrink: 0 }}>
