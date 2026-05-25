@@ -438,6 +438,8 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
   const [soundMuted, setSoundMuted] = useState(() => localStorage.getItem('sultrax_sound_muted') === 'true');
   const soundMutedRef = useRef(soundMuted);
   const audioCtxRef = useRef(null);
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const audioUnlockedRef = useRef(false);
   const [chartSym, setChartSym] = useState(null);
   const chartSymRef = useRef(null);
   const chartCallbackRef = useRef(null);
@@ -469,10 +471,22 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
   useEffect(() => {
     const unlock = () => {
       if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
+      if (audioCtxRef.current.state === 'suspended') {
+        audioCtxRef.current.resume().then(() => {
+          if (!audioUnlockedRef.current) {
+            audioUnlockedRef.current = true;
+            setAudioUnlocked(true);
+          }
+        });
+      } else {
+        if (!audioUnlockedRef.current) {
+          audioUnlockedRef.current = true;
+          setAudioUnlocked(true);
+        }
+      }
     };
-    window.addEventListener('click', unlock, { once: true });
-    window.addEventListener('touchstart', unlock, { once: true });
+    window.addEventListener('click', unlock);
+    window.addEventListener('touchstart', unlock);
     return () => { window.removeEventListener('click', unlock); window.removeEventListener('touchstart', unlock); };
   }, []);
 
@@ -1144,6 +1158,12 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
               <div style={{ fontSize: '0.65rem', color: '#333', lineHeight: 1.6, marginBottom: '12px', padding: '6px 10px', borderLeft: '2px solid #1e1e1e' }}>
                 Signals are statistical anomalies in order flow — not investment advice. Trade at your own risk.
               </div>
+              {!audioUnlocked && !soundMuted && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,153,0,0.08)', border: '1px solid rgba(255,153,0,0.2)', borderRadius: '8px', padding: '7px 12px', marginBottom: '10px', fontSize: '0.7rem', color: '#ff9900' }}>
+                  <span>🔔</span>
+                  <span style={{ flex: 1 }}>Click anywhere to enable alert sounds</span>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span style={{ fontSize: '0.68rem', fontWeight: '700', color: '#444', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Signal Feed</span>
