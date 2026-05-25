@@ -147,6 +147,13 @@ def init_db():
         )
     """)
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS username_blocked_words (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            word TEXT UNIQUE NOT NULL,
+            added_at TEXT
+        )
+    """)
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS chat_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
@@ -192,9 +199,13 @@ _LINK_RE = re.compile(
 )
 _REPEAT_CHAR_RE = re.compile(r'(.)\1{6,}')
 
-_user_msg_log: dict = {}
+_user_msg_log: dict = {}   # user_id → [(timestamp, text), ...]
+_user_cooldown: dict = {}  # user_id → cooldown_expires_timestamp
+
 _custom_words_cache: set = set()
 _custom_words_cache_ts: float = 0.0
+_custom_username_words_cache: set = set()
+_custom_username_words_cache_ts: float = 0.0
 
 def _get_custom_blocked_words() -> set:
     global _custom_words_cache, _custom_words_cache_ts
@@ -208,6 +219,18 @@ def _get_custom_blocked_words() -> set:
         _custom_words_cache_ts = now
     return _custom_words_cache
 
+def _get_custom_username_blocked_words() -> set:
+    global _custom_username_words_cache, _custom_username_words_cache_ts
+    now = datetime.now(timezone.utc).timestamp()
+    if now - _custom_username_words_cache_ts > 60:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT word FROM username_blocked_words")
+        _custom_username_words_cache = {r[0].lower() for r in cursor.fetchall()}
+        conn.close()
+        _custom_username_words_cache_ts = now
+    return _custom_username_words_cache
+
 def _moderate_chat(user_id: int, text: str):
     """Returns error string or None if message is allowed."""
     if _LINK_RE.search(text):
@@ -220,11 +243,26 @@ def _moderate_chat(user_id: int, text: str):
     if _REPEAT_CHAR_RE.search(text):
         return "Please avoid spamming repeated characters"
     now = datetime.now(timezone.utc).timestamp()
-    recent = [t for t in _user_msg_log.get(user_id, []) if now - t < 8]
-    if len(recent) >= 5:
-        return "You're sending messages too fast — please slow down"
-    recent.append(now)
-    _user_msg_log[user_id] = recent
+    # Check active cooldown
+    cooldown_until = _user_cooldown.get(user_id, 0)
+    if now < cooldown_until:
+        remaining = int(cooldown_until - now) + 1
+        return f"You're on cooldown — wait {remaining}s before sending again"
+    # Clean log to last 60 seconds
+    log = [(ts, msg) for ts, msg in _user_msg_log.get(user_id, []) if now - ts < 60]
+    # Rate limit: max 4 messages per 6 seconds → 15s cooldown
+    if len([1 for ts, _ in log if now - ts < 6]) >= 4:
+        _user_cooldown[user_id] = now + 15
+        return "Slow down — you're sending too many messages. Wait 15 seconds"
+    # Same message repeated 2+ times in last 30s
+    recent_texts = [msg for ts, msg in log if now - ts < 30]
+    if recent_texts.count(text.strip().lower()) >= 2:
+        return "Please don't repeat the same message"
+    # Consecutive duplicate
+    if log and log[-1][1].strip().lower() == text.strip().lower():
+        return "Please don't send the same message twice in a row"
+    log.append((now, text.strip().lower()))
+    _user_msg_log[user_id] = log[-30:]
     return None
 
 def _leet_normalize(s: str) -> str:
@@ -244,7 +282,10 @@ def _validate_username(username: str):
         return "Username can only contain letters, numbers, and underscores"
     if not username[0].isalpha():
         return "Username must start with a letter"
-    if any(term in _leet_normalize(username) for term in _BLOCKED_USERNAME_TERMS):
+    normalized = _leet_normalize(username)
+    if any(term in normalized for term in _BLOCKED_USERNAME_TERMS):
+        return "This username is not allowed"
+    if any(word in normalized for word in _get_custom_username_blocked_words()):
         return "This username is not allowed"
     return None
 
@@ -1304,6 +1345,48 @@ async def admin_delete_blocked_word(word: str, key: str = ""):
     conn.close()
     global _custom_words_cache_ts
     _custom_words_cache_ts = 0.0
+    return {"status": "ok"}
+
+@app.get("/api/admin/username-blocked-words")
+async def admin_get_username_blocked_words(key: str = ""):
+    _admin_auth(key)
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT word, added_at FROM username_blocked_words ORDER BY added_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    return {"words": [{"word": r[0], "added_at": r[1]} for r in rows]}
+
+@app.post("/api/admin/username-blocked-words")
+async def admin_add_username_blocked_word(data: dict, key: str = ""):
+    _admin_auth(key)
+    word = (data.get("word") or "").strip().lower()
+    if not word:
+        return JSONResponse(status_code=400, content={"detail": "Word is required"})
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT INTO username_blocked_words (word, added_at) VALUES (?, ?)",
+                       (word, datetime.now().isoformat()))
+        conn.commit()
+    except Exception:
+        conn.close()
+        return JSONResponse(status_code=400, content={"detail": "Word already exists"})
+    conn.close()
+    global _custom_username_words_cache_ts
+    _custom_username_words_cache_ts = 0.0
+    return {"status": "ok", "word": word}
+
+@app.delete("/api/admin/username-blocked-words/{word}")
+async def admin_delete_username_blocked_word(word: str, key: str = ""):
+    _admin_auth(key)
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM username_blocked_words WHERE word = ?", (word.lower(),))
+    conn.commit()
+    conn.close()
+    global _custom_username_words_cache_ts
+    _custom_username_words_cache_ts = 0.0
     return {"status": "ok"}
 
 # ─── COMMUNITY CHAT ───────────────────────────────────────────────────────────

@@ -28,6 +28,10 @@ export default function AdminPanel({ onExit }) {
   const [newWord, setNewWord] = useState('');
   const [wordMsg, setWordMsg] = useState('');
 
+  const [usernameBlockedWords, setUsernameBlockedWords] = useState([]);
+  const [newUsernameWord, setNewUsernameWord] = useState('');
+  const [usernameWordMsg, setUsernameWordMsg] = useState('');
+
   const [chatRoom, setChatRoom] = useState('crypto');
   const [chatMessages, setChatMessages] = useState([]);
   const [chatLoading, setChatLoading] = useState(false);
@@ -69,9 +73,35 @@ export default function AdminPanel({ onExit }) {
     setChatMessages(prev => prev.filter(m => m.id !== id));
   };
 
+  const loadUsernameWords = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/username-blocked-words?key=${ADMIN_KEY}`);
+      const data = await res.json();
+      setUsernameBlockedWords(data.words || []);
+    } catch {}
+  }, []);
+
+  const addUsernameWord = async () => {
+    const w = newUsernameWord.trim().toLowerCase();
+    if (!w) return;
+    const res = await fetch(`${API_BASE}/api/admin/username-blocked-words?key=${ADMIN_KEY}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ word: w }),
+    });
+    const data = await res.json();
+    if (res.ok) { setNewUsernameWord(''); loadUsernameWords(); setUsernameWordMsg(`"${w}" added`); }
+    else setUsernameWordMsg(data.detail || 'Error');
+    setTimeout(() => setUsernameWordMsg(''), 3000);
+  };
+
+  const removeUsernameWord = async (word) => {
+    await fetch(`${API_BASE}/api/admin/username-blocked-words/${encodeURIComponent(word)}?key=${ADMIN_KEY}`, { method: 'DELETE' });
+    loadUsernameWords();
+  };
+
   useEffect(() => {
-    if (authed) { load(); loadWords(); loadChatMessages('crypto'); }
-  }, [authed, load, loadWords, loadChatMessages]);
+    if (authed) { load(); loadWords(); loadUsernameWords(); loadChatMessages('crypto'); }
+  }, [authed, load, loadWords, loadUsernameWords, loadChatMessages]);
 
   useEffect(() => {
     if (authed) loadChatMessages(chatRoom);
@@ -370,6 +400,44 @@ export default function AdminPanel({ onExit }) {
                     style={{ background: 'rgba(255,51,51,0.07)', border: '1px solid rgba(255,51,51,0.15)', color: '#ff4444', padding: '3px 8px', borderRadius: '5px', cursor: 'pointer', fontSize: '0.65rem', fontWeight: '700', fontFamily: 'inherit', flexShrink: 0 }}>
                     Delete
                   </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Username Blocked Words */}
+        <div style={{ marginTop: '2.5rem', background: '#080808', border: '1px solid #111', borderRadius: '14px', padding: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+            <div>
+              <div style={{ fontSize: '0.65rem', fontWeight: '800', letterSpacing: '0.1em', color: '#f7931a', marginBottom: '3px' }}>USERNAME MODERATION</div>
+              <div style={{ fontSize: '0.75rem', color: '#444' }}>Blocked words — usernames containing these will be rejected</div>
+            </div>
+            <span style={{ fontSize: '0.7rem', color: '#333', fontWeight: '700' }}>{usernameBlockedWords.length} words</span>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '1rem' }}>
+            <input
+              value={newUsernameWord} onChange={e => setNewUsernameWord(e.target.value.toLowerCase())}
+              onKeyDown={e => e.key === 'Enter' && addUsernameWord()}
+              placeholder="Add a word to block in usernames..."
+              maxLength={40}
+              style={{ flex: 1, padding: '9px 14px', background: '#0d0d0d', border: '1px solid #1e1e1e', borderRadius: '8px', color: '#fff', fontSize: '0.82rem', outline: 'none', fontFamily: 'inherit' }}
+            />
+            <button onClick={addUsernameWord} disabled={!newUsernameWord.trim()}
+              style={{ padding: '9px 20px', background: newUsernameWord.trim() ? '#f7931a' : '#111', border: 'none', borderRadius: '8px', color: newUsernameWord.trim() ? '#fff' : '#333', cursor: newUsernameWord.trim() ? 'pointer' : 'default', fontSize: '0.78rem', fontWeight: '700', fontFamily: 'inherit', transition: 'all 0.15s' }}>
+              + Add
+            </button>
+          </div>
+          {usernameWordMsg && <div style={{ fontSize: '0.75rem', color: '#44cc44', marginBottom: '10px' }}>{usernameWordMsg}</div>}
+          {usernameBlockedWords.length === 0 ? (
+            <div style={{ fontSize: '0.75rem', color: '#2a2a2a', textAlign: 'center', padding: '1.5rem 0' }}>No custom blocked username words yet</div>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {usernameBlockedWords.map(({ word }) => (
+                <div key={word} style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(247,147,26,0.06)', border: '1px solid rgba(247,147,26,0.2)', borderRadius: '6px', padding: '4px 10px' }}>
+                  <span style={{ fontSize: '0.78rem', color: '#c47a15', fontWeight: '600' }}>{word}</span>
+                  <button onClick={() => removeUsernameWord(word)}
+                    style={{ background: 'none', border: 'none', color: '#6b4510', cursor: 'pointer', fontSize: '0.85rem', lineHeight: 1, padding: '0 2px' }}>×</button>
                 </div>
               ))}
             </div>
