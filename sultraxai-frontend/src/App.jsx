@@ -144,6 +144,7 @@ export default function App() {
     setPendingEmail(email);
     setSelectedAssets([]);
     setOnboardingStep(1);
+    setSubscriptionStatus('');
     setCurrentView('verify');
   };
 
@@ -218,8 +219,13 @@ export default function App() {
           frequency: tradingProfile.frequency
         })
       });
-      if (res.ok) setCurrentView(subscriptionStatus === 'active' ? 'main_app' : 'subscription');
-    } catch (e) { setErrorMessage("Failed to save data."); }
+      if (res.ok) {
+        setCurrentView(subscriptionStatus === 'active' ? 'main_app' : 'subscription');
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setErrorMessage(data.detail || 'Failed to save profile. Please try again.');
+      }
+    } catch (e) { setErrorMessage("Connection error. Please try again."); }
   };
 
 
