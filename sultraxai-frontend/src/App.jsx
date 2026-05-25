@@ -370,7 +370,7 @@ export default function App() {
       {['main_app', 'zone', 'scanner', 'settings'].includes(currentView) && !isNative && (
         <SupportBot />
       )}
-      {!isNative && !['main_app', 'zone', 'scanner'].includes(currentView) && (
+      {!isNative && (
         <div style={{ borderTop: '1px solid #0a0a0a', padding: '14px 0', display: 'flex', justifyContent: 'center', gap: '28px' }}>
           {[['Contact', 'contact'], ['Terms of Service', 'terms'], ['Privacy Policy', 'privacy']].map(([label, view]) => (
             <button key={view} onClick={() => setCurrentView(view)}
