@@ -228,7 +228,7 @@ export default function App() {
           .land-card:hover { border-color: #1e1e1e; }
           @media (max-width: 800px) { .land-features { grid-template-columns: 1fr !important; } .land-hero h1 { font-size: 2.8rem !important; } }
           @media (max-width: 540px) { .land-hero h1 { font-size: 2.2rem !important; } .land-cta { flex-direction: column; align-items: center; } }
-          .nav-logo { font-size: 1.3rem; font-weight: 800; margin: 0; letter-spacing: 0.04em; white-space: nowrap; }
+          .nav-logo { font-size: 1.3rem; font-weight: 800; margin: 0; letter-spacing: 0.04em; white-space: nowrap; display: flex; align-items: center; gap: 8px; }
           .nav-center { display: flex; gap: 6px; }
           .nav-right { display: flex; gap: 6px; align-items: center; }
           @media (max-width: 900px) {
