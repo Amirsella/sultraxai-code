@@ -21,7 +21,7 @@ import json as _json
 import yfinance as yf
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -106,7 +106,8 @@ def init_db():
         )
     """)
     for _col in ["created_at TEXT", "subscription_status TEXT", "stripe_customer_id TEXT",
-                  "subscription_plan TEXT", "subscription_expires TEXT"]:
+                  "subscription_plan TEXT", "subscription_expires TEXT",
+                  "subscription_start TEXT", "subscription_cancel_pending INTEGER DEFAULT 0"]:
         try:
             cursor.execute(f"ALTER TABLE users ADD COLUMN {_col}")
         except Exception:
@@ -404,7 +405,12 @@ async def update_assets(data: UpdateAssets):
 async def get_user(user_id: int):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("SELECT first_name, full_name, email, phone, subscription_status FROM users WHERE id = ?", (user_id,))
+    cursor.execute("""
+        SELECT first_name, full_name, email, phone, subscription_status,
+               subscription_plan, subscription_expires, subscription_start,
+               subscription_cancel_pending, stripe_customer_id
+        FROM users WHERE id = ?
+    """, (user_id,))
     row = cursor.fetchone()
     if not row:
         conn.close()
@@ -415,6 +421,11 @@ async def get_user(user_id: int):
     return {
         "first_name": row[0], "full_name": row[1], "email": row[2], "phone": row[3],
         "subscription_status": row[4] or "",
+        "subscription_plan": row[5] or "",
+        "subscription_expires": row[6] or "",
+        "subscription_start": row[7] or "",
+        "subscription_cancel_pending": bool(row[8]),
+        "has_paypal_sub": bool(row[9]),
         "experience": profile[0] if profile else "Beginner (0-1 yrs)",
         "frequency": profile[1] if profile else "Daily"
     }
@@ -832,12 +843,25 @@ async def login(user: UserLogin):
                 timeout=8
             )
             if res.status_code == 200:
-                paypal_status = res.json().get("status", "")
+                sub_data = res.json()
+                paypal_status = sub_data.get("status", "")
                 if paypal_status not in ("ACTIVE", "TRIALING", "APPROVED"):
-                    subscription_status = ''
-                    cursor.execute("UPDATE users SET subscription_status='' WHERE id=?", (user_id,))
-                    conn.commit()
-                    print(f"[Login] user={user_id} sub revoked on login, PayPal status={paypal_status}")
+                    # Check if cancelled but still within paid period
+                    cursor.execute("SELECT subscription_expires FROM users WHERE id=?", (user_id,))
+                    exp_row = cursor.fetchone()
+                    expires_str = exp_row[0] if exp_row else None
+                    keep_access = False
+                    if expires_str:
+                        try:
+                            exp_dt = datetime.fromisoformat(expires_str.replace("Z", "+00:00"))
+                            keep_access = exp_dt > datetime.now(timezone.utc)
+                        except Exception:
+                            pass
+                    if not keep_access:
+                        subscription_status = ''
+                        cursor.execute("UPDATE users SET subscription_status='' WHERE id=?", (user_id,))
+                        conn.commit()
+                        print(f"[Login] user={user_id} sub revoked, PayPal status={paypal_status}")
         except Exception as e:
             print(f"[Login] PayPal check failed (non-blocking): {e}")
 
@@ -853,7 +877,7 @@ def _check_subscriptions_sync():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, stripe_customer_id FROM users "
+        "SELECT id, stripe_customer_id, subscription_expires FROM users "
         "WHERE subscription_status='active' AND stripe_customer_id IS NOT NULL AND stripe_customer_id != ''"
     )
     rows = cursor.fetchall()
@@ -865,9 +889,10 @@ def _check_subscriptions_sync():
     except Exception as e:
         print(f"[SubChecker] PayPal token error: {e}")
         return
+    now = datetime.now(timezone.utc)
     expired = []
     updates = []
-    for user_id, sub_id in rows:
+    for user_id, sub_id, sub_expires in rows:
         try:
             res = requests.get(
                 f"{PAYPAL_BASE}/v1/billing/subscriptions/{sub_id}",
@@ -878,11 +903,23 @@ def _check_subscriptions_sync():
                 sub = res.json()
                 status = sub.get("status", "")
                 next_billing = (sub.get("billing_info") or {}).get("next_billing_time", "")
-                if status not in ("ACTIVE", "TRIALING"):
-                    expired.append(user_id)
-                    print(f"[SubChecker] user={user_id} sub={sub_id} status={status} → revoked")
-                elif next_billing:
-                    updates.append((next_billing, user_id))
+                if status in ("ACTIVE", "TRIALING"):
+                    if next_billing:
+                        updates.append((next_billing, user_id))
+                else:
+                    # CANCELLED — keep access until the paid period ends
+                    expires_dt = None
+                    try:
+                        if sub_expires:
+                            expires_dt = datetime.fromisoformat(sub_expires.replace("Z", "+00:00"))
+                    except Exception:
+                        pass
+                    if expires_dt and expires_dt > now:
+                        updates.append((sub_expires, user_id))  # refresh expires, keep active
+                        print(f"[SubChecker] user={user_id} cancelled but active until {sub_expires}")
+                    else:
+                        expired.append(user_id)
+                        print(f"[SubChecker] user={user_id} sub={sub_id} status={status} → revoked")
             else:
                 print(f"[SubChecker] user={user_id} sub={sub_id} HTTP {res.status_code}")
         except Exception as e:
@@ -979,11 +1016,12 @@ async def verify_payment(data: dict):
         active = sub.get("status") in ("ACTIVE", "TRIALING", "APPROVED")
         if active:
             next_billing = (sub.get("billing_info") or {}).get("next_billing_time", "")
+            start_time   = sub.get("start_time", datetime.now(timezone.utc).isoformat())
             conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
             cursor.execute(
-                "UPDATE users SET subscription_status='active', stripe_customer_id=?, subscription_plan=?, subscription_expires=? WHERE id=?",
-                (subscription_id, plan_type, next_billing, user_id)
+                "UPDATE users SET subscription_status='active', stripe_customer_id=?, subscription_plan=?, subscription_expires=?, subscription_start=?, subscription_cancel_pending=0 WHERE id=?",
+                (subscription_id, plan_type, next_billing, start_time, user_id)
             )
             conn.commit()
             conn.close()
@@ -991,6 +1029,37 @@ async def verify_payment(data: dict):
         return {"status": "active" if active else "pending"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/cancel-subscription")
+async def cancel_subscription(data: dict):
+    user_id = data.get("user_id")
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT stripe_customer_id, subscription_expires FROM users WHERE id=?", (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row or not row[0]:
+        raise HTTPException(status_code=404, detail="No active PayPal subscription found")
+    sub_id, expires = row
+    try:
+        token = _paypal_token()
+        res = requests.post(
+            f"{PAYPAL_BASE}/v1/billing/subscriptions/{sub_id}/cancel",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json={"reason": "Cancelled by user"},
+            timeout=10
+        )
+        if res.status_code not in (200, 204):
+            raise Exception(f"PayPal returned {res.status_code}: {res.text}")
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET subscription_cancel_pending=1 WHERE id=?", (user_id,))
+        conn.commit()
+        conn.close()
+        print(f"[Cancel] user={user_id} cancelled, access until {expires}")
+        return {"status": "cancelled", "access_until": expires or ""}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/admin/grant-subscription")
 async def admin_grant_subscription(data: dict, key: str = ""):

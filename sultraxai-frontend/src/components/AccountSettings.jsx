@@ -42,6 +42,9 @@ export default function AccountSettings({ userId, onBack, onSignOut, isNative, o
 
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [cancelConfirm, setCancelConfirm] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelDone, setCancelDone] = useState(false);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/user/${userId}`)
@@ -124,10 +127,33 @@ export default function AccountSettings({ userId, onBack, onSignOut, isNative, o
     } catch { setDeleting(false); }
   };
 
+  const cancelSubscription = async () => {
+    setCancelling(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/cancel-subscription`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: parseInt(userId) }),
+      });
+      if (res.ok) {
+        setCancelDone(true);
+        setCancelConfirm(false);
+        setUser(prev => ({ ...prev, subscription_cancel_pending: true }));
+      }
+    } catch {}
+    setCancelling(false);
+  };
+
+  const fmtDate = (iso) => {
+    if (!iso) return '—';
+    try { return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); }
+    catch { return iso; }
+  };
+
   const TABS = [
     { id: 'profile', label: 'Profile', icon: '👤' },
     { id: 'security', label: 'Security', icon: '🔒' },
     { id: 'preferences', label: 'Preferences', icon: '⚙️' },
+    { id: 'subscription', label: 'Subscription', icon: '⚡' },
     { id: 'danger', label: 'Danger Zone', icon: '⚠️', red: true },
   ];
 
@@ -296,6 +322,71 @@ export default function AccountSettings({ userId, onBack, onSignOut, isNative, o
                   </div>
                 )}
 
+                {/* SUBSCRIPTION */}
+                {tab === 'subscription' && (
+                  <div>
+                    <SectionHeader title="Subscription" desc="Your current plan and billing details" />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+                      {/* Plan card */}
+                      <div style={{ background: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: '12px', padding: '1.25rem 1.5rem' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+                          <div>
+                            <div style={{ fontSize: '0.58rem', color: '#333', fontWeight: '800', letterSpacing: '0.1em', marginBottom: '6px' }}>PLAN</div>
+                            <div style={{ fontSize: '0.95rem', fontWeight: '800', color: '#fff' }}>
+                              {user?.subscription_plan === 'yearly' ? 'Yearly' : user?.subscription_plan === 'monthly' ? 'Monthly' : 'Premium'}
+                              {' '}<span style={{ fontSize: '0.65rem', color: '#44cc44', fontWeight: '700' }}>● ACTIVE</span>
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#444', marginTop: '3px' }}>
+                              {user?.subscription_plan === 'yearly' ? '$599.99 / year' : '$79.99 / month'}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '0.58rem', color: '#333', fontWeight: '800', letterSpacing: '0.1em', marginBottom: '6px' }}>SUBSCRIBED ON</div>
+                            <div style={{ fontSize: '0.88rem', fontWeight: '600', color: '#ccc' }}>{fmtDate(user?.subscription_start)}</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '0.58rem', color: '#333', fontWeight: '800', letterSpacing: '0.1em', marginBottom: '6px' }}>
+                              {user?.subscription_cancel_pending ? 'ACCESS UNTIL' : 'NEXT BILLING'}
+                            </div>
+                            <div style={{ fontSize: '0.88rem', fontWeight: '600', color: user?.subscription_cancel_pending ? '#ff9900' : '#ccc' }}>
+                              {fmtDate(user?.subscription_expires)}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '0.58rem', color: '#333', fontWeight: '800', letterSpacing: '0.1em', marginBottom: '6px' }}>STATUS</div>
+                            <div style={{ fontSize: '0.82rem', fontWeight: '700', color: user?.subscription_cancel_pending ? '#ff9900' : '#44cc44' }}>
+                              {user?.subscription_cancel_pending ? 'Cancels at period end' : 'Active & renewing'}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Cancel done message */}
+                      {cancelDone && (
+                        <div style={{ background: 'rgba(255,153,0,0.06)', border: '1px solid rgba(255,153,0,0.2)', borderRadius: '10px', padding: '12px 16px', fontSize: '0.82rem', color: '#ff9900' }}>
+                          Your subscription has been cancelled. You'll keep full access until {fmtDate(user?.subscription_expires)}.
+                        </div>
+                      )}
+
+                      {/* Cancel button — only if has PayPal sub and not already cancelled */}
+                      {user?.has_paypal_sub && !user?.subscription_cancel_pending && !cancelDone && (
+                        <div style={{ paddingTop: '8px', borderTop: '1px solid #0f0f0f' }}>
+                          <div style={{ fontSize: '0.75rem', color: '#333', marginBottom: '12px', lineHeight: 1.6 }}>
+                            Cancelling will stop future charges. You keep access until {fmtDate(user?.subscription_expires)}.
+                          </div>
+                          <button onClick={() => setCancelConfirm(true)}
+                            style={{ padding: '0.7rem 1.5rem', background: 'transparent', border: '1px solid #2a2a2a', borderRadius: '10px', color: '#555', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '600', fontFamily: SYS_FONT, transition: 'all 0.15s' }}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor='#ff333340'; e.currentTarget.style.color='#ff4444'; }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor='#2a2a2a'; e.currentTarget.style.color='#555'; }}>
+                            Cancel Subscription
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* DANGER */}
                 {tab === 'danger' && (
                   <div>
@@ -321,6 +412,27 @@ export default function AccountSettings({ userId, onBack, onSignOut, isNative, o
             </div>
           </div>
         )}
+      {/* Cancel subscription confirmation modal */}
+      {cancelConfirm && (
+        <div onClick={() => setCancelConfirm(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#0d0d0d', border: '1px solid #1e1e1e', borderRadius: '16px', padding: '2rem', width: '360px', textAlign: 'center', fontFamily: SYS_FONT }}>
+            <div style={{ fontSize: '2rem', marginBottom: '12px' }}>⚡</div>
+            <h3 style={{ margin: '0 0 8px', fontSize: '1rem', fontWeight: '900', color: '#fff' }}>Cancel subscription?</h3>
+            <p style={{ color: '#555', fontSize: '0.82rem', margin: '0 0 6px', lineHeight: 1.6 }}>You'll keep full access until</p>
+            <p style={{ color: '#ff9900', fontSize: '0.95rem', fontWeight: '700', margin: '0 0 1.25rem' }}>{fmtDate(user?.subscription_expires)}</p>
+            <p style={{ color: '#333', fontSize: '0.75rem', margin: '0 0 1.5rem', lineHeight: 1.6 }}>After that, you'll need to subscribe again to regain access.</p>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <button onClick={() => setCancelConfirm(false)} style={{ padding: '9px 22px', background: 'none', border: '1px solid #2a2a2a', color: '#555', borderRadius: '8px', cursor: 'pointer', fontSize: '0.82rem', fontFamily: SYS_FONT }}>
+                Keep subscription
+              </button>
+              <button onClick={cancelSubscription} disabled={cancelling}
+                style={{ padding: '9px 22px', background: '#1a0000', border: '1px solid #440000', color: '#ff4444', borderRadius: '8px', cursor: cancelling ? 'not-allowed' : 'pointer', fontSize: '0.82rem', fontWeight: '700', fontFamily: SYS_FONT, opacity: cancelling ? 0.7 : 1 }}>
+                {cancelling ? 'Cancelling…' : 'Yes, cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );
