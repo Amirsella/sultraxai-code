@@ -601,29 +601,24 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
     });
   }, [selectedAssets]);
 
+  // Single init call: thresholds + history + avg-volumes in one round-trip.
+  // Re-runs when assets change. History refreshes every 5 min via interval.
   useEffect(() => {
-    if (!userId) return;
-    fetch(`${API_BASE}/api/user-assets/${userId}`)
-      .then(r => r.json())
-      .then(data => {
-        const map = {};
-        (data.assets || []).forEach(a => { map[a.symbol] = a.threshold; });
-        setThresholds(map);
-      })
-      .catch(() => {});
-  }, [userId]);
-
-  useEffect(() => {
-    if (!selectedAssets.length) return;
+    if (!userId || !selectedAssets.length) return;
     const load = () =>
-      fetch(`${API_BASE}/api/history-batch?symbols=${selectedAssets.join(',')}`)
+      fetch(`${API_BASE}/api/init?user_id=${userId}&session_token=${encodeURIComponent(sessionToken || '')}`)
         .then(r => r.json())
-        .then(data => setHistory(data.history || {}))
-        .catch(() => {});
+        .then(data => {
+          setThresholds(data.thresholds || {});
+          setHistory(data.history || {});
+          setAvgVolumes(data.avg_volumes || {});
+          setLoading(false);
+        })
+        .catch(() => setLoading(false));
     load();
     const id = setInterval(load, 5 * 60 * 1000);
     return () => clearInterval(id);
-  }, [selectedAssets]);
+  }, [userId, selectedAssets.join(','), sessionToken]);
 
   // Heartbeat — tracks online users + validates session token.
   // 401 means another device logged in and replaced this session → force sign-out.
@@ -645,15 +640,6 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
     const id = setInterval(ping, 60000);
     return () => clearInterval(id);
   }, [userId, sessionToken, onSessionReplaced]);
-
-  // Load historical average volumes for RVOL calculation
-  useEffect(() => {
-    if (!selectedAssets.length) return;
-    fetch(`${API_BASE}/api/avg-volume?symbols=${selectedAssets.join(',')}`)
-      .then(r => r.json())
-      .then(data => setAvgVolumes(data.volumes || {}))
-      .catch(() => {});
-  }, [selectedAssets]);
 
   const triggerFlash = (sym, dir) => {
     if (flashTimersRef.current[sym]) return;

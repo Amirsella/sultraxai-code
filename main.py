@@ -2,6 +2,7 @@ import sqlite3
 import hashlib
 import hmac
 import os
+import time
 import bcrypt
 import random
 import re
@@ -46,6 +47,20 @@ PAYPAL_PLAN_ID_YEARLY  = os.environ.get("PAYPAL_PLAN_ID_YEARLY", "")
 PAYPAL_BASE            = "https://api-m.paypal.com"
 APP_URL   = "https://sultraxai.com"
 ADMIN_KEY = os.environ.get("ADMIN_KEY", "sultrax_admin_key_2026")
+
+# In-memory TTL cache for expensive yfinance calls
+_data_cache: dict[str, tuple[float, any]] = {}
+_HIST_TTL = 300    # 5 minutes
+_VOL_TTL  = 3600   # 1 hour
+
+def _cache_get(key: str, ttl: float):
+    entry = _data_cache.get(key)
+    if entry and (time.monotonic() - entry[0]) < ttl:
+        return entry[1]
+    return None
+
+def _cache_set(key: str, value):
+    _data_cache[key] = (time.monotonic(), value)
 
 # Account lockout: 5 failed attempts → 15 minute lockout
 _failed_logins: dict[str, dict] = {}
@@ -590,15 +605,19 @@ async def get_prices(symbols: str = ""):
     return {"prices": {sym: data for sym, data in results if data}}
 
 def _fetch_avg_volume_one(sym):
+    cached = _cache_get(f'vol:{sym}', _VOL_TTL)
+    if cached is not None:
+        return sym, cached
     try:
         hist = yf.Ticker(sym).history(period="20d", interval="1d")
         volumes = hist["Volume"].dropna().tolist()
-        if not volumes:
-            return sym, None
-        return sym, round(float(sum(volumes) / len(volumes)))
+        result = round(float(sum(volumes) / len(volumes))) if volumes else None
     except Exception as e:
         print(f"Avg volume error {sym}: {e}")
-        return sym, None
+        result = None
+    if result is not None:
+        _cache_set(f'vol:{sym}', result)
+    return sym, result
 
 @app.get("/api/avg-volume")
 async def get_avg_volume(symbols: str = ""):
@@ -610,13 +629,19 @@ async def get_avg_volume(symbols: str = ""):
     return {"volumes": {sym: vol for sym, vol in results if vol is not None}}
 
 def _fetch_history_one(sym):
+    cached = _cache_get(f'hist:{sym}', _HIST_TTL)
+    if cached is not None:
+        return sym, cached
     try:
-        hist = yf.Ticker(sym).history(period="5d", interval="5m")
+        # 1d instead of 5d — much faster, still gives 30+ 5-min bars
+        hist = yf.Ticker(sym).history(period="1d", interval="5m")
         closes = hist["Close"].dropna().tolist()
-        return sym, [round(float(p), 4) for p in closes[-30:]]
+        result = [round(float(p), 4) for p in closes[-30:]]
     except Exception as e:
         print(f"History error {sym}: {e}")
-        return sym, []
+        result = []
+    _cache_set(f'hist:{sym}', result)
+    return sym, result
 
 @app.get("/api/history-batch")
 async def get_history_batch(symbols: str = ""):
@@ -626,6 +651,32 @@ async def get_history_batch(symbols: str = ""):
     with ThreadPoolExecutor(max_workers=min(len(symbol_list), 10)) as ex:
         results = list(ex.map(_fetch_history_one, symbol_list))
     return {"history": {sym: prices for sym, prices in results}}
+
+@app.get("/api/init")
+async def init_data(user_id: int, session_token: str = ""):
+    """Single endpoint that returns assets + history + avg-volumes in one shot."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT symbol, threshold FROM user_assets WHERE user_id = ?", (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+
+    symbols = [r[0] for r in rows]
+    thresholds = {r[0]: r[1] for r in rows}
+    if not symbols:
+        return {"thresholds": {}, "history": {}, "avg_volumes": {}}
+
+    with ThreadPoolExecutor(max_workers=min(len(symbols) * 2, 12)) as ex:
+        hist_futs = [ex.submit(_fetch_history_one, s) for s in symbols]
+        vol_futs  = [ex.submit(_fetch_avg_volume_one, s) for s in symbols]
+        hist_results = [f.result() for f in hist_futs]
+        vol_results  = [f.result() for f in vol_futs]
+
+    return {
+        "thresholds":  thresholds,
+        "history":     {sym: data for sym, data in hist_results},
+        "avg_volumes": {sym: vol  for sym, vol  in vol_results if vol is not None},
+    }
 
 @app.get("/api/user-assets/{user_id}")
 async def get_user_assets(user_id: int):
