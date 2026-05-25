@@ -37,6 +37,27 @@ export default function App() {
   const [assetSettings, setAssetSettings] = useState({}); 
   const [tradingProfile, setTradingProfile] = useState({ experience: 'Beginner (0-1 yrs)', frequency: 'Daily' });
   const inactivityRef = useRef(null);
+  const [sessionError, setSessionError] = useState('');
+
+  // Validate userId on startup — if the user no longer exists in DB, redirect to signin
+  useEffect(() => {
+    const storedId = localStorage.getItem('userId');
+    const storedView = localStorage.getItem('currentView');
+    if (!storedId || !['main_app', 'zone', 'scanner', 'settings'].includes(storedView)) return;
+    fetch(`${API_BASE}/api/user/${storedId}`)
+      .then(res => {
+        if (res.status === 404) {
+          localStorage.clear();
+          setUserId(null);
+          setFirstName('');
+          setSelectedAssets([]);
+          setSessionError('Your session has expired. Please sign in again.');
+          setCurrentView('signin');
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // עדכון ה-LocalStorage בכל פעם שהערכים משתנים
   useEffect(() => {
     localStorage.setItem('currentView', currentView);
@@ -298,13 +319,14 @@ export default function App() {
                 <div style={{ flex: 1, padding: '100px 28px 48px', display: 'flex', flexDirection: 'column' }}>
                   <h2 style={{ fontSize: '2.4rem', fontWeight: '900', color: '#fff', margin: '0 0 6px', letterSpacing: '-0.01em' }}>Welcome back</h2>
                   <p style={{ color: '#555', fontSize: '0.88rem', margin: '0 0 36px', letterSpacing: '0.02em' }}>Sign in to your terminal</p>
+                  {sessionError && <div style={{ color: '#ff9900', backgroundColor: 'rgba(255,153,0,0.1)', padding: '0.75rem', borderRadius: '10px', marginBottom: '1rem', fontSize: '0.88rem', textAlign: 'center', border: '1px solid rgba(255,153,0,0.2)' }}>{sessionError}</div>}
                   {errorMessage && <div style={{ color: '#ff3333', backgroundColor: 'rgba(255,51,51,0.1)', padding: '0.75rem', borderRadius: '10px', marginBottom: '1rem', fontSize: '0.88rem', textAlign: 'center' }}>{errorMessage}</div>}
                   <form onSubmit={async (e) => {
                     e.preventDefault(); setErrorMessage('');
                     try {
                       const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e.target[0].value, password: e.target[1].value }) });
                       const data = await res.json();
-                      if (res.ok) { setUserId(data.user_id); setFirstName(data.first_name || ''); if (data.onboarding_completed) { setSelectedAssets(data.assets); setCurrentView('main_app'); } else { setSelectedAssets([]); setOnboardingStep(1); setCurrentView('onboarding'); } } else setErrorMessage(data.detail);
+                      if (res.ok) { setSessionError(''); setUserId(data.user_id); setFirstName(data.first_name || ''); if (data.onboarding_completed) { setSelectedAssets(data.assets); setCurrentView('main_app'); } else { setSelectedAssets([]); setOnboardingStep(1); setCurrentView('onboarding'); } } else setErrorMessage(data.detail);
                     } catch { setErrorMessage("Login failed."); }
                   }} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                     <input type="text" inputMode="email" placeholder="Email" required style={mobileInputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
@@ -324,13 +346,14 @@ export default function App() {
             ) : (
               <div style={{ width: '400px', background: 'rgba(5, 5, 5, 0.7)', padding: '2.5rem', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)', backdropFilter: 'blur(10px)' }}>
                 <h3 style={{ fontSize: '1.8rem', fontWeight: '800', marginBottom: '1.5rem', textAlign: 'center' }}>Sign In</h3>
+                {sessionError && <div style={{ color: '#ff9900', backgroundColor: 'rgba(255,153,0,0.1)', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.9rem', textAlign: 'center', border: '1px solid rgba(255,153,0,0.2)' }}>{sessionError}</div>}
                 {errorMessage && <div style={{ color: '#ff3333', backgroundColor: 'rgba(255,51,51,0.1)', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.9rem', textAlign: 'center' }}>{errorMessage}</div>}
                 <form onSubmit={async (e) => {
                   e.preventDefault(); setErrorMessage('');
                   try {
                     const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e.target[0].value, password: e.target[1].value }) });
                     const data = await res.json();
-                    if (res.ok) { setUserId(data.user_id); setFirstName(data.first_name || ''); if (data.onboarding_completed) { setSelectedAssets(data.assets); setCurrentView('main_app'); } else { setSelectedAssets([]); setOnboardingStep(1); setCurrentView('onboarding'); } } else setErrorMessage(data.detail);
+                    if (res.ok) { setSessionError(''); setUserId(data.user_id); setFirstName(data.first_name || ''); if (data.onboarding_completed) { setSelectedAssets(data.assets); setCurrentView('main_app'); } else { setSelectedAssets([]); setOnboardingStep(1); setCurrentView('onboarding'); } } else setErrorMessage(data.detail);
                   } catch { setErrorMessage("Login failed."); }
                 }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <input type="text" inputMode="email" placeholder="Email Address" required style={inputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />

@@ -86,7 +86,7 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            first_name TEXT, full_name TEXT, email TEXT UNIQUE, phone TEXT UNIQUE, password_hash TEXT
+            first_name TEXT, full_name TEXT, email TEXT UNIQUE, phone TEXT, password_hash TEXT
         )
     """)
     cursor.execute("""
@@ -224,11 +224,17 @@ async def register(user: UserRegister, background_tasks: BackgroundTasks):
     background_tasks.add_task(send_verification_email, user.email.strip(), code)
 
     pwd_hash = hash_password(user.password)
-    cursor.execute("INSERT INTO users (first_name, full_name, email, phone, password_hash) VALUES (?, ?, ?, ?, ?)",
-                   (user.first_name, user.full_name, user.email.strip(), user.phone.strip(), pwd_hash))
-    user_id = cursor.lastrowid
-    conn.commit()
+    try:
+        cursor.execute("INSERT INTO users (first_name, full_name, email, phone, password_hash) VALUES (?, ?, ?, ?, ?)",
+                       (user.first_name, user.full_name, user.email.strip(), user.phone.strip() or None, pwd_hash))
+        user_id = cursor.lastrowid
+        conn.commit()
+    except Exception as e:
+        conn.close()
+        print(f"Register insert error: {e}")
+        return JSONResponse(status_code=400, content={"detail": "Registration failed. Email or phone already in use."})
     conn.close()
+    print(f"New user registered: id={user_id}, email={user.email.strip()}")
     return {"status": "success", "user_id": user_id}
 @app.post("/api/complete-onboarding")
 async def complete_onboarding(data: OnboardingData):
