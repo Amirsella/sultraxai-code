@@ -943,7 +943,7 @@ async def verify_payment(data: dict):
         )
         res.raise_for_status()
         sub = res.json()
-        active = sub.get("status") in ("ACTIVE", "TRIALING")
+        active = sub.get("status") in ("ACTIVE", "TRIALING", "APPROVED")
         if active:
             conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
