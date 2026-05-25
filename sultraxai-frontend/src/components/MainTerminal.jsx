@@ -538,8 +538,8 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
     selectedAssets.forEach(sym => {
       if (!volumeTrackingRef.current[sym]) {
         volumeTrackingRef.current[sym] = {
-          emaVol: 0, emaVolSq: 0, tradeCount: 0,
-          vwapNum: 0, vwapDen: 0,
+          emaVol: 0, emaVar: 0, tradeCount: 0,
+          vwapNum: 0, vwapDen: 0, vwapDate: new Date().toISOString().slice(0, 10),
           flowWindow: [],
           lastPrice: null,
           pendingConfirmation: null,
@@ -628,7 +628,13 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
         const tracking = volumeTrackingRef.current[sym];
         if (!tracking || vol <= 0) return;
 
-        // VWAP
+        // VWAP — reset daily at midnight UTC so it reflects the current session only
+        const today = new Date().toISOString().slice(0, 10);
+        if (tracking.vwapDate !== today) {
+          tracking.vwapNum = 0;
+          tracking.vwapDen = 0;
+          tracking.vwapDate = today;
+        }
         tracking.vwapNum += price * vol;
         tracking.vwapDen += vol;
         const vwap = tracking.vwapDen > 0 ? tracking.vwapNum / tracking.vwapDen : price;
@@ -648,23 +654,29 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
           rvolUpdates[sym] = parseFloat((avgVol5m > 0 ? cur5m / avgVol5m : 0).toFixed(2));
         }
 
-        // Trade direction
+        // Trade direction — equal price carries forward last direction (no default bias)
         const dir = tracking.lastPrice !== null
-          ? (price >= tracking.lastPrice ? 'buy' : 'sell') : 'buy';
+          ? (price > tracking.lastPrice ? 'buy' : price < tracking.lastPrice ? 'sell' : (tracking.lastDir || 'buy'))
+          : 'buy';
+        tracking.lastDir = dir;
         tracking.lastPrice = price;
 
         // Order flow window (rolling 30s)
         tracking.flowWindow.push({ dir, time: now });
         tracking.flowWindow = tracking.flowWindow.filter(t => now - t.time < 30000);
 
-        // Z-score EMA (α=0.1 → ~10 trade window)
+        // EWMA mean and variance (α=0.1 → ~10 trade window)
+        // Variance tracked directly to avoid catastrophic cancellation from E[X²]-(E[X])²
         const α = 0.1;
+        const prevEmaVol = tracking.emaVol;
+        const prevEmaVar = tracking.emaVar;
         if (tracking.tradeCount === 0) {
           tracking.emaVol = vol;
-          tracking.emaVolSq = vol * vol;
+          tracking.emaVar = 0;
         } else {
-          tracking.emaVol = α * vol + (1 - α) * tracking.emaVol;
-          tracking.emaVolSq = α * vol * vol + (1 - α) * tracking.emaVolSq;
+          const diff = vol - prevEmaVol;
+          tracking.emaVol = α * vol + (1 - α) * prevEmaVol;
+          tracking.emaVar = α * diff * diff + (1 - α) * prevEmaVar;
         }
         tracking.tradeCount++;
 
@@ -672,14 +684,13 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
         if (tracking.tradeCount < 20) return;
         if (now - tracking.lastSignalTime < 3 * 60 * 1000) return;
 
-        const variance = Math.max(0, tracking.emaVolSq - tracking.emaVol * tracking.emaVol);
-        const std = Math.sqrt(variance);
+        const std = Math.sqrt(prevEmaVar);
         if (std < 0.001) return;
 
-        const z = (vol - tracking.emaVol) / std;
+        const z = (vol - prevEmaVol) / std;
         if (z < 2.5) return;
 
-        // ── CONVICTION SCORE ──
+        // ── CONVICTION SCORE (raw 0–90) ──
         let score = 0;
 
         // Z-score component (max 40)
@@ -704,6 +715,9 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
 
         if (score < 40) return;
 
+        // Normalize to 0–100 scale (raw max is 90)
+        const displayScore = Math.round((score / 90) * 100);
+
         tracking.lastSignalTime = now;
         const alertId = `${sym}-${now}`;
         const strengthLabel = score >= 80
@@ -713,8 +727,8 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
         newAlerts.push({
           type: 'signal', id: alertId,
           symbol: sym, dir: isBuy ? 'buy' : 'sell',
-          score, strengthLabel,
-          volMultiplier: parseFloat((vol / tracking.emaVol).toFixed(1)),
+          score: displayScore, strengthLabel,
+          volMultiplier: parseFloat((vol / prevEmaVol).toFixed(1)),
           flowRatio: parseFloat(flowRatio.toFixed(2)),
           price, vwap: parseFloat(vwap.toFixed(2)),
           time: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
@@ -806,14 +820,13 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
         updates[alertId] = {
           priceImpact: parseFloat(impact.toFixed(3)),
           confirmed: directedImpact >= 0.05,
-          bonus: directedImpact >= 0.1 ? 10 : directedImpact >= 0.05 ? 5 : 0,
         };
       });
       if (Object.keys(updates).length > 0) {
         setAlerts(prev => prev.map(a => {
           const u = updates[a.id];
           if (!u) return a;
-          return { ...a, priceImpact: u.priceImpact, confirmed: u.confirmed, score: Math.min(100, (a.score || 0) + u.bonus) };
+          return { ...a, priceImpact: u.priceImpact, confirmed: u.confirmed };
         }));
       }
     }, 3000);
