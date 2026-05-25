@@ -24,6 +24,7 @@ BREVO_API_KEY = "YOUR_BREVO_API_KEY"
 FINNHUB_KEY = "FINNHUB_API_KEY"
 GROQ_KEY = "YOUR_GROQ_KEY"
 APP_URL = "http://38.180.137.122:8000"
+ADMIN_KEY = "sultrax_admin_key_2026"
 
 verification_codes = {}
 reset_tokens = {}
@@ -86,9 +87,14 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            first_name TEXT, full_name TEXT, email TEXT UNIQUE, phone TEXT, password_hash TEXT
+            first_name TEXT, full_name TEXT, email TEXT UNIQUE, phone TEXT,
+            password_hash TEXT, created_at TEXT
         )
     """)
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN created_at TEXT")
+    except Exception:
+        pass
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_assets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -225,8 +231,8 @@ async def register(user: UserRegister, background_tasks: BackgroundTasks):
 
     pwd_hash = hash_password(user.password)
     try:
-        cursor.execute("INSERT INTO users (first_name, full_name, email, phone, password_hash) VALUES (?, ?, ?, ?, ?)",
-                       (user.first_name, user.full_name, user.email.strip(), user.phone.strip() or None, pwd_hash))
+        cursor.execute("INSERT INTO users (first_name, full_name, email, phone, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                       (user.first_name, user.full_name, user.email.strip(), user.phone.strip() or None, pwd_hash, datetime.now().isoformat()))
         user_id = cursor.lastrowid
         conn.commit()
     except Exception as e:
@@ -698,6 +704,45 @@ async def contact(msg: ContactMessage):
     except Exception as e:
         print(f"Contact email error: {e}")
     return {"status": "ok"}
+
+def _admin_auth(key: str):
+    if key != ADMIN_KEY:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+@app.get("/api/admin/users")
+async def admin_list_users(key: str = ""):
+    _admin_auth(key)
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT u.id, u.first_name, u.full_name, u.email, u.phone, u.created_at,
+               COUNT(DISTINCT a.id) as asset_count,
+               GROUP_CONCAT(a.symbol, ', ') as assets,
+               p.experience, p.frequency
+        FROM users u
+        LEFT JOIN user_assets a ON a.user_id = u.id
+        LEFT JOIN user_profiles p ON p.user_id = u.id
+        GROUP BY u.id
+        ORDER BY u.id DESC
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+    return {"users": [dict(r) for r in rows], "total": len(rows)}
+
+@app.delete("/api/admin/users/{user_id}")
+async def admin_delete_user(user_id: int, key: str = ""):
+    _admin_auth(key)
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM user_assets WHERE user_id = ?", (user_id,))
+    cursor.execute("DELETE FROM user_profiles WHERE user_id = ?", (user_id,))
+    cursor.execute("DELETE FROM reset_tokens WHERE email = (SELECT email FROM users WHERE id = ?)", (user_id,))
+    cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    print(f"Admin deleted user id={user_id}")
+    return {"status": "success"}
 
 @app.post("/api/login")
 async def login(user: UserLogin):

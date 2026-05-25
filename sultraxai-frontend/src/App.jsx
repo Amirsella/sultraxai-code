@@ -3,6 +3,7 @@ import MainTerminal from './components/MainTerminal';
 const TheZone        = lazy(() => import('./components/TheZone'));
 const Scanner        = lazy(() => import('./components/Scanner'));
 const AccountSettings = lazy(() => import('./components/AccountSettings'));
+const AdminPanel     = lazy(() => import('./components/AdminPanel'));
 import SupportBot from './components/SupportBot';
 const API_BASE = 'http://38.180.137.122:8000';
 const MOCK_STOCKS = ["BTC/USD", "ETH/USD", "AAPL", "TSLA", "NVDA", "AMZN", "GOOGL", "MSFT", "META", "NFLX", "SOL/USD", "XRP/USD", "AMD", "PLTR", "COIN"];
@@ -11,6 +12,8 @@ const isNative = typeof window !== 'undefined' &&
   (window.location.protocol === 'capacitor:' || !!window.Capacitor?.isNativePlatform?.());
 
 export default function App() {
+  const [isAdminMode] = useState(() => new URLSearchParams(window.location.search).has('admin'));
+
   // טעינת מצב ראשוני מה-LocalStorage כדי למנוע ניתוק בריפרש
   const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get('reset_token') || '');
 
@@ -149,6 +152,14 @@ export default function App() {
     } catch (e) { setErrorMessage("Failed to save data."); }
   };
 
+
+  if (isAdminMode) {
+    return (
+      <Suspense fallback={null}>
+        <AdminPanel onExit={() => { window.history.replaceState({}, '', '/'); window.location.reload(); }} />
+      </Suspense>
+    );
+  }
 
   return (
     <div style={{ color: '#fff', minHeight: '100vh', background: '#020202', fontFamily: '-apple-system, BlinkMacSystemFont, system-ui, "Inter", sans-serif', position: 'relative', overflowX: 'hidden' }}>
