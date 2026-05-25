@@ -629,9 +629,12 @@ async def _pf_init_prev_closes(symbols: list):
             print(f"[PriceFeed] REST init {sym}: {e}")
     await asyncio.gather(*[_one(s) for s in symbols])
 
+_PF_MAX_SYMBOLS = 50  # Finnhub free plan: 50 WebSocket subscriptions per connection
+
 async def _finnhub_price_feed():
     """Persistent backend WebSocket to Finnhub — reconnects forever on failure."""
     global _pf_ws
+    reconnect_delay = 5
     while True:
         try:
             if not FINNHUB_KEY:
@@ -640,7 +643,11 @@ async def _finnhub_price_feed():
 
             conn = _get_db()
             rows = conn.execute("SELECT DISTINCT symbol FROM user_assets").fetchall()
-            symbols = [r[0] for r in rows]
+            all_symbols = [r[0] for r in rows]
+            # Respect Finnhub free-tier 50-symbol cap
+            symbols = all_symbols[:_PF_MAX_SYMBOLS]
+            if len(all_symbols) > _PF_MAX_SYMBOLS:
+                print(f"[PriceFeed] WARNING: {len(all_symbols)} symbols found, subscribing first {_PF_MAX_SYMBOLS} only (Finnhub free cap).")
 
             if symbols:
                 await _pf_init_prev_closes(symbols)
@@ -648,6 +655,7 @@ async def _finnhub_price_feed():
             uri = f"wss://ws.finnhub.io?token={FINNHUB_KEY}"
             async with _ws_lib.connect(uri, ping_interval=25, ping_timeout=10) as ws:
                 _pf_ws = ws
+                reconnect_delay = 5  # reset backoff on successful connect
                 for sym in symbols:
                     await ws.send(_json.dumps({"type": "subscribe", "symbol": _sym_to_finnhub(sym)}))
                     _pf_subscribed.add(sym)
@@ -655,6 +663,12 @@ async def _finnhub_price_feed():
 
                 async for raw in ws:
                     msg = _json.loads(raw)
+                    if msg.get("type") == "error":
+                        err = msg.get("msg", "")
+                        print(f"[PriceFeed] Finnhub error: {err}")
+                        if "grant" in err.lower():
+                            print("[PriceFeed] Grant failed — too many subscriptions or concurrent connections. Will retry.")
+                        break  # exit inner loop, trigger reconnect
                     if msg.get("type") != "trade":
                         continue
                     for trade in msg.get("data", []):
@@ -684,7 +698,9 @@ async def _finnhub_price_feed():
             print(f"[PriceFeed] Error: {e}")
         finally:
             _pf_ws = None
-        await asyncio.sleep(5)
+            _pf_subscribed.clear()
+        await asyncio.sleep(reconnect_delay)
+        reconnect_delay = min(reconnect_delay * 2, 60)  # backoff up to 60s
 
 async def _pf_subscribe_sym(sym: str):
     """Subscribe one new symbol to the backend price feed."""
