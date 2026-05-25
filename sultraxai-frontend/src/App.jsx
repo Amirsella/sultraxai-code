@@ -706,7 +706,7 @@ function SignUpForm({ isNative, onBack, onRegisterSuccess, setErrorMessage, erro
           style={{ ...(isNative ? mobileInputStyle : inputStyle), minHeight: '1.4em', cursor: 'text', whiteSpace: 'nowrap', overflowX: 'hidden' }} />
         <div style={{ position: 'relative' }}>
           <input
-            type="text" placeholder="Username (shown in chat)"
+            type="text" placeholder="Username"
             value={username} onChange={e => setUsername(e.target.value.replace(/\s/g, ''))}
             style={{ ...(isNative ? mobileInputStyle : inputStyle), paddingRight: '2.5rem',
               borderColor: usernameAvailable === true ? '#225522' : usernameAvailable === false ? '#662222' : undefined }}
