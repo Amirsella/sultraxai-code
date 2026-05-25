@@ -19,6 +19,8 @@ export default function App() {
     const saved = localStorage.getItem('currentView');
     const userId = localStorage.getItem('userId');
     if (['main_app', 'onboarding', 'zone', 'scanner', 'settings'].includes(saved) && userId) return saved;
+    const publicViews = ['contact', 'terms', 'privacy'];
+    if (publicViews.includes(saved)) return saved;
     return 'landing';
   });
   const [userId, setUserId] = useState(() => localStorage.getItem('userId') || null);
@@ -210,7 +212,11 @@ export default function App() {
 
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: currentView === 'landing' ? 'flex-start' : 'center', padding: currentView === 'landing' ? '0' : '2rem' }}>
 
-          {currentView === 'landing' && (
+          {currentView === 'contact' && <ContactPage onBack={() => setCurrentView('landing')} />}
+        {currentView === 'terms'   && <TermsPage   onBack={() => setCurrentView('landing')} />}
+        {currentView === 'privacy' && <PrivacyPage onBack={() => setCurrentView('landing')} />}
+
+        {currentView === 'landing' && (
             isNative ? (
               <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', background: '#020202', overflow: 'hidden' }}>
                 <div style={{ paddingTop: '80px', textAlign: 'center', position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -224,7 +230,7 @@ export default function App() {
                 </div>
               </div>
             ) : (
-              <LandingPage onSignUp={() => setCurrentView('signup')} onSignIn={() => setCurrentView('signin')} />
+              <LandingPage onSignUp={() => setCurrentView('signup')} onSignIn={() => setCurrentView('signin')} onNavigate={setCurrentView} />
             )
           )}
 
@@ -822,7 +828,7 @@ const FEATURES = [
   },
 ];
 
-function LandingPage({ onSignUp, onSignIn }) {
+function LandingPage({ onSignUp, onSignIn, onNavigate }) {
   return (
     <div style={{ width: '100%', animation: 'fadeUp 0.5s ease both' }}>
 
@@ -874,9 +880,19 @@ function LandingPage({ onSignUp, onSignIn }) {
         ))}
       </div>
 
-      {/* Bottom divider */}
-      <div style={{ textAlign: 'center', paddingBottom: '4rem' }}>
-        <p style={{ color: '#161616', fontSize: '0.7rem', letterSpacing: '0.1em', fontWeight: '600' }}>SULTRAXAI · MARKET INTELLIGENCE PLATFORM</p>
+      {/* Footer */}
+      <div style={{ borderTop: '1px solid #0d0d0d', padding: '2rem', textAlign: 'center' }}>
+        <p style={{ color: '#1e1e1e', fontSize: '0.65rem', letterSpacing: '0.1em', fontWeight: '600', marginBottom: '12px' }}>SULTRAXAI · MARKET INTELLIGENCE PLATFORM</p>
+        <div style={{ display: 'flex', gap: '24px', justifyContent: 'center', flexWrap: 'wrap' }}>
+          {[['Contact', 'contact'], ['Terms of Service', 'terms'], ['Privacy Policy', 'privacy']].map(([label, view]) => (
+            <button key={view} onClick={() => onNavigate(view)}
+              style={{ background: 'none', border: 'none', color: '#2a2a2a', cursor: 'pointer', fontSize: '0.65rem', fontWeight: '600', letterSpacing: '0.06em', fontFamily: 'inherit', textTransform: 'uppercase', transition: 'color 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.color = '#555'}
+              onMouseLeave={e => e.currentTarget.style.color = '#2a2a2a'}>
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -885,3 +901,120 @@ function LandingPage({ onSignUp, onSignIn }) {
 const SYS_FONT = '-apple-system, BlinkMacSystemFont, system-ui, sans-serif';
 const inputStyle = { padding: '1rem', background: '#111', border: '1px solid #222', borderRadius: '12px', color: '#fff', outline: 'none', fontFamily: SYS_FONT };
 const mobileInputStyle = { padding: '1rem 1.25rem', background: '#111', border: '1px solid #1e1e1e', borderRadius: '14px', color: '#fff', outline: 'none', fontSize: '1rem', boxSizing: 'border-box', width: '100%', fontFamily: SYS_FONT };
+
+// ─── STATIC PAGES ────────────────────────────────────────────────────────────
+
+function PageShell({ title, onBack, children }) {
+  return (
+    <div style={{ minHeight: '100vh', background: '#020202', color: '#fff', fontFamily: SYS_FONT }}>
+      <div style={{ maxWidth: '760px', margin: '0 auto', padding: '3rem 2rem 6rem' }}>
+        <button onClick={onBack} style={{ background: 'none', border: '1px solid #1e1e1e', color: '#555', padding: '7px 18px', borderRadius: '10px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: '600', marginBottom: '2.5rem', fontFamily: 'inherit' }}>← Back</button>
+        <h1 style={{ fontSize: '1.8rem', fontWeight: '900', letterSpacing: '0.04em', marginBottom: '0.5rem', background: 'linear-gradient(to right,#fff 50%,#555)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{title}</h1>
+        <div style={{ height: '1px', background: '#111', margin: '1.5rem 0 2rem' }} />
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ContactPage({ onBack }) {
+  const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' });
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const valid = form.name && form.email && form.subject && form.message;
+
+  const send = async (e) => {
+    e.preventDefault();
+    setSending(true); setError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/contact`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      if (res.ok) setSent(true);
+      else setError('Failed to send. Please try again.');
+    } catch { setError('Connection error. Please try again.'); }
+    setSending(false);
+  };
+
+  const fi = { width: '100%', padding: '0.85rem 1rem', background: '#0a0a0a', border: '1px solid #1e1e1e', borderRadius: '10px', color: '#e8e8e8', outline: 'none', fontFamily: SYS_FONT, fontSize: '0.88rem', boxSizing: 'border-box' };
+
+  return (
+    <PageShell title="Contact Us" onBack={onBack}>
+      {sent ? (
+        <div style={{ textAlign: 'center', padding: '3rem 0' }}>
+          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>✓</div>
+          <p style={{ color: '#44cc44', fontSize: '1rem', fontWeight: '600' }}>Message sent!</p>
+          <p style={{ color: '#444', fontSize: '0.85rem', marginTop: '8px' }}>We'll get back to you at {form.email}</p>
+        </div>
+      ) : (
+        <form onSubmit={send} style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+          <p style={{ color: '#333', fontSize: '0.85rem', lineHeight: 1.7, margin: '0 0 0.5rem' }}>Have a question, bug report, or feature request? We read every message.</p>
+          {error && <div style={{ background: '#1a0000', border: '1px solid #440000', borderRadius: '10px', padding: '0.75rem 1rem', color: '#ff6666', fontSize: '0.82rem' }}>{error}</div>}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div><label style={{ fontSize: '0.62rem', color: '#444', fontWeight: '700', letterSpacing: '0.1em', display: 'block', marginBottom: '7px' }}>NAME</label><input value={form.name} onChange={e => set('name', e.target.value)} style={fi} required /></div>
+            <div><label style={{ fontSize: '0.62rem', color: '#444', fontWeight: '700', letterSpacing: '0.1em', display: 'block', marginBottom: '7px' }}>EMAIL</label><input type="email" value={form.email} onChange={e => set('email', e.target.value)} style={fi} required /></div>
+          </div>
+          <div><label style={{ fontSize: '0.62rem', color: '#444', fontWeight: '700', letterSpacing: '0.1em', display: 'block', marginBottom: '7px' }}>SUBJECT</label><input value={form.subject} onChange={e => set('subject', e.target.value)} style={fi} required /></div>
+          <div><label style={{ fontSize: '0.62rem', color: '#444', fontWeight: '700', letterSpacing: '0.1em', display: 'block', marginBottom: '7px' }}>MESSAGE</label><textarea value={form.message} onChange={e => set('message', e.target.value)} rows={6} style={{ ...fi, resize: 'vertical', lineHeight: 1.6 }} required /></div>
+          <button type="submit" disabled={!valid || sending} style={{ padding: '0.85rem', background: valid ? '#ff3333' : '#0d0d0d', border: `1px solid ${valid ? '#ff333350' : '#141414'}`, borderRadius: '10px', color: valid ? '#fff' : '#2a2a2a', fontWeight: '700', cursor: valid ? 'pointer' : 'default', fontSize: '0.88rem', opacity: sending ? 0.7 : 1, fontFamily: SYS_FONT }}>
+            {sending ? 'Sending…' : 'Send Message'}
+          </button>
+        </form>
+      )}
+    </PageShell>
+  );
+}
+
+function TermsPage({ onBack }) {
+  const S = { color: '#888', fontSize: '0.88rem', lineHeight: 1.8, margin: '0 0 1.5rem' };
+  const H = { color: '#ccc', fontSize: '0.95rem', fontWeight: '700', margin: '2rem 0 0.5rem' };
+  return (
+    <PageShell title="Terms of Service" onBack={onBack}>
+      <p style={{ ...S, color: '#444', fontSize: '0.75rem' }}>Last updated: May 2025</p>
+      <p style={S}>By accessing and using SultraxAI, you agree to be bound by these Terms of Service. Please read them carefully.</p>
+      <h3 style={H}>1. Use of Service</h3>
+      <p style={S}>SultraxAI provides real-time market data, price alerts, and analytical tools for informational purposes only. The platform is intended for users who are 18 years of age or older.</p>
+      <h3 style={H}>2. No Financial Advice</h3>
+      <p style={S}>All content provided by SultraxAI — including signals, alerts, news, and analysis — is for informational purposes only and does not constitute financial, investment, or trading advice. You are solely responsible for your trading decisions.</p>
+      <h3 style={H}>3. Account Responsibility</h3>
+      <p style={S}>You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account. Notify us immediately of any unauthorized use.</p>
+      <h3 style={H}>4. Data Accuracy</h3>
+      <p style={S}>While we strive to provide accurate, real-time data, SultraxAI does not guarantee the accuracy, completeness, or timeliness of any information. Market data may be delayed or contain errors.</p>
+      <h3 style={H}>5. Limitation of Liability</h3>
+      <p style={S}>SultraxAI shall not be liable for any direct, indirect, incidental, or consequential damages arising from your use of the platform or reliance on any information provided.</p>
+      <h3 style={H}>6. Modifications</h3>
+      <p style={S}>We reserve the right to modify these terms at any time. Continued use of the platform after changes constitutes acceptance of the revised terms.</p>
+      <h3 style={H}>7. Contact</h3>
+      <p style={S}>For questions regarding these terms, contact us at <span style={{ color: '#ff4444' }}>support@sultraxai.com</span></p>
+    </PageShell>
+  );
+}
+
+function PrivacyPage({ onBack }) {
+  const S = { color: '#888', fontSize: '0.88rem', lineHeight: 1.8, margin: '0 0 1.5rem' };
+  const H = { color: '#ccc', fontSize: '0.95rem', fontWeight: '700', margin: '2rem 0 0.5rem' };
+  return (
+    <PageShell title="Privacy Policy" onBack={onBack}>
+      <p style={{ ...S, color: '#444', fontSize: '0.75rem' }}>Last updated: May 2025</p>
+      <p style={S}>At SultraxAI, we take your privacy seriously. This policy explains what data we collect and how we use it.</p>
+      <h3 style={H}>1. Data We Collect</h3>
+      <p style={S}>When you create an account, we collect your name, email address, and phone number. We also store your watchlist preferences and alert settings to provide the service.</p>
+      <h3 style={H}>2. How We Use Your Data</h3>
+      <p style={S}>Your data is used exclusively to operate and improve the SultraxAI platform — including sending verification emails, delivering alerts, and personalizing your experience. We do not sell your data to third parties.</p>
+      <h3 style={H}>3. Data Storage</h3>
+      <p style={S}>Your data is stored securely on our servers. Passwords are hashed and never stored in plain text. We use industry-standard security practices to protect your information.</p>
+      <h3 style={H}>4. Cookies & Local Storage</h3>
+      <p style={S}>We use browser local storage to remember your session and preferences (such as selected assets and view state). No third-party tracking cookies are used.</p>
+      <h3 style={H}>5. Your Rights</h3>
+      <p style={S}>You may request deletion of your account and all associated data at any time from Account Settings → Danger Zone. Upon deletion, all your personal data is permanently removed from our systems.</p>
+      <h3 style={H}>6. Third-Party Services</h3>
+      <p style={S}>We use Brevo for transactional emails, Finnhub for market data, and Groq for AI support. These services have their own privacy policies and handle data according to their respective terms.</p>
+      <h3 style={H}>7. Contact</h3>
+      <p style={S}>For privacy-related inquiries, contact us at <span style={{ color: '#ff4444' }}>support@sultraxai.com</span></p>
+    </PageShell>
+  );
+}

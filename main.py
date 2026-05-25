@@ -669,6 +669,30 @@ async def get_zone_all(symbol: str):
     return {"symbol": symbol, "news": news, "stocktwits": twits, "yahoo": yahoo,
             "sentiment": {"bull": bull, "bear": bear, "pct": round(bull/total*100) if total else 50}}
 
+class ContactMessage(BaseModel):
+    name: str
+    email: str
+    subject: str
+    message: str
+
+@app.post("/api/contact")
+async def contact(msg: ContactMessage):
+    try:
+        requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={"api-key": BREVO_API_KEY, "Content-Type": "application/json"},
+            json={
+                "sender": {"name": "SultraxAI Contact", "email": "support@sultraxai.com"},
+                "to": [{"email": "support@sultraxai.com"}],
+                "replyTo": {"email": msg.email, "name": msg.name},
+                "subject": f"[Contact] {msg.subject}",
+                "htmlContent": f"<p><b>From:</b> {msg.name} ({msg.email})</p><p><b>Subject:</b> {msg.subject}</p><p><b>Message:</b></p><p>{msg.message}</p>"
+            }
+        )
+    except Exception as e:
+        print(f"Contact email error: {e}")
+    return {"status": "ok"}
+
 @app.post("/api/login")
 async def login(user: UserLogin):
     conn = sqlite3.connect(DB_PATH)
