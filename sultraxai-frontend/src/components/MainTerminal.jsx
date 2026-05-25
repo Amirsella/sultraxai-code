@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 const API_BASE = 'http://38.180.137.122:8000';
 
@@ -435,6 +435,9 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
   const [activeTab, setActiveTab] = useState('assets');
   const [flashOn, setFlashOn] = useState(false);
   const mountTimeRef = useRef(Date.now());
+  const [soundMuted, setSoundMuted] = useState(() => localStorage.getItem('sultrax_sound_muted') === 'true');
+  const soundMutedRef = useRef(soundMuted);
+  const audioCtxRef = useRef(null);
   const [chartSym, setChartSym] = useState(null);
   const chartSymRef = useRef(null);
   const chartCallbackRef = useRef(null);
@@ -459,6 +462,30 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
   useEffect(() => { chartSymRef.current = chartSym; }, [chartSym]);
 
   useEffect(() => {
+    soundMutedRef.current = soundMuted;
+    localStorage.setItem('sultrax_sound_muted', soundMuted);
+  }, [soundMuted]);
+
+  const playBeep = useCallback(() => {
+    if (soundMutedRef.current) return;
+    try {
+      if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+      const ctx = audioCtxRef.current;
+      if (ctx.state === 'suspended') ctx.resume();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.value = 660;
+      gain.gain.setValueAtTime(0.22, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.14);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.14);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem('sultrax_alerts', JSON.stringify(alerts));
   }, [alerts]);
 
@@ -468,11 +495,17 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
         const ts = parseInt((a.id || '').split('-').pop());
         return !isNaN(ts) && ts >= mountTimeRef.current && Date.now() - ts < 60000;
       });
-      if (hasNew) setFlashOn(v => !v);
-      else setFlashOn(false);
+      if (hasNew) {
+        setFlashOn(v => {
+          if (!v) playBeep();
+          return !v;
+        });
+      } else {
+        setFlashOn(false);
+      }
     }, 500);
     return () => clearInterval(id);
-  }, [alerts]);
+  }, [alerts, playBeep]);
 
   useEffect(() => {
     selectedAssets.forEach(sym => {
@@ -966,7 +999,10 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                   <span style={{ fontSize: '0.68rem', fontWeight: '700', color: '#444', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Signal Feed</span>
                   {signals.length > 0 && <span style={{ fontSize: '0.62rem', background: 'rgba(255,153,0,0.15)', color: '#ff9900', padding: '1px 7px', borderRadius: '8px', fontWeight: '700' }}>{signals.length}</span>}
                 </div>
-                {signals.length > 0 && <button onClick={() => setAlerts(prev => prev.filter(a => a.type !== 'signal'))} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.75rem', padding: '2px 6px' }}>Clear</button>}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button onClick={() => setSoundMuted(m => !m)} title={soundMuted ? 'Unmute' : 'Mute'} style={{ background: 'none', border: 'none', color: soundMuted ? '#333' : '#666', cursor: 'pointer', fontSize: '0.8rem', padding: '2px 4px', lineHeight: 1 }}>{soundMuted ? '🔇' : '🔔'}</button>
+                  {signals.length > 0 && <button onClick={() => setAlerts(prev => prev.filter(a => a.type !== 'signal'))} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.75rem', padding: '2px 6px' }}>Clear</button>}
+                </div>
               </div>
               {signals.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '5rem 1rem' }}>
@@ -1236,7 +1272,10 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                 <h3 style={{ margin: 0, fontSize: '0.7rem', fontWeight: '700', color: '#444', letterSpacing: '0.12em', textTransform: 'uppercase' }}>Signal Feed</h3>
                 {signals.length > 0 && <span style={{ fontSize: '0.62rem', background: 'rgba(255,153,0,0.15)', color: '#ff9900', padding: '1px 7px', borderRadius: '8px', fontWeight: '700' }}>{signals.length}</span>}
               </div>
-              {signals.length > 0 && <button onClick={() => setAlerts(prev => prev.filter(a => a.type !== 'signal'))} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.72rem', padding: '2px 4px' }}>✕</button>}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <button onClick={() => setSoundMuted(m => !m)} title={soundMuted ? 'Unmute' : 'Mute'} style={{ background: 'none', border: 'none', color: soundMuted ? '#333' : '#666', cursor: 'pointer', fontSize: '0.8rem', padding: '2px 4px', lineHeight: 1 }}>{soundMuted ? '🔇' : '🔔'}</button>
+                {signals.length > 0 && <button onClick={() => setAlerts(prev => prev.filter(a => a.type !== 'signal'))} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.72rem', padding: '2px 4px' }}>✕</button>}
+              </div>
             </div>
             {signals.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '1.5rem 0.5rem' }}>
