@@ -472,16 +472,29 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
       if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
       const ctx = audioCtxRef.current;
       if (ctx.state === 'suspended') ctx.resume();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = 'sine';
-      osc.frequency.value = 660;
-      gain.gain.setValueAtTime(0.22, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.14);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.14);
+      const now = ctx.currentTime;
+
+      // "cha" — quick hit
+      const osc1 = ctx.createOscillator();
+      const g1 = ctx.createGain();
+      osc1.connect(g1); g1.connect(ctx.destination);
+      osc1.type = 'sawtooth';
+      osc1.frequency.value = 820;
+      g1.gain.setValueAtTime(0.18, now);
+      g1.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+      osc1.start(now); osc1.stop(now + 0.07);
+
+      // "ching" — metallic ring
+      const osc2 = ctx.createOscillator();
+      const g2 = ctx.createGain();
+      osc2.connect(g2); g2.connect(ctx.destination);
+      osc2.type = 'triangle';
+      osc2.frequency.setValueAtTime(1900, now + 0.06);
+      osc2.frequency.exponentialRampToValueAtTime(1400, now + 0.32);
+      g2.gain.setValueAtTime(0, now);
+      g2.gain.setValueAtTime(0.22, now + 0.06);
+      g2.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+      osc2.start(now); osc2.stop(now + 0.38);
     } catch {}
   }, []);
 
