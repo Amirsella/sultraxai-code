@@ -711,6 +711,11 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
 
         latestPriceByFinnhub[trade.s] = price;
 
+        // Live chart feed — must run before any early returns
+        if (chartSymRef.current === sym && chartCallbackRef.current) {
+          chartCallbackRef.current(price, now);
+        }
+
         const tracking = volumeTrackingRef.current[sym];
         if (!tracking || vol <= 0) return;
 
@@ -723,11 +728,6 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
         tracking.vwapNum += price * vol;
         tracking.vwapDen += vol;
         const vwap = tracking.vwapDen > 0 ? tracking.vwapNum / tracking.vwapDen : price;
-
-        // Live chart feed
-        if (chartSymRef.current === sym && chartCallbackRef.current) {
-          chartCallbackRef.current(price, now);
-        }
 
         // RVOL badge — trim front in-place, no new array created
         tracking.trades5m.push({ vol, time: now });
@@ -1028,7 +1028,11 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
           triggerFlash(sym, price > (prev?.price ?? price) ? 'up' : 'down');
           pricesRef.current = { ...pricesRef.current, ...update };
           setPrices(p => ({ ...p, ...update }));
+          // Feed live chart if open for this symbol
           const now = Date.now();
+          if (chartSymRef.current === sym && chartCallbackRef.current) {
+            chartCallbackRef.current(price, now);
+          }
           if (now - lastUpdateTsRef.current > 500) {
             lastUpdateTsRef.current = now;
             setLastUpdate(new Date(now));
