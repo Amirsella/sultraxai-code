@@ -51,8 +51,9 @@ ADMIN_KEY = os.environ.get("ADMIN_KEY", "sultrax_admin_key_2026")
 
 # In-memory TTL cache for expensive yfinance calls
 _data_cache: dict[str, tuple[float, any]] = {}
-_HIST_TTL = 300    # 5 minutes
-_VOL_TTL  = 3600   # 1 hour
+_PRICE_TTL = 30    # 30 seconds — initial snapshot; WebSocket provides live updates
+_HIST_TTL  = 300   # 5 minutes
+_VOL_TTL   = 3600  # 1 hour
 
 def _cache_get(key: str, ttl: float):
     entry = _data_cache.get(key)
@@ -582,15 +583,20 @@ async def complete_onboarding(data: OnboardingData):
     return {"status": "success"}
 
 def _fetch_one(sym):
+    cached = _cache_get(f'price:{sym}', _PRICE_TTL)
+    if cached is not None:
+        return sym, cached
     try:
         fi = yf.Ticker(sym).fast_info
         price = fi.last_price
         prev = fi.previous_close
         change_pct = ((price - prev) / prev * 100) if prev else 0
-        return sym, {"price": round(float(price), 4), "change_pct": round(float(change_pct), 4), "prev_close": round(float(prev), 4)}
+        result = {"price": round(float(price), 4), "change_pct": round(float(change_pct), 4), "prev_close": round(float(prev), 4)}
     except Exception as e:
         print(f"yfinance error {sym}: {e}")
         return sym, None
+    _cache_set(f'price:{sym}', result)
+    return sym, result
 
 @app.get("/api/prices")
 async def get_prices(symbols: str = ""):

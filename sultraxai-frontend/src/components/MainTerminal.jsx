@@ -435,6 +435,7 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
   const [activeTab, setActiveTab] = useState('assets');
   const [flashOn, setFlashOn] = useState(false);
   const mountTimeRef = useRef(Date.now());
+  const wsPingRef = useRef(null);
   const [soundMuted, setSoundMuted] = useState(() => localStorage.getItem('sultrax_sound_muted') === 'true');
   const soundMutedRef = useRef(soundMuted);
   const audioCtxRef = useRef(null);
@@ -662,6 +663,12 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
       reconnectCountRef.current = 0;
       setWsStatus('live');
       symbols.forEach(sym => ws.send(JSON.stringify({ type: 'subscribe', symbol: toFinnhubSym(sym) })));
+      // Keepalive ping every 25s — prevents Finnhub from closing idle connections
+      clearInterval(wsPingRef.current);
+      wsPingRef.current = setInterval(() => {
+        if (wsRef.current?.readyState === WebSocket.OPEN)
+          wsRef.current.send(JSON.stringify({ type: 'ping' }));
+      }, 25000);
     };
 
     ws.onmessage = (e) => {
@@ -915,12 +922,12 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
 
     ws.onerror = () => ws.close();
     ws.onclose = () => {
+      clearInterval(wsPingRef.current);
       setWsStatus('reconnecting');
-      if (reconnectCountRef.current < 10) {
-        reconnectCountRef.current++;
-        const delay = Math.min(3000 * reconnectCountRef.current, 30000);
-        reconnectTimerRef.current = setTimeout(() => connectWS(key, watchlistRef.current), delay);
-      }
+      // Never stop retrying — cap backoff at 30s after 10 attempts
+      reconnectCountRef.current++;
+      const delay = Math.min(3000 * Math.min(reconnectCountRef.current, 10), 30000);
+      reconnectTimerRef.current = setTimeout(() => connectWS(key, watchlistRef.current), delay);
     };
   };
 
@@ -958,23 +965,30 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
     if (!selectedAssets.length) return;
     let cancelled = false;
 
+    // Step 1 — get Finnhub key and connect WebSocket immediately (fast, ~100ms)
     fetch(`${API_BASE}/api/config?user_id=${userId}&session_token=${encodeURIComponent(sessionToken || '')}`)
       .then(r => { if (!r.ok) throw new Error(`config ${r.status}`); return r.json(); })
-      .then(cfg => fetch(`${API_BASE}/api/prices?symbols=${selectedAssets.join(',')}`)
-        .then(r => r.json())
-        .then(data => {
-          if (cancelled) return;
-          const initial = data.prices || {};
-          pricesRef.current = initial;
-          setPrices(initial);
-          setLoading(false);
-          connectWS(cfg.finnhub_key, selectedAssets);
-        })
-      )
-      .catch(err => { console.error('Init error:', err); setLoading(false); });
+      .then(cfg => {
+        if (cancelled) return;
+        connectWS(cfg.finnhub_key, selectedAssets);
+      })
+      .catch(err => { console.error('Config error:', err); setLoading(false); });
+
+    // Step 2 — fetch initial price snapshot in parallel (cached after first load)
+    fetch(`${API_BASE}/api/prices?symbols=${selectedAssets.join(',')}`)
+      .then(r => r.json())
+      .then(data => {
+        if (cancelled) return;
+        const initial = data.prices || {};
+        pricesRef.current = { ...pricesRef.current, ...initial };
+        setPrices(prev => ({ ...prev, ...initial }));
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
 
     return () => {
       cancelled = true;
+      clearInterval(wsPingRef.current);
       clearTimeout(reconnectTimerRef.current);
       Object.values(flashTimersRef.current).forEach(clearTimeout);
       flashTimersRef.current = {};
