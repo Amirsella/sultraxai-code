@@ -172,7 +172,7 @@ export default function AccountSettings({ userId, onBack, onSignOut, isNative, o
                 <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: 'linear-gradient(135deg,#2a0000,#ff333320)', border: '1px solid #ff333330', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px', fontSize: '1.5rem', fontWeight: '900', color: '#ff6666' }}>
                   {initials}
                 </div>
-                <div style={{ fontSize: '0.9rem', fontWeight: '700', color: '#e0e0e0', marginBottom: '4px' }}>{firstName || 'Your Name'}</div>
+                <div style={{ fontSize: '0.9rem', fontWeight: '700', color: '#e0e0e0', marginBottom: '4px' }}>{[firstName, fullName].filter(Boolean).join(' ') || 'Your Name'}</div>
                 <div style={{ fontSize: '0.62rem', color: '#333', wordBreak: 'break-all' }}>{user?.email}</div>
               </div>
 
@@ -204,7 +204,7 @@ export default function AccountSettings({ userId, onBack, onSignOut, isNative, o
                           <input className="acc-input" value={firstName} onChange={e => setFirstName(e.target.value)} style={inputStyle} autoCorrect="off" spellCheck={false} />
                         </div>
                         <div>
-                          <Label>Full Name</Label>
+                          <Label>Last Name</Label>
                           <input className="acc-input" value={fullName} onChange={e => setFullName(e.target.value)} style={inputStyle} autoCorrect="off" spellCheck={false} />
                         </div>
                       </div>
@@ -361,7 +361,7 @@ function MobileSettings({ tab, setTab, TABS, user, loading, initials, firstName,
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#1a0000', border: '1px solid #ff333330', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', fontWeight: '800', color: '#ff6666' }}>{initials}</div>
             <div>
-              <div style={{ fontSize: '0.9rem', fontWeight: '800', color: '#fff' }}>ACCOUNT</div>
+              <div style={{ fontSize: '0.9rem', fontWeight: '800', color: '#fff' }}>{[firstName, fullName].filter(Boolean).join(' ') || 'ACCOUNT'}</div>
               <div style={{ fontSize: '0.6rem', color: '#333' }}>{user?.email}</div>
             </div>
           </div>
@@ -381,7 +381,7 @@ function MobileSettings({ tab, setTab, TABS, user, loading, initials, firstName,
           {tab === 'profile' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <MField label="First Name"><input className="acc-input" value={firstName} onChange={e => setFirstName(e.target.value)} style={inputStyle} /></MField>
-              <MField label="Full Name"><input className="acc-input" value={fullName} onChange={e => setFullName(e.target.value)} style={inputStyle} /></MField>
+              <MField label="Last Name"><input className="acc-input" value={fullName} onChange={e => setFullName(e.target.value)} style={inputStyle} /></MField>
               <MField label="Email"><input value={user?.email || ''} disabled style={{ ...inputStyle, color: '#252525', border: '1px solid #111' }} /></MField>
               <MField label="Phone">
                 <input className="acc-input" value={phone} onChange={e => setPhone(e.target.value)} style={{ ...inputStyle, borderColor: phone && !isValidPhone(phone) ? '#662222' : '#1e1e1e' }} placeholder="+1 555 000 0000" />
