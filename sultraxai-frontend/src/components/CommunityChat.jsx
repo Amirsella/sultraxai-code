@@ -74,7 +74,9 @@ function ChatTermsModal({ onAccept }) {
   );
 }
 
-export default function CommunityChat({ userId }) {
+const API_BASE_HTTP = 'http://38.180.137.122:8000';
+
+export default function CommunityChat({ userId, sessionToken }) {
   const [termsAccepted, setTermsAccepted] = useState(() => localStorage.getItem('chat_terms_v1') === 'accepted');
   const [open, setOpen]           = useState(false);
   const [room, setRoom]           = useState('crypto');
@@ -209,9 +211,16 @@ export default function CommunityChat({ userId }) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   };
 
-  const handleAcceptTerms = () => {
+  const handleAcceptTerms = async () => {
     localStorage.setItem('chat_terms_v1', 'accepted');
     setTermsAccepted(true);
+    try {
+      await fetch(`${API_BASE_HTTP}/api/accept-chat-terms`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, session_token: sessionToken }),
+      });
+    } catch {}
   };
 
   const handleToggle = () => {

@@ -158,7 +158,8 @@ def init_db():
     for _col in ["created_at TEXT", "subscription_status TEXT", "stripe_customer_id TEXT",
                   "subscription_plan TEXT", "subscription_expires TEXT",
                   "subscription_start TEXT", "subscription_cancel_pending INTEGER DEFAULT 0",
-                  "username TEXT", "session_token TEXT"]:
+                  "username TEXT", "session_token TEXT",
+                  "chat_terms_accepted_at TEXT", "chat_terms_accepted_ip TEXT"]:
         try:
             cursor.execute(f"ALTER TABLE users ADD COLUMN {_col}")
         except Exception:
@@ -1170,9 +1171,14 @@ async def login(request: Request, user: UserLogin):
     conn2.commit()
     conn2.close()
 
+    conn3 = sqlite3.connect(DB_PATH)
+    terms_row = conn3.execute("SELECT chat_terms_accepted_at FROM users WHERE id=?", (user_id,)).fetchone()
+    conn3.close()
+    chat_terms_accepted = bool(terms_row and terms_row[0])
+
     return {"user_id": user_id, "first_name": first_name, "onboarding_completed": has_profile,
             "assets": assets, "subscription_status": subscription_status or "",
-            "session_token": session_token}
+            "session_token": session_token, "chat_terms_accepted": chat_terms_accepted}
 
     
 def _check_subscriptions_sync():
@@ -1557,6 +1563,25 @@ async def heartbeat(data: HeartbeatData, request: Request):
     for uid in stale:
         del _active_sessions[uid]
     return {"status": "ok"}
+
+@app.post("/api/accept-chat-terms")
+async def accept_chat_terms(request: Request, data: dict):
+    user_id = data.get("user_id")
+    session_token = data.get("session_token", "")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id required")
+    _validate_session(user_id, session_token)
+    ip = get_remote_address(request)
+    accepted_at = datetime.now(timezone.utc).isoformat()
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        "UPDATE users SET chat_terms_accepted_at=?, chat_terms_accepted_ip=? WHERE id=?",
+        (accepted_at, ip, user_id)
+    )
+    conn.commit()
+    conn.close()
+    print(f"[ChatTerms] user_id={user_id} accepted at {accepted_at} from {ip}")
+    return {"status": "ok", "accepted_at": accepted_at}
 
 @app.post("/api/logout")
 async def logout(user_id: int):

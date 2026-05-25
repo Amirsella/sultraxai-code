@@ -434,7 +434,7 @@ export default function App() {
                     try {
                       const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e.target[0].value, password: e.target[1].value }) });
                       const data = await res.json();
-                      if (res.ok) { setSessionError(''); setUserId(data.user_id); setSessionToken(data.session_token || ''); setFirstName(data.first_name || ''); setSubscriptionStatus(data.subscription_status || ''); if (data.onboarding_completed) { setSelectedAssets(data.assets); setCurrentView(data.subscription_status === 'active' ? 'main_app' : 'subscription'); } else { setSelectedAssets([]); setOnboardingStep(1); setCurrentView('onboarding'); } } else setErrorMessage(data.detail);
+                      if (res.ok) { setSessionError(''); setUserId(data.user_id); setSessionToken(data.session_token || ''); setFirstName(data.first_name || ''); setSubscriptionStatus(data.subscription_status || ''); if (data.chat_terms_accepted) localStorage.setItem('chat_terms_v1', 'accepted'); if (data.onboarding_completed) { setSelectedAssets(data.assets); setCurrentView(data.subscription_status === 'active' ? 'main_app' : 'subscription'); } else { setSelectedAssets([]); setOnboardingStep(1); setCurrentView('onboarding'); } } else setErrorMessage(data.detail);
                     } catch { setErrorMessage("Login failed."); }
                   }} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                     <input type="text" inputMode="email" placeholder="Email" required style={mobileInputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
@@ -461,7 +461,7 @@ export default function App() {
                   try {
                     const res = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e.target[0].value, password: e.target[1].value }) });
                     const data = await res.json();
-                    if (res.ok) { setSessionError(''); setUserId(data.user_id); setSessionToken(data.session_token || ''); setFirstName(data.first_name || ''); setSubscriptionStatus(data.subscription_status || ''); if (data.onboarding_completed) { setSelectedAssets(data.assets); setCurrentView(data.subscription_status === 'active' ? 'main_app' : 'subscription'); } else { setSelectedAssets([]); setOnboardingStep(1); setCurrentView('onboarding'); } } else setErrorMessage(data.detail);
+                    if (res.ok) { setSessionError(''); setUserId(data.user_id); setSessionToken(data.session_token || ''); setFirstName(data.first_name || ''); setSubscriptionStatus(data.subscription_status || ''); if (data.chat_terms_accepted) localStorage.setItem('chat_terms_v1', 'accepted'); if (data.onboarding_completed) { setSelectedAssets(data.assets); setCurrentView(data.subscription_status === 'active' ? 'main_app' : 'subscription'); } else { setSelectedAssets([]); setOnboardingStep(1); setCurrentView('onboarding'); } } else setErrorMessage(data.detail);
                   } catch { setErrorMessage("Login failed."); }
                 }} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <input type="text" inputMode="email" placeholder="Email Address" required style={inputStyle} autoCorrect="off" autoCapitalize="none" spellCheck={false} />
@@ -503,7 +503,7 @@ export default function App() {
         <SupportBot />
       )}
       {['main_app', 'zone', 'scanner', 'settings'].includes(currentView) && !isNative && (
-        <CommunityChat userId={userId} />
+        <CommunityChat userId={userId} sessionToken={sessionToken} />
       )}
       {!isNative && (
         <div style={{ borderTop: '1px solid #0a0a0a', padding: '14px 0', display: 'flex', justifyContent: 'center', gap: '28px' }}>
