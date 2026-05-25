@@ -22,7 +22,7 @@ import yfinance as yf
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
 from datetime import datetime, timedelta, timezone
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, FileResponse
@@ -131,6 +131,15 @@ def init_db():
             token TEXT PRIMARY KEY,
             email TEXT,
             expiry REAL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            first_name TEXT,
+            message TEXT,
+            created_at TEXT
         )
     """)
     cursor.execute("""
@@ -1092,6 +1101,82 @@ async def admin_grant_subscription(data: dict, key: str = ""):
     conn.commit()
     conn.close()
     return {"status": "ok"}
+
+# ─── COMMUNITY CHAT ───────────────────────────────────────────────────────────
+
+class _ChatManager:
+    def __init__(self):
+        self.active: list[WebSocket] = []
+
+    async def connect(self, ws: WebSocket):
+        await ws.accept()
+        self.active.append(ws)
+
+    def disconnect(self, ws: WebSocket):
+        self.active = [c for c in self.active if c is not ws]
+
+    async def broadcast(self, msg: dict):
+        dead = []
+        for ws in self.active:
+            try:
+                await ws.send_json(msg)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.disconnect(ws)
+
+chat_manager = _ChatManager()
+
+def _chat_history(limit=80):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, user_id, first_name, message, created_at FROM chat_messages ORDER BY id DESC LIMIT ?",
+        (limit,)
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"id": r[0], "user_id": r[1], "first_name": r[2], "message": r[3], "created_at": r[4]}
+            for r in reversed(rows)]
+
+def _chat_save(user_id, first_name, message):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    now = datetime.now(timezone.utc).isoformat()
+    cursor.execute(
+        "INSERT INTO chat_messages (user_id, first_name, message, created_at) VALUES (?,?,?,?)",
+        (user_id, first_name, message, now)
+    )
+    msg_id = cursor.lastrowid
+    # Keep only last 500 messages
+    cursor.execute("DELETE FROM chat_messages WHERE id NOT IN (SELECT id FROM chat_messages ORDER BY id DESC LIMIT 500)")
+    conn.commit()
+    conn.close()
+    return msg_id, now
+
+@app.websocket("/ws/chat")
+async def chat_ws(ws: WebSocket, user_id: int = 0, first_name: str = "User"):
+    await chat_manager.connect(ws)
+    try:
+        await ws.send_json({"type": "history", "messages": _chat_history()})
+        while True:
+            data = await ws.receive_json()
+            text = (data.get("message") or "").strip()[:500]
+            if not text:
+                continue
+            msg_id, ts = _chat_save(user_id, first_name, text)
+            await chat_manager.broadcast({
+                "type": "message",
+                "id": msg_id,
+                "user_id": user_id,
+                "first_name": first_name,
+                "message": text,
+                "created_at": ts,
+            })
+    except WebSocketDisconnect:
+        chat_manager.disconnect(ws)
+    except Exception:
+        chat_manager.disconnect(ws)
 
 dist_path = "/root/sultraxai/sultraxai-frontend/dist"
 if os.path.exists(dist_path):

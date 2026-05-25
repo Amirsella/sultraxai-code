@@ -6,6 +6,7 @@ const AccountSettings    = lazy(() => import('./components/AccountSettings'));
 const AdminPanel         = lazy(() => import('./components/AdminPanel'));
 const SubscriptionModal  = lazy(() => import('./components/SubscriptionModal'));
 import SupportBot from './components/SupportBot';
+import CommunityChat from './components/CommunityChat';
 const API_BASE = 'http://38.180.137.122:8000';
 const MOCK_STOCKS = ["BTC/USD", "ETH/USD", "AAPL", "TSLA", "NVDA", "AMZN", "GOOGL", "MSFT", "META", "NFLX", "SOL/USD", "XRP/USD", "AMD", "PLTR", "COIN"];
 
@@ -456,6 +457,9 @@ export default function App() {
         </div>
       {['main_app', 'zone', 'scanner', 'settings'].includes(currentView) && !isNative && (
         <SupportBot />
+      )}
+      {['main_app', 'zone', 'scanner', 'settings'].includes(currentView) && !isNative && (
+        <CommunityChat userId={userId} firstName={firstName} />
       )}
       {!isNative && (
         <div style={{ borderTop: '1px solid #0a0a0a', padding: '14px 0', display: 'flex', justifyContent: 'center', gap: '28px' }}>
