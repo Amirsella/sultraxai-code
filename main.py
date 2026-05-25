@@ -352,6 +352,8 @@ def _validate_username(username: str):
         return "This username is not allowed"
     if any(word in normalized for word in _get_custom_username_blocked_words()):
         return "This username is not allowed"
+    if any(word in normalized for word in _get_custom_blocked_words()):
+        return "This username is not allowed"
     return None
 
 class UserRegister(BaseModel):
