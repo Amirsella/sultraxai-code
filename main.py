@@ -802,14 +802,14 @@ async def login(user: UserLogin):
     cursor = conn.cursor()
     
     email_clean = user.email.strip().lower()
-    cursor.execute("SELECT id, first_name, password_hash, subscription_status FROM users WHERE LOWER(email) = ?", (email_clean,))
+    cursor.execute("SELECT id, first_name, password_hash, subscription_status, stripe_customer_id FROM users WHERE LOWER(email) = ?", (email_clean,))
     row = cursor.fetchone()
 
     if not row:
         conn.close()
         return JSONResponse(status_code=401, content={"detail": "User not found"})
 
-    user_id, first_name, stored_pwd_hash, subscription_status = row
+    user_id, first_name, stored_pwd_hash, subscription_status, sub_id = row
     pwd_hash = hash_password(user.password)
     if stored_pwd_hash != pwd_hash:
         conn.close()
@@ -819,6 +819,26 @@ async def login(user: UserLogin):
     has_profile = cursor.fetchone() is not None
     cursor.execute("SELECT symbol FROM user_assets WHERE user_id = ?", (user_id,))
     assets = [r[0] for r in cursor.fetchall()]
+
+    # Verify subscription with PayPal in real-time if user has a subscription ID
+    if subscription_status == 'active' and sub_id and PAYPAL_CLIENT_ID:
+        try:
+            token = _paypal_token()
+            res = requests.get(
+                f"{PAYPAL_BASE}/v1/billing/subscriptions/{sub_id}",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=8
+            )
+            if res.status_code == 200:
+                paypal_status = res.json().get("status", "")
+                if paypal_status not in ("ACTIVE", "TRIALING", "APPROVED"):
+                    subscription_status = ''
+                    cursor.execute("UPDATE users SET subscription_status='' WHERE id=?", (user_id,))
+                    conn.commit()
+                    print(f"[Login] user={user_id} sub revoked on login, PayPal status={paypal_status}")
+        except Exception as e:
+            print(f"[Login] PayPal check failed (non-blocking): {e}")
+
     conn.close()
 
     return {"user_id": user_id, "first_name": first_name, "onboarding_completed": has_profile,

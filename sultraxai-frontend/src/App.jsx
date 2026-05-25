@@ -289,7 +289,7 @@ export default function App() {
         )}
 
         {currentView === 'subscription' && (
-          <SubscriptionModal userId={userId} onSuccess={() => { setSubscriptionStatus('active'); setCurrentView('main_app'); }} onSignOut={handleSignOut} />
+          <SubscriptionModal userId={userId} expired={!!userId} onSuccess={() => { setSubscriptionStatus('active'); setCurrentView('main_app'); }} onSignOut={handleSignOut} />
         )}
         </Suspense>
 

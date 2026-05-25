@@ -11,7 +11,7 @@ const FEATURES = [
   'Unlimited watchlist assets',
 ];
 
-export default function SubscriptionModal({ userId, onSuccess, onSignOut }) {
+export default function SubscriptionModal({ userId, expired, onSuccess, onSignOut }) {
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
 
@@ -44,7 +44,7 @@ export default function SubscriptionModal({ userId, onSuccess, onSignOut }) {
         {/* Badge */}
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <span style={{ display: 'inline-block', background: 'rgba(255,51,51,0.08)', border: '1px solid rgba(255,51,51,0.2)', color: '#ff4444', fontSize: '0.62rem', fontWeight: '900', letterSpacing: '0.15em', padding: '5px 14px', borderRadius: '20px' }}>
-            PREMIUM ACCESS REQUIRED
+            {expired ? 'SUBSCRIPTION EXPIRED' : 'PREMIUM ACCESS REQUIRED'}
           </span>
         </div>
 
@@ -55,7 +55,9 @@ export default function SubscriptionModal({ userId, onSuccess, onSignOut }) {
           <div style={{ padding: '2rem 2rem 1.5rem', borderBottom: '1px solid #111', textAlign: 'center' }}>
             <div style={{ fontSize: '2rem', marginBottom: '8px' }}>⚡</div>
             <h2 style={{ margin: '0 0 6px', fontSize: '1.6rem', fontWeight: '900', color: '#fff', letterSpacing: '-0.01em' }}>SultraxAI Premium</h2>
-            <p style={{ margin: 0, color: '#444', fontSize: '0.8rem', letterSpacing: '0.04em' }}>Full terminal access — everything, unlimited</p>
+            <p style={{ margin: 0, color: '#444', fontSize: '0.8rem', letterSpacing: '0.04em' }}>
+              {expired ? 'Your subscription has ended — renew to regain access' : 'Full terminal access — everything, unlimited'}
+            </p>
           </div>
 
           {/* Price */}
