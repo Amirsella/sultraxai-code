@@ -104,30 +104,14 @@ export default function CommunityChat({ userId }) {
         <div style={{ position: 'absolute', bottom: '56px', left: 0, width: '320px', height: '460px', background: '#080808', border: '1px solid #1a1a1a', borderRadius: '16px', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}>
 
           {/* Header */}
-          <div style={{ padding: '10px 14px 0', borderBottom: '1px solid #111', flexShrink: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '0.65rem', fontWeight: '800', letterSpacing: '0.1em', color: '#fff' }}>COMMUNITY</span>
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: connected ? '#44cc44' : '#444', boxShadow: connected ? '0 0 6px #44cc44' : 'none', display: 'inline-block' }} />
-              </div>
-              <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: '#444', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: '0 4px' }}>×</button>
+          <div style={{ padding: '10px 14px', borderBottom: '1px solid #111', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '0.65rem', fontWeight: '800', letterSpacing: '0.1em', color: '#fff' }}>COMMUNITY</span>
+              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: connected ? '#44cc44' : '#444', boxShadow: connected ? '0 0 6px #44cc44' : 'none', display: 'inline-block' }} />
             </div>
-
-            {/* Room tabs */}
-            <div style={{ display: 'flex', gap: '4px', paddingBottom: '0' }}>
-              {ROOMS.map(r => (
-                <button key={r.id} onClick={() => switchRoom(r.id)}
-                  style={{
-                    flex: 1, padding: '6px 0', border: 'none', cursor: 'pointer',
-                    background: 'transparent', fontFamily: 'inherit',
-                    fontSize: '0.7rem', fontWeight: '800', letterSpacing: '0.08em',
-                    color: room === r.id ? r.color : '#333',
-                    borderBottom: `2px solid ${room === r.id ? r.color : 'transparent'}`,
-                    transition: 'all 0.15s', marginBottom: '-1px',
-                  }}>
-                  {r.label.toUpperCase()}
-                </button>
-              ))}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ fontSize: '0.6rem', fontWeight: '800', color: activeRoom.color, letterSpacing: '0.06em' }}>#{room.toUpperCase()}</span>
+              <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: '#444', cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1, padding: '0 0 0 8px' }}>×</button>
             </div>
           </div>
 
@@ -168,7 +152,7 @@ export default function CommunityChat({ userId }) {
           )}
 
           {/* Input */}
-          <div style={{ padding: '10px 12px', borderTop: '1px solid #111', display: 'flex', gap: '8px', flexShrink: 0 }}>
+          <div style={{ padding: '8px 12px', borderTop: '1px solid #111', display: 'flex', gap: '8px', flexShrink: 0 }}>
             <input
               value={input}
               onChange={e => setInput(e.target.value)}
@@ -183,6 +167,23 @@ export default function CommunityChat({ userId }) {
               style={{ background: input.trim() && connected ? activeRoom.color : '#111', border: 'none', borderRadius: '10px', color: input.trim() && connected ? '#fff' : '#333', width: '36px', cursor: input.trim() && connected ? 'pointer' : 'default', fontSize: '1rem', transition: 'all 0.15s', flexShrink: 0 }}>
               ↑
             </button>
+          </div>
+
+          {/* Bottom nav bar */}
+          <div style={{ display: 'flex', borderTop: '1px solid #111', flexShrink: 0 }}>
+            {ROOMS.map(r => (
+              <button key={r.id} onClick={() => switchRoom(r.id)}
+                style={{
+                  flex: 1, padding: '10px 0', border: 'none', cursor: 'pointer',
+                  background: room === r.id ? r.color + '14' : 'transparent',
+                  fontFamily: 'inherit', fontSize: '0.68rem', fontWeight: '800',
+                  letterSpacing: '0.08em', color: room === r.id ? r.color : '#333',
+                  borderTop: `2px solid ${room === r.id ? r.color : 'transparent'}`,
+                  transition: 'all 0.15s',
+                }}>
+                {r.label.toUpperCase()}
+              </button>
+            ))}
           </div>
         </div>
       )}
