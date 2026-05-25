@@ -33,10 +33,11 @@ import uvicorn
 BREVO_API_KEY      = os.environ.get("BREVO_API_KEY", "")
 FINNHUB_KEY        = os.environ.get("FINNHUB_KEY", "")
 GROQ_KEY           = os.environ.get("GROQ_KEY", "")
-PAYPAL_CLIENT_ID     = os.environ.get("PAYPAL_CLIENT_ID", "")
-PAYPAL_CLIENT_SECRET = os.environ.get("PAYPAL_CLIENT_SECRET", "")
-PAYPAL_PLAN_ID       = os.environ.get("PAYPAL_PLAN_ID", "")
-PAYPAL_BASE          = "https://api-m.paypal.com"
+PAYPAL_CLIENT_ID       = os.environ.get("PAYPAL_CLIENT_ID", "")
+PAYPAL_CLIENT_SECRET   = os.environ.get("PAYPAL_CLIENT_SECRET", "")
+PAYPAL_PLAN_ID         = os.environ.get("PAYPAL_PLAN_ID", "")
+PAYPAL_PLAN_ID_YEARLY  = os.environ.get("PAYPAL_PLAN_ID_YEARLY", "")
+PAYPAL_BASE            = "https://api-m.paypal.com"
 APP_URL   = "http://38.180.137.122:8000"
 ADMIN_KEY = "sultrax_admin_key_2026"
 
@@ -104,7 +105,8 @@ def init_db():
             password_hash TEXT, created_at TEXT
         )
     """)
-    for _col in ["created_at TEXT", "subscription_status TEXT", "stripe_customer_id TEXT"]:
+    for _col in ["created_at TEXT", "subscription_status TEXT", "stripe_customer_id TEXT",
+                  "subscription_plan TEXT", "subscription_expires TEXT"]:
         try:
             cursor.execute(f"ALTER TABLE users ADD COLUMN {_col}")
         except Exception:
@@ -768,7 +770,7 @@ async def admin_list_users(key: str = ""):
     cursor = conn.cursor()
     cursor.execute("""
         SELECT u.id, u.first_name, u.full_name, u.email, u.phone, u.created_at,
-               u.subscription_status,
+               u.subscription_status, u.subscription_plan, u.subscription_expires,
                COUNT(DISTINCT a.id) as asset_count,
                GROUP_CONCAT(a.symbol, ', ') as assets,
                p.experience, p.frequency
@@ -864,6 +866,7 @@ def _check_subscriptions_sync():
         print(f"[SubChecker] PayPal token error: {e}")
         return
     expired = []
+    updates = []
     for user_id, sub_id in rows:
         try:
             res = requests.get(
@@ -872,22 +875,29 @@ def _check_subscriptions_sync():
                 timeout=10
             )
             if res.status_code == 200:
-                status = res.json().get("status", "")
+                sub = res.json()
+                status = sub.get("status", "")
+                next_billing = (sub.get("billing_info") or {}).get("next_billing_time", "")
                 if status not in ("ACTIVE", "TRIALING"):
                     expired.append(user_id)
                     print(f"[SubChecker] user={user_id} sub={sub_id} status={status} → revoked")
+                elif next_billing:
+                    updates.append((next_billing, user_id))
             else:
                 print(f"[SubChecker] user={user_id} sub={sub_id} HTTP {res.status_code}")
         except Exception as e:
             print(f"[SubChecker] user={user_id} error: {e}")
-    if expired:
+    if expired or updates:
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         for uid in expired:
             cursor.execute("UPDATE users SET subscription_status='' WHERE id=?", (uid,))
+        for next_billing, uid in updates:
+            cursor.execute("UPDATE users SET subscription_expires=? WHERE id=?", (next_billing, uid))
         conn.commit()
         conn.close()
-        print(f"[SubChecker] Revoked {len(expired)} subscription(s)")
+        if expired:
+            print(f"[SubChecker] Revoked {len(expired)} subscription(s)")
 
 async def _subscription_checker_loop():
     loop = asyncio.get_event_loop()
@@ -912,9 +922,11 @@ def _paypal_token():
 
 @app.post("/api/create-checkout-session")
 async def create_checkout_session(data: dict):
-    user_id = data.get("user_id")
+    user_id   = data.get("user_id")
+    plan_type = data.get("plan_type", "monthly")
     if not PAYPAL_CLIENT_ID or not PAYPAL_PLAN_ID:
         raise HTTPException(status_code=503, detail="Payments not configured")
+    plan_id = PAYPAL_PLAN_ID_YEARLY if plan_type == "yearly" and PAYPAL_PLAN_ID_YEARLY else PAYPAL_PLAN_ID
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("SELECT email FROM users WHERE id = ?", (user_id,))
@@ -928,13 +940,13 @@ async def create_checkout_session(data: dict):
             f"{PAYPAL_BASE}/v1/billing/subscriptions",
             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
             json={
-                "plan_id": PAYPAL_PLAN_ID,
+                "plan_id": plan_id,
                 "custom_id": str(user_id),
                 "subscriber": {"email_address": row[0]},
                 "application_context": {
                     "brand_name": "SultraxAI",
                     "user_action": "SUBSCRIBE_NOW",
-                    "return_url": f"{APP_URL}/?payment=success&user_id={user_id}",
+                    "return_url": f"{APP_URL}/?payment=success&user_id={user_id}&plan_type={plan_type}",
                     "cancel_url": f"{APP_URL}/?payment=canceled",
                 }
             },
@@ -943,15 +955,16 @@ async def create_checkout_session(data: dict):
         res.raise_for_status()
         resp = res.json()
         approval_url = next(l["href"] for l in resp["links"] if l["rel"] == "approve")
-        return {"url": approval_url, "subscription_id": resp["id"]}
+        return {"url": approval_url, "subscription_id": resp["id"], "plan_type": plan_type}
     except Exception as e:
         print(f"PayPal checkout error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/verify-payment")
 async def verify_payment(data: dict):
-    user_id       = data.get("user_id")
+    user_id         = data.get("user_id")
     subscription_id = data.get("subscription_id")
+    plan_type       = data.get("plan_type", "monthly")
     if not PAYPAL_CLIENT_ID or not subscription_id:
         raise HTTPException(status_code=503, detail="Payments not configured")
     try:
@@ -965,13 +978,16 @@ async def verify_payment(data: dict):
         sub = res.json()
         active = sub.get("status") in ("ACTIVE", "TRIALING", "APPROVED")
         if active:
+            next_billing = (sub.get("billing_info") or {}).get("next_billing_time", "")
             conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
-            cursor.execute("UPDATE users SET subscription_status = 'active', stripe_customer_id = ? WHERE id = ?",
-                           (subscription_id, user_id))
+            cursor.execute(
+                "UPDATE users SET subscription_status='active', stripe_customer_id=?, subscription_plan=?, subscription_expires=? WHERE id=?",
+                (subscription_id, plan_type, next_billing, user_id)
+            )
             conn.commit()
             conn.close()
-            print(f"PayPal subscription activated: user_id={user_id}, sub={subscription_id}")
+            print(f"PayPal activated: user={user_id} plan={plan_type} expires={next_billing}")
         return {"status": "active" if active else "pending"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

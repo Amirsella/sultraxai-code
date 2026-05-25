@@ -57,16 +57,18 @@ export default function App() {
   useEffect(() => {
     if (stripePayment === 'success' && stripeUserId) {
       window.history.replaceState({}, '', '/');
-      const subId = localStorage.getItem('paypal_sub_id') || '';
+      const subId    = localStorage.getItem('paypal_sub_id') || '';
+      const planType = localStorage.getItem('paypal_plan_type') || 'monthly';
       fetch(`${API_BASE}/api/verify-payment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: parseInt(stripeUserId), subscription_id: subId }),
+        body: JSON.stringify({ user_id: parseInt(stripeUserId), subscription_id: subId, plan_type: planType }),
       })
         .then(r => r.json())
         .then(d => {
           if (d.status === 'active') {
             localStorage.removeItem('paypal_sub_id');
+            localStorage.removeItem('paypal_plan_type');
             setSubscriptionStatus('active');
             setUserId(stripeUserId);
             setCurrentView('main_app');

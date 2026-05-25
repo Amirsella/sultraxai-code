@@ -14,6 +14,7 @@ const FEATURES = [
 export default function SubscriptionModal({ userId, expired, onSuccess, onSignOut }) {
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
+  const [plan, setPlan]       = useState('monthly');
 
   const handleSubscribe = async () => {
     setLoading(true); setError('');
@@ -21,11 +22,12 @@ export default function SubscriptionModal({ userId, expired, onSuccess, onSignOu
       const res = await fetch(`${API_BASE}/api/create-checkout-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId }),
+        body: JSON.stringify({ user_id: userId, plan_type: plan }),
       });
       const data = await res.json();
       if (data.url) {
         if (data.subscription_id) localStorage.setItem('paypal_sub_id', data.subscription_id);
+        localStorage.setItem('paypal_plan_type', plan);
         window.location.href = data.url;
       } else {
         setError(data.detail || 'Could not start checkout. Try again.');
@@ -37,9 +39,11 @@ export default function SubscriptionModal({ userId, expired, onSuccess, onSignOu
     }
   };
 
+  const monthlyTotal = (79.99 * 12).toFixed(0);
+
   return (
     <div style={{ minHeight: '100vh', background: '#020202', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', fontFamily: 'inherit' }}>
-      <div style={{ width: '100%', maxWidth: '460px' }}>
+      <div style={{ width: '100%', maxWidth: '520px' }}>
 
         {/* Badge */}
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
@@ -60,14 +64,34 @@ export default function SubscriptionModal({ userId, expired, onSuccess, onSignOu
             </p>
           </div>
 
-          {/* Price */}
-          <div style={{ padding: '1.5rem 2rem', borderBottom: '1px solid #111', textAlign: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', gap: '4px' }}>
-              <span style={{ fontSize: '1.1rem', color: '#888', fontWeight: '700', paddingTop: '6px' }}>$</span>
-              <span style={{ fontSize: '3.2rem', fontWeight: '900', color: '#fff', lineHeight: 1 }}>79.99</span>
-              <span style={{ fontSize: '0.8rem', color: '#444', fontWeight: '600', paddingTop: '28px' }}>/mo</span>
+          {/* Plan selector */}
+          <div style={{ padding: '1.5rem 2rem', borderBottom: '1px solid #111' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+
+              {/* Monthly */}
+              <div onClick={() => setPlan('monthly')} style={{ cursor: 'pointer', padding: '1rem', borderRadius: '12px', border: `1px solid ${plan === 'monthly' ? '#ff3333' : '#1e1e1e'}`, background: plan === 'monthly' ? 'rgba(255,51,51,0.06)' : 'transparent', transition: 'all 0.15s', textAlign: 'center' }}>
+                <div style={{ fontSize: '0.6rem', fontWeight: '800', letterSpacing: '0.12em', color: plan === 'monthly' ? '#ff4444' : '#333', marginBottom: '8px' }}>MONTHLY</div>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', gap: '2px' }}>
+                  <span style={{ fontSize: '0.85rem', color: plan === 'monthly' ? '#888' : '#333', fontWeight: '700', paddingTop: '4px' }}>$</span>
+                  <span style={{ fontSize: '2.2rem', fontWeight: '900', color: plan === 'monthly' ? '#fff' : '#444', lineHeight: 1 }}>79.99</span>
+                </div>
+                <div style={{ fontSize: '0.6rem', color: '#333', marginTop: '4px' }}>/ month</div>
+              </div>
+
+              {/* Yearly */}
+              <div onClick={() => setPlan('yearly')} style={{ cursor: 'pointer', padding: '1rem', borderRadius: '12px', border: `1px solid ${plan === 'yearly' ? '#44cc44' : '#1e1e1e'}`, background: plan === 'yearly' ? 'rgba(68,204,68,0.06)' : 'transparent', transition: 'all 0.15s', textAlign: 'center', position: 'relative' }}>
+                <div style={{ position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%)', background: '#44cc44', color: '#000', fontSize: '0.5rem', fontWeight: '900', letterSpacing: '0.1em', padding: '2px 10px', borderRadius: '20px', whiteSpace: 'nowrap' }}>
+                  SAVE ${(monthlyTotal - 599.99).toFixed(0)}
+                </div>
+                <div style={{ fontSize: '0.6rem', fontWeight: '800', letterSpacing: '0.12em', color: plan === 'yearly' ? '#44cc44' : '#333', marginBottom: '8px' }}>YEARLY</div>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'center', gap: '2px' }}>
+                  <span style={{ fontSize: '0.85rem', color: plan === 'yearly' ? '#888' : '#333', fontWeight: '700', paddingTop: '4px' }}>$</span>
+                  <span style={{ fontSize: '2.2rem', fontWeight: '900', color: plan === 'yearly' ? '#fff' : '#444', lineHeight: 1 }}>599.99</span>
+                </div>
+                <div style={{ fontSize: '0.6rem', color: '#333', marginTop: '4px' }}>/ year</div>
+              </div>
+
             </div>
-            <p style={{ margin: '6px 0 0', fontSize: '0.65rem', color: '#333', letterSpacing: '0.06em' }}>BILLED MONTHLY · CANCEL ANYTIME</p>
           </div>
 
           {/* Features */}
@@ -92,10 +116,10 @@ export default function SubscriptionModal({ userId, expired, onSuccess, onSignOu
               disabled={loading}
               style={{ width: '100%', padding: '1rem', background: loading ? '#330000' : '#ff3333', border: 'none', borderRadius: '12px', color: loading ? '#666' : '#fff', fontSize: '0.9rem', fontWeight: '800', cursor: loading ? 'not-allowed' : 'pointer', letterSpacing: '0.06em', boxShadow: loading ? 'none' : '0 4px 24px rgba(255,51,51,0.3)', transition: 'all 0.2s', fontFamily: 'inherit' }}
             >
-              {loading ? 'REDIRECTING TO CHECKOUT…' : 'SUBSCRIBE NOW →'}
+              {loading ? 'REDIRECTING TO CHECKOUT…' : `SUBSCRIBE ${plan === 'yearly' ? 'YEARLY' : 'MONTHLY'} →`}
             </button>
             <p style={{ margin: '10px 0 0', textAlign: 'center', fontSize: '0.62rem', color: '#2a2a2a' }}>
-              Secure payment via PayPal · SSL encrypted
+              Secure payment via PayPal · SSL encrypted · Cancel anytime
             </p>
           </div>
         </div>

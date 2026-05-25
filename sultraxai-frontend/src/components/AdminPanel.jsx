@@ -175,8 +175,8 @@ export default function AdminPanel({ onExit }) {
         ) : (
           <div style={{ background: '#080808', border: '1px solid #111', borderRadius: '14px', overflow: 'hidden' }}>
             {/* Table header */}
-            <div style={{ display: 'grid', gridTemplateColumns: '48px 1fr 1fr 80px 90px 110px 140px', padding: '10px 16px', borderBottom: '1px solid #111', gap: '8px' }}>
-              {['ID', 'Name', 'Email', 'Plan', 'Assets', 'Joined', 'Actions'].map(h => (
+            <div style={{ display: 'grid', gridTemplateColumns: '48px 1fr 1fr 110px 90px 110px 140px', padding: '10px 16px', borderBottom: '1px solid #111', gap: '8px' }}>
+              {['ID', 'Name', 'Email', 'Subscription', 'Assets', 'Joined', 'Actions'].map(h => (
                 <div key={h} style={{ fontSize: '0.58rem', fontWeight: '800', color: '#333', letterSpacing: '0.1em' }}>{h.toUpperCase()}</div>
               ))}
             </div>
@@ -190,7 +190,7 @@ export default function AdminPanel({ onExit }) {
                 {/* Row */}
                 <div
                   onClick={() => setExpanded(expanded === u.id ? null : u.id)}
-                  style={{ display: 'grid', gridTemplateColumns: '48px 1fr 1fr 80px 90px 110px 140px', padding: '13px 16px', borderBottom: '1px solid #0d0d0d', gap: '8px', cursor: 'pointer', transition: 'background 0.1s', background: expanded === u.id ? '#0d0d0d' : 'transparent', alignItems: 'center' }}
+                  style={{ display: 'grid', gridTemplateColumns: '48px 1fr 1fr 110px 90px 110px 140px', padding: '13px 16px', borderBottom: '1px solid #0d0d0d', gap: '8px', cursor: 'pointer', transition: 'background 0.1s', background: expanded === u.id ? '#0d0d0d' : 'transparent', alignItems: 'center' }}
                   onMouseEnter={e => { if (expanded !== u.id) e.currentTarget.style.background = '#0a0a0a'; }}
                   onMouseLeave={e => { if (expanded !== u.id) e.currentTarget.style.background = 'transparent'; }}
                 >
@@ -202,8 +202,21 @@ export default function AdminPanel({ onExit }) {
                     {u.experience && <div style={{ fontSize: '0.62rem', color: '#333', marginTop: '2px' }}>{u.experience}</div>}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</div>
-                  <div style={{ fontSize: '0.65rem', fontWeight: '800', color: u.subscription_status === 'active' ? '#44cc44' : '#444' }}>
-                    {u.subscription_status === 'active' ? '● PREMIUM' : '○ FREE'}
+                  <div>
+                    {u.subscription_status === 'active' ? (
+                      <>
+                        <div style={{ fontSize: '0.65rem', fontWeight: '800', color: '#44cc44' }}>
+                          ● {u.subscription_plan === 'yearly' ? 'YEARLY' : u.subscription_plan === 'monthly' ? 'MONTHLY' : 'MANUAL'}
+                        </div>
+                        {u.subscription_expires && (
+                          <div style={{ fontSize: '0.58rem', color: '#555', marginTop: '2px' }}>
+                            until {fmt(u.subscription_expires).split(' ')[0]}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div style={{ fontSize: '0.65rem', fontWeight: '800', color: '#444' }}>○ FREE</div>
+                    )}
                   </div>
                   <div style={{ fontSize: '0.72rem', color: u.asset_count > 0 ? '#44cc44' : '#333', fontWeight: '700' }}>
                     {u.asset_count > 0 ? `${u.asset_count} assets` : 'None'}
@@ -238,12 +251,16 @@ export default function AdminPanel({ onExit }) {
                         </div>
                       </div>
                       <div>
-                        <div style={{ fontSize: '0.58rem', color: '#333', fontWeight: '800', letterSpacing: '0.08em', marginBottom: '4px' }}>PROFILE</div>
+                        <div style={{ fontSize: '0.58rem', color: '#333', fontWeight: '800', letterSpacing: '0.08em', marginBottom: '4px' }}>PROFILE & SUBSCRIPTION</div>
                         <div style={{ fontSize: '0.78rem', color: '#888', lineHeight: 1.8 }}>
                           <div><span style={{ color: '#555' }}>Experience:</span> {u.experience || '—'}</div>
                           <div><span style={{ color: '#555' }}>Frequency:</span> {u.frequency || '—'}</div>
                           <div><span style={{ color: '#555' }}>Joined:</span> {fmt(u.created_at)}</div>
                           <div><span style={{ color: '#555' }}>Onboarding:</span> {u.experience ? <span style={{ color: '#44cc44' }}>Complete</span> : <span style={{ color: '#ff4444' }}>Pending</span>}</div>
+                          <div style={{ marginTop: '6px', paddingTop: '6px', borderTop: '1px solid #1a1a1a' }}>
+                            <div><span style={{ color: '#555' }}>Plan:</span> {u.subscription_status === 'active' ? (u.subscription_plan || 'manual') : 'none'}</div>
+                            <div><span style={{ color: '#555' }}>Next billing:</span> {u.subscription_expires ? fmt(u.subscription_expires) : '—'}</div>
+                          </div>
                         </div>
                       </div>
                       <div>
