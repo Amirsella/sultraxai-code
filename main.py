@@ -987,6 +987,21 @@ async def delete_account(user_id: int):
     conn.commit()
     return {"status": "success"}
 
+_CRYPTO_NAME_MAP: dict[str, tuple[str, str]] = {
+    "BTC-USD":  ("Bitcoin",      "BTC"),
+    "ETH-USD":  ("Ethereum",     "ETH"),
+    "SOL-USD":  ("Solana",       "SOL"),
+    "XRP-USD":  ("XRP",          "Ripple"),
+    "BNB-USD":  ("Binance Coin", "BNB"),
+    "ADA-USD":  ("Cardano",      "ADA"),
+    "DOGE-USD": ("Dogecoin",     "DOGE"),
+    "AVAX-USD": ("Avalanche",    "AVAX"),
+    "DOT-USD":  ("Polkadot",     "DOT"),
+    "LINK-USD": ("Chainlink",    "LINK"),
+    "LTC-USD":  ("Litecoin",     "LTC"),
+    "ATOM-USD": ("Cosmos",       "ATOM"),
+}
+
 def _zone_news(symbol: str) -> list:
     try:
         is_crypto = '-USD' in symbol or '/' in symbol
@@ -994,13 +1009,24 @@ def _zone_news(symbol: str) -> list:
             res = requests.get("https://finnhub.io/api/v1/news",
                 params={"category": "crypto", "token": FINNHUB_KEY},
                 headers={"User-Agent": "SultraxAI/1.0"}, timeout=5)
+            items = res.json() if isinstance(res.json(), list) else []
+            # Filter to only news that mentions this specific coin
+            if symbol in _CRYPTO_NAME_MAP:
+                name, ticker = _CRYPTO_NAME_MAP[symbol]
+                kw = {name.lower(), ticker.lower(), symbol.replace('-USD','').lower()}
+            else:
+                ticker = symbol.replace('-USD','').replace('/','').split('.')[0]
+                kw = {ticker.lower()}
+            items = [i for i in items if any(
+                k in (i.get("headline","") + " " + i.get("summary","")).lower() for k in kw
+            )]
         else:
             from_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
             to_date = datetime.now().strftime('%Y-%m-%d')
             res = requests.get("https://finnhub.io/api/v1/company-news",
                 params={"symbol": symbol, "from": from_date, "to": to_date, "token": FINNHUB_KEY},
                 headers={"User-Agent": "SultraxAI/1.0"}, timeout=5)
-        items = res.json() if isinstance(res.json(), list) else []
+            items = res.json() if isinstance(res.json(), list) else []
         return [{"headline": i.get("headline",""), "summary": (i.get("summary","") or "")[:220],
                  "source": i.get("source",""), "url": i.get("url",""), "time": i.get("datetime",0)}
                 for i in items[:15] if i.get("headline")]
@@ -1055,6 +1081,78 @@ def _zone_yahoo(symbol: str) -> list:
         return result
     except Exception as e:
         print(f"Zone Yahoo error: {e}"); return []
+
+def _zone_google_news(symbol: str) -> list:
+    try:
+        if symbol in _CRYPTO_NAME_MAP:
+            name, ticker = _CRYPTO_NAME_MAP[symbol]
+            query = f"{name} {ticker} price"
+        elif '-USD' in symbol or '/' in symbol:
+            ticker = symbol.replace('-USD','').split('/')[0]
+            query = f"{ticker} crypto"
+        else:
+            query = f"{symbol} stock"
+        res = requests.get(
+            "https://news.google.com/rss/search",
+            params={"q": query, "hl": "en-US", "gl": "US", "ceid": "US:en"},
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            timeout=8,
+        )
+        root = ET.fromstring(res.content)
+        result = []
+        for item in root.findall('.//item')[:12]:
+            title = (item.findtext('title') or '').strip()
+            link  = item.findtext('link') or ''
+            pub_date = item.findtext('pubDate') or ''
+            src_el = item.find('source')
+            source = src_el.text.strip() if src_el is not None and src_el.text else 'Google News'
+            try:
+                ts = email.utils.parsedate_to_datetime(pub_date).timestamp()
+            except Exception:
+                ts = 0
+            if title:
+                result.append({"headline": title, "summary": "", "source": source, "url": link, "time": ts})
+        return result
+    except Exception as e:
+        print(f"Zone Google News error: {e}"); return []
+
+def _zone_reddit(symbol: str) -> list:
+    try:
+        if symbol in _CRYPTO_NAME_MAP:
+            name, ticker = _CRYPTO_NAME_MAP[symbol]
+            query = f"{name} OR {ticker}"
+            subs  = "CryptoCurrency+Bitcoin+ethereum+CryptoMarkets"
+        elif '-USD' in symbol or '/' in symbol:
+            ticker = symbol.replace('-USD','').split('/')[0]
+            query  = ticker
+            subs   = "CryptoCurrency+CryptoMarkets"
+        else:
+            query = symbol
+            subs  = "wallstreetbets+stocks+investing+StockMarket"
+        res = requests.get(
+            f"https://www.reddit.com/r/{subs}/search.json",
+            params={"q": query, "sort": "new", "limit": 15, "restrict_sr": "1", "t": "week"},
+            headers={"User-Agent": "Mozilla/5.0 (compatible; SultraxAI/1.0)"},
+            timeout=8,
+        )
+        posts = res.json().get("data", {}).get("children", [])
+        result = []
+        for p in posts:
+            d = p.get("data", {})
+            title = (d.get("title") or "").strip()
+            if not title:
+                continue
+            result.append({
+                "text":     title,
+                "user":     f"r/{d.get('subreddit','')}",
+                "ups":      d.get("ups", 0),
+                "comments": d.get("num_comments", 0),
+                "time":     d.get("created_utc", 0),
+                "url":      f"https://reddit.com{d.get('permalink','')}",
+            })
+        return result
+    except Exception as e:
+        print(f"Zone Reddit error: {e}"); return []
 
 _SCAN_STOCKS = [
     # Mega cap tech
@@ -1185,12 +1283,14 @@ async def _zone_background_loop():
             symbols = [r[0] for r in rows]
             for sym in symbols:
                 try:
-                    with ThreadPoolExecutor(max_workers=3) as ex:
-                        nf = ex.submit(_zone_news, sym)
-                        sf = ex.submit(_zone_stocktwits, sym)
-                        yf = ex.submit(_zone_yahoo, sym)
-                        news, twits, yahoo = nf.result(), sf.result(), yf.result()
-                    _zone_cache[sym] = {"news": news, "stocktwits": twits, "yahoo": yahoo, "updated": datetime.now()}
+                    with ThreadPoolExecutor(max_workers=5) as ex:
+                        nf  = ex.submit(_zone_news, sym)
+                        sf  = ex.submit(_zone_stocktwits, sym)
+                        yf_ = ex.submit(_zone_yahoo, sym)
+                        gf  = ex.submit(_zone_google_news, sym)
+                        rf  = ex.submit(_zone_reddit, sym)
+                        news, twits, yahoo, gnews, reddit = nf.result(), sf.result(), yf_.result(), gf.result(), rf.result()
+                    _zone_cache[sym] = {"news": news, "stocktwits": twits, "yahoo": yahoo, "gnews": gnews, "reddit": reddit, "updated": datetime.now()}
                 except Exception as e:
                     print(f"Zone cache error for {sym}: {e}")
                 await asyncio.sleep(2)
@@ -1295,18 +1395,24 @@ async def support_chat(req: SupportRequest):
 async def get_zone_all(symbol: str):
     if symbol in _zone_cache:
         cached = _zone_cache[symbol]
-        news, twits, yahoo = cached["news"], cached["stocktwits"], cached["yahoo"]
+        news   = cached["news"]
+        twits  = cached["stocktwits"]
+        yahoo  = cached["yahoo"]
+        gnews  = cached.get("gnews", [])
+        reddit = cached.get("reddit", [])
     else:
-        with ThreadPoolExecutor(max_workers=3) as ex:
-            nf = ex.submit(_zone_news, symbol)
-            sf = ex.submit(_zone_stocktwits, symbol)
+        with ThreadPoolExecutor(max_workers=5) as ex:
+            nf     = ex.submit(_zone_news, symbol)
+            sf     = ex.submit(_zone_stocktwits, symbol)
             yf_fut = ex.submit(_zone_yahoo, symbol)
-            news, twits, yahoo = nf.result(), sf.result(), yf_fut.result()
-        _zone_cache[symbol] = {"news": news, "stocktwits": twits, "yahoo": yahoo, "updated": datetime.now()}
+            gf     = ex.submit(_zone_google_news, symbol)
+            rf     = ex.submit(_zone_reddit, symbol)
+            news, twits, yahoo, gnews, reddit = nf.result(), sf.result(), yf_fut.result(), gf.result(), rf.result()
+        _zone_cache[symbol] = {"news": news, "stocktwits": twits, "yahoo": yahoo, "gnews": gnews, "reddit": reddit, "updated": datetime.now()}
     bull = sum(1 for m in twits if m.get("sentiment") == "Bullish")
     bear = sum(1 for m in twits if m.get("sentiment") == "Bearish")
     total = bull + bear
-    return {"symbol": symbol, "news": news, "stocktwits": twits, "yahoo": yahoo,
+    return {"symbol": symbol, "news": news, "stocktwits": twits, "yahoo": yahoo, "gnews": gnews, "reddit": reddit,
             "sentiment": {"bull": bull, "bear": bear, "pct": round(bull/total*100) if total else 50}}
 
 class ContactMessage(BaseModel):

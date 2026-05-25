@@ -20,9 +20,11 @@ const toTs = (val) => {
 };
 
 const SOURCE_META = {
-  finnhub:    { label: 'FINNHUB',    color: '#4488ff', bg: 'rgba(68,136,255,0.1)' },
-  stocktwits: { label: 'STOCKTWITS', color: '#44cc44', bg: 'rgba(68,204,68,0.1)'  },
-  yahoo:      { label: 'YAHOO',      color: '#aa44ff', bg: 'rgba(170,68,255,0.1)' },
+  finnhub:    { label: 'FINNHUB',    color: '#4488ff', bg: 'rgba(68,136,255,0.1)'  },
+  stocktwits: { label: 'STOCKTWITS', color: '#44cc44', bg: 'rgba(68,204,68,0.1)'   },
+  yahoo:      { label: 'YAHOO',      color: '#aa44ff', bg: 'rgba(170,68,255,0.1)'  },
+  gnews:      { label: 'GNEWS',      color: '#4fbdff', bg: 'rgba(79,189,255,0.08)' },
+  reddit:     { label: 'REDDIT',     color: '#ff6314', bg: 'rgba(255,99,20,0.08)'  },
 };
 
 function SourceBadge({ type }) {
@@ -54,12 +56,26 @@ function FeedItem({ item }) {
           </>
         )}
 
+        {/* Reddit: subreddit + upvotes + comments */}
+        {item.type === 'reddit' && (
+          <>
+            <span style={{ fontSize: '0.62rem', color: '#ff6314', fontWeight: '700' }}>{item.user}</span>
+            {item.ups > 0 && <span style={{ fontSize: '0.55rem', color: '#444', fontWeight: '600' }}>▲ {item.ups >= 1000 ? `${(item.ups/1000).toFixed(1)}k` : item.ups}</span>}
+            {item.comments > 0 && <span style={{ fontSize: '0.55rem', color: '#333' }}>💬 {item.comments}</span>}
+          </>
+        )}
+
         {/* Yahoo: source */}
         {item.type === 'yahoo' && item.source && (
           <span style={{ fontSize: '0.62rem', color: '#aa44ff', fontWeight: '600' }}>{item.source}</span>
         )}
 
-        {/* News: source name */}
+        {/* GNews: source */}
+        {item.type === 'gnews' && item.source && (
+          <span style={{ fontSize: '0.62rem', color: '#4fbdff', fontWeight: '600' }}>{item.source}</span>
+        )}
+
+        {/* Finnhub: source name */}
         {item.type === 'finnhub' && item.source && (
           <span style={{ fontSize: '0.62rem', color: '#333' }}>{item.source}</span>
         )}
@@ -93,11 +109,13 @@ function FeedItem({ item }) {
 }
 
 function buildFeed(data) {
-  const { news = [], stocktwits = [], yahoo = [] } = data;
+  const { news = [], stocktwits = [], yahoo = [], gnews = [], reddit = [] } = data;
   const items = [
-    ...news.map(n => ({ type: 'finnhub',    content: n.headline, summary: n.summary, source: n.source, url: n.url, time: n.time })),
+    ...news.map(n      => ({ type: 'finnhub',    content: n.headline, summary: n.summary, source: n.source, url: n.url, time: n.time })),
     ...stocktwits.map(t => ({ type: 'stocktwits', content: t.text, user: t.user, sentiment: t.sentiment, likes: t.likes, time: t.time })),
-    ...yahoo.map(y => ({ type: 'yahoo', content: y.headline, summary: y.summary, source: y.source, url: y.url, time: y.time })),
+    ...yahoo.map(y     => ({ type: 'yahoo',      content: y.headline, summary: y.summary, source: y.source, url: y.url, time: y.time })),
+    ...gnews.map(g     => ({ type: 'gnews',      content: g.headline, summary: g.summary, source: g.source, url: g.url, time: g.time })),
+    ...reddit.map(r    => ({ type: 'reddit',     content: r.text, user: r.user, ups: r.ups, comments: r.comments, url: r.url, time: r.time })),
   ];
   return items.sort((a, b) => toTs(b.time) - toTs(a.time));
 }
@@ -105,7 +123,7 @@ function buildFeed(data) {
 export default function TheZone({ selectedAssets, onBack, isNative }) {
   const [activeAsset, setActiveAsset] = useState(selectedAssets[0] || '');
   const [feed, setFeed] = useState([]);
-  const [counts, setCounts] = useState({ finnhub: 0, stocktwits: 0, yahoo: 0 });
+  const [counts, setCounts] = useState({ finnhub: 0, stocktwits: 0, yahoo: 0, gnews: 0, reddit: 0 });
   const [sentiment, setSentiment] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -119,9 +137,9 @@ export default function TheZone({ selectedAssets, onBack, isNative }) {
       const res = await fetch(`${API_BASE}/api/zone/all?symbol=${encodeURIComponent(sym)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      const { news = [], stocktwits = [], yahoo = [] } = data;
+      const { news = [], stocktwits = [], yahoo = [], gnews = [], reddit = [] } = data;
       setFeed(buildFeed(data));
-      setCounts({ finnhub: news.length, stocktwits: stocktwits.length, yahoo: yahoo.length });
+      setCounts({ finnhub: news.length, stocktwits: stocktwits.length, yahoo: yahoo.length, gnews: gnews.length, reddit: reddit.length });
       setSentiment(data.sentiment || null);
       setLastUpdate(new Date());
     } catch (e) {
@@ -140,13 +158,15 @@ export default function TheZone({ selectedAssets, onBack, isNative }) {
   const bull = sentiment?.pct ?? 50;
   const bear = 100 - bull;
   const hasSentiment = (sentiment?.bull ?? 0) + (sentiment?.bear ?? 0) > 0;
-  const total = counts.finnhub + counts.stocktwits + counts.yahoo;
+  const total = counts.finnhub + counts.stocktwits + counts.yahoo + counts.gnews + counts.reddit;
 
   const FILTERS = [
     { id: 'all',        label: 'ALL',        count: total },
     { id: 'finnhub',    label: 'FINNHUB',    count: counts.finnhub },
     { id: 'stocktwits', label: 'STOCKTWITS', count: counts.stocktwits },
     { id: 'yahoo',      label: 'YAHOO',      count: counts.yahoo },
+    { id: 'gnews',      label: 'GNEWS',      count: counts.gnews },
+    { id: 'reddit',     label: 'REDDIT',     count: counts.reddit },
   ];
 
   const containerStyle = isNative
