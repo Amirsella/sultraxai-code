@@ -1101,24 +1101,58 @@ function ContactPage({ onBack }) {
 function TermsPage({ onBack }) {
   const S = { color: '#888', fontSize: '0.88rem', lineHeight: 1.8, margin: '0 0 1.5rem' };
   const H = { color: '#ccc', fontSize: '0.95rem', fontWeight: '700', margin: '2rem 0 0.5rem' };
+  const WARN = { background: '#1a0800', border: '1px solid #ff440033', borderRadius: '10px', padding: '1rem 1.2rem', color: '#ff8844', fontSize: '0.85rem', lineHeight: 1.8, margin: '0 0 2rem' };
   return (
     <PageShell title="Terms of Service" onBack={onBack}>
       <p style={{ ...S, color: '#444', fontSize: '0.75rem' }}>Last updated: May 2025</p>
-      <p style={S}>By accessing and using SultraxAI, you agree to be bound by these Terms of Service. Please read them carefully.</p>
-      <h3 style={H}>1. Use of Service</h3>
-      <p style={S}>SultraxAI provides real-time market data, price alerts, and analytical tools for informational purposes only. The platform is intended for users who are 18 years of age or older.</p>
-      <h3 style={H}>2. No Financial Advice</h3>
-      <p style={S}>All content provided by SultraxAI — including signals, alerts, news, and analysis — is for informational purposes only and does not constitute financial, investment, or trading advice. You are solely responsible for your trading decisions.</p>
-      <h3 style={H}>3. Account Responsibility</h3>
-      <p style={S}>You are responsible for maintaining the confidentiality of your account credentials and for all activities that occur under your account. Notify us immediately of any unauthorized use.</p>
-      <h3 style={H}>4. Data Accuracy</h3>
-      <p style={S}>While we strive to provide accurate, real-time data, SultraxAI does not guarantee the accuracy, completeness, or timeliness of any information. Market data may be delayed or contain errors.</p>
-      <h3 style={H}>5. Limitation of Liability</h3>
-      <p style={S}>SultraxAI shall not be liable for any direct, indirect, incidental, or consequential damages arising from your use of the platform or reliance on any information provided.</p>
-      <h3 style={H}>6. Modifications</h3>
-      <p style={S}>We reserve the right to modify these terms at any time. Continued use of the platform after changes constitutes acceptance of the revised terms.</p>
-      <h3 style={H}>7. Contact</h3>
-      <p style={S}>For questions regarding these terms, contact us at <span style={{ color: '#ff4444' }}>support@sultraxai.com</span></p>
+
+      <div style={WARN}>
+        <strong>RISK WARNING:</strong> Trading financial instruments including stocks, cryptocurrencies, and derivatives involves a high level of risk and may not be suitable for all investors. You may lose some or all of your invested capital. Past performance is not indicative of future results. SultraxAI does not provide investment advice. All trading decisions are made solely at your own risk.
+      </div>
+
+      <p style={S}>By accessing or using SultraxAI ("the Platform", "we", "us"), you agree to be bound by these Terms of Service. If you do not agree, do not use the Platform.</p>
+
+      <h3 style={H}>1. Description of Service</h3>
+      <p style={S}>SultraxAI is a market intelligence platform that provides real-time market data, volume anomaly signals, price alerts, and analytical tools. All content is provided for informational and educational purposes only. The Platform does not execute trades, manage funds, or hold any assets on your behalf.</p>
+
+      <h3 style={H}>2. No Investment or Financial Advice</h3>
+      <p style={S}>Nothing on SultraxAI — including signals, alerts, scores, analysis, community chat, or any other content — constitutes financial advice, investment advice, trading advice, or any other type of advice. We are not a licensed investment advisor, broker, or financial institution. You should consult a qualified financial advisor before making any investment decisions. Any reliance on information provided through the Platform is strictly at your own risk.</p>
+
+      <h3 style={H}>3. Eligibility</h3>
+      <p style={S}>You must be at least 18 years of age to use SultraxAI. By using the Platform, you represent and warrant that you are 18 or older and that your use of the Platform does not violate any applicable laws or regulations in your jurisdiction. Access may be restricted in certain countries due to local regulations. It is your responsibility to ensure compliance with local laws.</p>
+
+      <h3 style={H}>4. Account Registration</h3>
+      <p style={S}>You must provide accurate and complete information when creating an account. You are solely responsible for maintaining the confidentiality of your login credentials and for all activity that occurs under your account. You must notify us immediately of any unauthorized access or security breach. We reserve the right to suspend or terminate accounts that violate these Terms.</p>
+
+      <h3 style={H}>5. Subscription and Fees</h3>
+      <p style={S}>Certain features of SultraxAI require a paid subscription. Fees are charged in advance on a monthly or annual basis as selected during registration. Subscriptions automatically renew unless cancelled before the renewal date. All fees are non-refundable except where required by applicable law. We reserve the right to change pricing with 30 days notice.</p>
+
+      <h3 style={H}>6. Prohibited Uses</h3>
+      <p style={S}>You agree not to: (a) use the Platform for any unlawful purpose; (b) attempt to gain unauthorized access to any part of the Platform; (c) scrape, copy, or redistribute content without permission; (d) use the Platform to manipulate markets or engage in any form of market abuse; (e) share your account credentials with third parties; (f) reverse engineer or attempt to extract source code from the Platform.</p>
+
+      <h3 style={H}>7. Data Accuracy and No Warranty</h3>
+      <p style={S}>Market data is sourced from third-party providers and may be delayed, incomplete, or contain errors. SultraxAI makes no warranty, express or implied, regarding the accuracy, completeness, reliability, or timeliness of any data or content. THE PLATFORM IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND. We do not guarantee that the service will be uninterrupted, error-free, or free of viruses.</p>
+
+      <h3 style={H}>8. Limitation of Liability</h3>
+      <p style={S}>To the maximum extent permitted by law, SultraxAI and its operators, employees, and affiliates shall not be liable for any direct, indirect, incidental, special, consequential, or punitive damages, including but not limited to trading losses, loss of profits, loss of data, or loss of goodwill, arising out of or in connection with your use of or inability to use the Platform, even if we have been advised of the possibility of such damages. Our total liability to you for any claim shall not exceed the amount you paid us in the 12 months preceding the claim.</p>
+
+      <h3 style={H}>9. Indemnification</h3>
+      <p style={S}>You agree to indemnify, defend, and hold harmless SultraxAI and its operators from any claims, liabilities, damages, losses, and expenses (including reasonable legal fees) arising out of your use of the Platform, your violation of these Terms, or your violation of any third-party rights.</p>
+
+      <h3 style={H}>10. Intellectual Property</h3>
+      <p style={S}>All content, features, and functionality of SultraxAI — including but not limited to software, algorithms, design, text, and graphics — are the exclusive property of SultraxAI and are protected by applicable intellectual property laws. You are granted a limited, non-exclusive, non-transferable license to access and use the Platform for personal, non-commercial purposes only.</p>
+
+      <h3 style={H}>11. Termination</h3>
+      <p style={S}>We reserve the right to suspend or terminate your access to the Platform at any time, with or without notice, for conduct that we believe violates these Terms or is harmful to other users, us, or third parties. Upon termination, your right to use the Platform ceases immediately.</p>
+
+      <h3 style={H}>12. Governing Law and Jurisdiction</h3>
+      <p style={S}>These Terms shall be governed by and construed in accordance with the laws of the State of Israel, without regard to conflict of law principles. Any disputes arising under these Terms shall be subject to the exclusive jurisdiction of the competent courts in Israel.</p>
+
+      <h3 style={H}>13. Modifications to Terms</h3>
+      <p style={S}>We reserve the right to modify these Terms at any time. Material changes will be communicated via email or a notice on the Platform. Continued use of the Platform after any changes constitutes acceptance of the revised Terms.</p>
+
+      <h3 style={H}>14. Contact</h3>
+      <p style={S}>For questions regarding these Terms, contact us at <span style={{ color: '#ff4444' }}>support@sultraxai.com</span></p>
     </PageShell>
   );
 }
@@ -1129,21 +1163,55 @@ function PrivacyPage({ onBack }) {
   return (
     <PageShell title="Privacy Policy" onBack={onBack}>
       <p style={{ ...S, color: '#444', fontSize: '0.75rem' }}>Last updated: May 2025</p>
-      <p style={S}>At SultraxAI, we take your privacy seriously. This policy explains what data we collect and how we use it.</p>
-      <h3 style={H}>1. Data We Collect</h3>
-      <p style={S}>When you create an account, we collect your name, email address, and phone number. We also store your watchlist preferences and alert settings to provide the service.</p>
-      <h3 style={H}>2. How We Use Your Data</h3>
-      <p style={S}>Your data is used exclusively to operate and improve the SultraxAI platform — including sending verification emails, delivering alerts, and personalizing your experience. We do not sell your data to third parties.</p>
-      <h3 style={H}>3. Data Storage</h3>
-      <p style={S}>Your data is stored securely on our servers. Passwords are hashed and never stored in plain text. We use industry-standard security practices to protect your information.</p>
-      <h3 style={H}>4. Cookies & Local Storage</h3>
-      <p style={S}>We use browser local storage to remember your session and preferences (such as selected assets and view state). No third-party tracking cookies are used.</p>
-      <h3 style={H}>5. Your Rights</h3>
-      <p style={S}>You may request deletion of your account and all associated data at any time from Account Settings → Danger Zone. Upon deletion, all your personal data is permanently removed from our systems.</p>
-      <h3 style={H}>6. Third-Party Services</h3>
-      <p style={S}>We use Brevo for transactional emails, Finnhub for market data, and Groq for AI support. These services have their own privacy policies and handle data according to their respective terms.</p>
-      <h3 style={H}>7. Contact</h3>
-      <p style={S}>For privacy-related inquiries, contact us at <span style={{ color: '#ff4444' }}>support@sultraxai.com</span></p>
+      <p style={S}>SultraxAI ("we", "us", "our") is committed to protecting your personal data. This Privacy Policy explains what information we collect, how we use it, and your rights regarding it. By using SultraxAI, you agree to the practices described in this policy.</p>
+
+      <h3 style={H}>1. Data Controller</h3>
+      <p style={S}>SultraxAI operates this platform. For privacy-related inquiries, contact us at <span style={{ color: '#ff4444' }}>support@sultraxai.com</span>.</p>
+
+      <h3 style={H}>2. Data We Collect</h3>
+      <p style={S}><strong style={{ color: '#aaa' }}>Account data:</strong> First name, last name, email address, username, and hashed password provided during registration.</p>
+      <p style={S}><strong style={{ color: '#aaa' }}>Usage data:</strong> Watchlist preferences, alert settings, selected assets, trading profile (experience level, frequency), and subscription status.</p>
+      <p style={S}><strong style={{ color: '#aaa' }}>Technical data:</strong> IP address, browser type, and device information collected automatically when you use the Platform.</p>
+      <p style={S}><strong style={{ color: '#aaa' }}>Communications:</strong> Messages sent through our Contact form and community chat messages.</p>
+      <p style={S}>We do not collect payment card details directly. Payments are processed by third-party payment providers.</p>
+
+      <h3 style={H}>3. Legal Basis for Processing (GDPR)</h3>
+      <p style={S}>We process your personal data on the following legal bases: (a) <strong style={{ color: '#aaa' }}>Contract</strong> — to provide the service you signed up for; (b) <strong style={{ color: '#aaa' }}>Legitimate interests</strong> — to improve the platform and ensure security; (c) <strong style={{ color: '#aaa' }}>Consent</strong> — for optional communications; (d) <strong style={{ color: '#aaa' }}>Legal obligation</strong> — where required by applicable law.</p>
+
+      <h3 style={H}>4. How We Use Your Data</h3>
+      <p style={S}>Your data is used to: provide and operate the Platform; send account verification and security emails; deliver price alerts and notifications you have set up; process subscription payments; respond to support requests; improve the Platform's features and performance; comply with legal obligations. We do not sell your personal data to third parties.</p>
+
+      <h3 style={H}>5. Third-Party Services</h3>
+      <p style={S}><strong style={{ color: '#aaa' }}>Finnhub.io</strong> — provides real-time market data. Your watchlist symbols may be transmitted to Finnhub's WebSocket service. See <span style={{ color: '#555' }}>finnhub.io/privacy</span>.</p>
+      <p style={S}><strong style={{ color: '#aaa' }}>Brevo (Sendinblue)</strong> — handles transactional emails (verification, alerts). Your email address is shared with Brevo for this purpose. See <span style={{ color: '#555' }}>brevo.com/legal/privacypolicy</span>.</p>
+      <p style={S}><strong style={{ color: '#aaa' }}>Groq</strong> — powers the AI support assistant. Messages sent to the support bot may be processed by Groq. See <span style={{ color: '#555' }}>groq.com/privacy</span>.</p>
+      <p style={S}>All third-party providers are required to handle your data in accordance with applicable data protection laws.</p>
+
+      <h3 style={H}>6. Data Retention</h3>
+      <p style={S}>We retain your account data for as long as your account is active or as needed to provide the service. If you delete your account, all personal data associated with it is permanently deleted from our systems within 30 days. Chat messages may be retained in anonymized form for platform improvement purposes. You may request earlier deletion by contacting us.</p>
+
+      <h3 style={H}>7. Data Security</h3>
+      <p style={S}>We implement industry-standard security measures including password hashing (bcrypt), encrypted data transmission (HTTPS/WSS), and access controls. However, no method of transmission over the internet is 100% secure, and we cannot guarantee absolute security.</p>
+
+      <h3 style={H}>8. Cookies and Local Storage</h3>
+      <p style={S}>SultraxAI uses browser local storage (not cookies) to save your session, preferences, and view state between visits. This data is stored only on your device and is never transmitted to third parties. We do not use third-party tracking or advertising cookies.</p>
+
+      <h3 style={H}>9. Your Rights</h3>
+      <p style={S}>Depending on your jurisdiction, you may have the following rights regarding your personal data:</p>
+      <p style={S}><strong style={{ color: '#aaa' }}>Access</strong> — request a copy of the data we hold about you.<br /><strong style={{ color: '#aaa' }}>Rectification</strong> — request correction of inaccurate data via Account Settings.<br /><strong style={{ color: '#aaa' }}>Erasure</strong> — delete your account and all associated data via Account Settings → Danger Zone.<br /><strong style={{ color: '#aaa' }}>Portability</strong> — request your data in a machine-readable format.<br /><strong style={{ color: '#aaa' }}>Objection</strong> — object to processing based on legitimate interests.<br /><strong style={{ color: '#aaa' }}>Restriction</strong> — request that we limit processing of your data in certain circumstances.</p>
+      <p style={S}>To exercise any of these rights, contact us at <span style={{ color: '#ff4444' }}>support@sultraxai.com</span>. We will respond within 30 days.</p>
+
+      <h3 style={H}>10. International Data Transfers</h3>
+      <p style={S}>Your data may be processed on servers located outside your country of residence. Where data is transferred outside the European Economic Area, we ensure appropriate safeguards are in place in accordance with applicable data protection laws.</p>
+
+      <h3 style={H}>11. Children's Privacy</h3>
+      <p style={S}>SultraxAI is not intended for individuals under the age of 18. We do not knowingly collect personal data from minors. If we become aware that a minor has provided us with personal data, we will delete it immediately.</p>
+
+      <h3 style={H}>12. Changes to This Policy</h3>
+      <p style={S}>We may update this Privacy Policy from time to time. Material changes will be communicated via email or a notice on the Platform. The date at the top of this page reflects the most recent revision. Continued use of the Platform after changes constitutes acceptance of the updated policy.</p>
+
+      <h3 style={H}>13. Contact</h3>
+      <p style={S}>For any privacy-related questions or to exercise your rights, contact us at <span style={{ color: '#ff4444' }}>support@sultraxai.com</span></p>
     </PageShell>
   );
 }

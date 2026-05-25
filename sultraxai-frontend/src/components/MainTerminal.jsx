@@ -1034,6 +1034,9 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
           {/* SIGNALS */}
           {activeTab === 'signals' && (
             <div style={{ padding: '14px 16px 20px' }}>
+              <div style={{ fontSize: '0.65rem', color: '#333', lineHeight: 1.6, marginBottom: '12px', padding: '6px 10px', borderLeft: '2px solid #1e1e1e' }}>
+                Signals are statistical anomalies in order flow — not investment advice. Trade at your own risk.
+              </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <span style={{ fontSize: '0.68rem', fontWeight: '700', color: '#444', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Signal Feed</span>
