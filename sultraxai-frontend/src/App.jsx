@@ -370,11 +370,11 @@ export default function App() {
       {['main_app', 'zone', 'scanner', 'settings'].includes(currentView) && !isNative && (
         <SupportBot />
       )}
-      {!isNative && (
-        <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50, background: 'rgba(2,2,2,0.95)', borderTop: '1px solid #0a0a0a', padding: '6px 0', display: 'flex', justifyContent: 'center', gap: '28px' }}>
+      {!isNative && !['main_app', 'zone', 'scanner'].includes(currentView) && (
+        <div style={{ borderTop: '1px solid #0a0a0a', padding: '14px 0', display: 'flex', justifyContent: 'center', gap: '28px' }}>
           {[['Contact', 'contact'], ['Terms of Service', 'terms'], ['Privacy Policy', 'privacy']].map(([label, view]) => (
             <button key={view} onClick={() => setCurrentView(view)}
-              style={{ background: 'none', border: 'none', color: '#252525', cursor: 'pointer', fontSize: '0.58rem', fontWeight: '600', letterSpacing: '0.08em', fontFamily: 'inherit', textTransform: 'uppercase', transition: 'color 0.15s' }}
+              style={{ background: 'none', border: 'none', color: '#252525', cursor: 'pointer', fontSize: '0.6rem', fontWeight: '600', letterSpacing: '0.08em', fontFamily: 'inherit', textTransform: 'uppercase', transition: 'color 0.15s' }}
               onMouseEnter={e => e.currentTarget.style.color = '#555'}
               onMouseLeave={e => e.currentTarget.style.color = '#252525'}>
               {label}
