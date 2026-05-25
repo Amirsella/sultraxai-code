@@ -957,11 +957,6 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
           if (cancelled) return;
           const initial = data.prices || {};
           pricesRef.current = initial;
-          Object.entries(initial).forEach(([sym, p]) => {
-            if (baselinePricesRef.current[sym] === undefined && p.prev_close) {
-              baselinePricesRef.current[sym] = p.prev_close;
-            }
-          });
           setPrices(initial);
           setLoading(false);
           connectWS(cfg.finnhub_key, selectedAssets);
