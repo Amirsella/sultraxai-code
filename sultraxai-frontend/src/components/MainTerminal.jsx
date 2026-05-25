@@ -1003,6 +1003,41 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
 
     connectWS(selectedAssets);
 
+    // Direct browser → Binance WebSocket for crypto (zero backend latency)
+    const cryptoAssets = selectedAssets.filter(s => s.endsWith('-USD'));
+    let binanceWs = null;
+    if (cryptoAssets.length > 0) {
+      const streams = cryptoAssets
+        .map(s => `${s.replace('-USD', '').toLowerCase()}usdt@aggTrade`)
+        .join('/');
+      binanceWs = new WebSocket(`wss://stream.binance.com/stream?streams=${streams}`);
+      binanceWs.onmessage = (e) => {
+        if (cancelled) return;
+        try {
+          const trade = JSON.parse(e.data)?.data;
+          if (!trade || trade.e !== 'aggTrade') return;
+          const sym = `${trade.s.replace('USDT', '')}-USD`; // "BTCUSDT" → "BTC-USD"
+          if (!watchlistRef.current.includes(sym)) return;
+          const price = parseFloat(trade.p);
+          if (!price) return;
+          const prev = pricesRef.current[sym];
+          const prevClose = prev?.prev_close ?? price;
+          const changePct = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
+          if (prev && prev.price === price) return;
+          const update = { [sym]: { price, change_pct: +changePct.toFixed(4), prev_close: prevClose } };
+          triggerFlash(sym, price > (prev?.price ?? price) ? 'up' : 'down');
+          pricesRef.current = { ...pricesRef.current, ...update };
+          setPrices(p => ({ ...p, ...update }));
+          const now = Date.now();
+          if (now - lastUpdateTsRef.current > 500) {
+            lastUpdateTsRef.current = now;
+            setLastUpdate(new Date(now));
+          }
+        } catch {}
+      };
+      binanceWs.onerror = () => {};
+    }
+
     const pollPrices = () => {
       fetch(`${API_BASE}/api/prices?symbols=${selectedAssets.join(',')}`)
         .then(r => r.json())
@@ -1033,6 +1068,7 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
       Object.values(flashTimersRef.current).forEach(clearTimeout);
       flashTimersRef.current = {};
       if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); wsRef.current = null; }
+      if (binanceWs) { binanceWs.onclose = null; binanceWs.onmessage = null; binanceWs.close(); }
     };
   }, [selectedAssets]);
 

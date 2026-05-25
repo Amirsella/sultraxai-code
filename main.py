@@ -655,7 +655,7 @@ async def _binance_price_feed():
     Covers all _BINANCE_CRYPTO symbols. Broadcasts in Finnhub-compatible format
     so the frontend's existing trade handler works unchanged."""
     streams = "/".join(f"{sym}@aggTrade" for sym in _BINANCE_CRYPTO)
-    uri = f"wss://stream.binance.com:9443/stream?streams={streams}"
+    uri = f"wss://stream.binance.com/stream?streams={streams}"
     reconnect_delay = 2
     loop = asyncio.get_event_loop()
     # Seed prev_closes before first connection
@@ -728,8 +728,9 @@ async def _finnhub_price_feed():
             if len(stock_symbols) > _PF_MAX_SYMBOLS:
                 print(f"[PriceFeed] WARNING: {len(stock_symbols)} stocks, subscribing first {_PF_MAX_SYMBOLS}")
 
+            # Seed prev_closes in background — don't block WS connection on yfinance
             if symbols:
-                await _pf_init_prev_closes(symbols)
+                asyncio.create_task(_pf_init_prev_closes(symbols))
 
             uri = f"wss://ws.finnhub.io?token={FINNHUB_KEY}"
             async with _ws_lib.connect(uri, ping_interval=25, ping_timeout=10) as ws:
@@ -928,19 +929,29 @@ async def get_prices(symbols: str = ""):
 
         stocks_missing = [s for s in missing if '-USD' not in s and '/' not in s]
         crypto_missing = [s for s in missing if '-USD' in s or '/' in s]
+        loop = asyncio.get_event_loop()
 
-        # Stocks: one batch yfinance call — much faster than N individual calls
+        # Both calls run in executor — never block the event loop with yfinance I/O
+        tasks = []
         if stocks_missing:
-            batch = _batch_seed_stocks(stocks_missing)
-            for sym, data in batch.items():
+            tasks.append(loop.run_in_executor(None, _batch_seed_stocks, stocks_missing))
+        if crypto_missing:
+            def _fetch_crypto_batch(syms):
+                with ThreadPoolExecutor(max_workers=min(len(syms), 5)) as ex:
+                    return list(ex.map(_fetch_one, syms))
+            tasks.append(loop.run_in_executor(None, _fetch_crypto_batch, crypto_missing))
+
+        gathered = await asyncio.gather(*tasks, return_exceptions=True)
+        idx = 0
+        if stocks_missing:
+            batch = gathered[idx] if not isinstance(gathered[idx], Exception) else {}
+            idx += 1
+            for sym, data in (batch or {}).items():
                 result[sym] = {k: v for k, v in data.items() if k != "ts"}
                 _live_prices[sym] = data
-
-        # Crypto: individual fallback (usually ≤5 crypto symbols missing)
         if crypto_missing:
-            with ThreadPoolExecutor(max_workers=min(len(crypto_missing), 5)) as ex:
-                fallback = list(ex.map(_fetch_one, crypto_missing))
-            for sym, data in fallback:
+            fallback = gathered[idx] if not isinstance(gathered[idx], Exception) else []
+            for sym, data in (fallback or []):
                 if data:
                     result[sym] = data
                     _live_prices[sym] = {**data, "ts": time.time()}
@@ -1443,10 +1454,10 @@ async def _background_price_refresh():
             if not stocks:
                 continue
             loop = asyncio.get_event_loop()
-            results = await loop.run_in_executor(
-                None,
-                lambda: list(ThreadPoolExecutor(max_workers=8).map(_refresh_one_price, stocks))
-            )
+            def _refresh_all(syms):
+                with ThreadPoolExecutor(max_workers=8) as ex:
+                    return list(ex.map(_refresh_one_price, syms))
+            results = await loop.run_in_executor(None, _refresh_all, stocks)
             now_ts = time.time()
             updated = 0
             for sym, data in results:
