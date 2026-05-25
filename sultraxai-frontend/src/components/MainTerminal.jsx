@@ -235,7 +235,7 @@ function ChartModal({ sym, price, rvol, symAlerts, onClose, onRegisterLive }) {
   );
 }
 
-function Sparkline({ sym, prices }) {
+const Sparkline = React.memo(function Sparkline({ sym, prices }) {
   if (!prices || prices.length < 2) {
     return (
       <div style={{ height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -265,7 +265,7 @@ function Sparkline({ sym, prices }) {
       <polyline points={linePoints} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   );
-}
+});
 
 function TopMoversTicker({ onMoverClick }) {
   const [movers, setMovers] = useState([]);
@@ -891,8 +891,17 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
       });
 
       if (!Object.keys(priceUpdates).length) return;
-      setPrices(prev => ({ ...prev, ...priceUpdates }));
+
+      // Only trigger re-render if at least one price value actually changed
+      const prevPrices = pricesRef.current;
+      const changed = Object.entries(priceUpdates).some(
+        ([sym, data]) => !prevPrices[sym] || prevPrices[sym].price !== data.price
+      );
+      if (changed) {
+        setPrices(prev => ({ ...prev, ...priceUpdates }));
+      }
       pricesRef.current = { ...pricesRef.current, ...priceUpdates };
+
       Object.entries(flashUpdates).forEach(([sym, dir]) => triggerFlash(sym, dir));
       if (newAlerts.length) setAlerts(prev => [...newAlerts, ...prev].slice(0, 100));
       setLastUpdate(new Date(now));

@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import os
 import time
+import threading
 import bcrypt
 import random
 import re
@@ -139,6 +140,22 @@ _ip_geo_cache: dict[str, dict] = {}
 # נתיב קבוע לבסיס הנתונים
 DB_PATH = "/root/sultraxai/sultraxai-frontend/users.db"
 
+# Thread-local SQLite connection pool — one connection per thread, reused across requests.
+# WAL mode allows concurrent reads without blocking writes.
+_db_local = threading.local()
+
+def _get_db() -> sqlite3.Connection:
+    if not hasattr(_db_local, 'conn'):
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA cache_size=10000")
+        conn.execute("PRAGMA temp_store=MEMORY")
+        conn.execute("PRAGMA mmap_size=268435456")  # 256 MB memory-mapped I/O
+        _db_local.conn = conn
+    return _db_local.conn
+
 @app.middleware("http")
 async def security_headers_middleware(request: Request, call_next):
     response = await call_next(request)
@@ -161,7 +178,7 @@ app.add_middleware(
 )
 
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
@@ -241,7 +258,6 @@ def init_db():
         )
     """)
     conn.commit()
-    conn.close()
 
 init_db()
 
@@ -277,11 +293,10 @@ def _get_custom_blocked_words() -> set:
     global _custom_words_cache, _custom_words_cache_ts
     now = datetime.now(timezone.utc).timestamp()
     if now - _custom_words_cache_ts > 60:
-        conn = sqlite3.connect(DB_PATH)
+        conn = _get_db()
         cursor = conn.cursor()
         cursor.execute("SELECT word FROM chat_blocked_words")
         _custom_words_cache = {r[0].lower() for r in cursor.fetchall()}
-        conn.close()
         _custom_words_cache_ts = now
     return _custom_words_cache
 
@@ -289,11 +304,10 @@ def _get_custom_username_blocked_words() -> set:
     global _custom_username_words_cache, _custom_username_words_cache_ts
     now = datetime.now(timezone.utc).timestamp()
     if now - _custom_username_words_cache_ts > 60:
-        conn = sqlite3.connect(DB_PATH)
+        conn = _get_db()
         cursor = conn.cursor()
         cursor.execute("SELECT word FROM username_blocked_words")
         _custom_username_words_cache = {r[0].lower() for r in cursor.fetchall()}
-        conn.close()
         _custom_username_words_cache_ts = now
     return _custom_username_words_cache
 
@@ -379,11 +393,10 @@ async def check_username(username: str = ""):
     err = _validate_username(username)
     if err:
         return {"available": False, "error": err}
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT id FROM users WHERE LOWER(username) = ?", (username.lower(),))
     taken = cursor.fetchone() is not None
-    conn.close()
     if taken:
         return {"available": False, "error": "This username is already taken"}
     return {"available": True, "error": None}
@@ -421,32 +434,28 @@ async def search_stocks(q: str = ""):
 async def verify_code(request: Request, data: dict):
     email = (data.get('email') or '').strip().lower()
     code = (data.get('code') or '').strip()
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT code, expiry FROM verification_codes_db WHERE email = ?", (email,))
     row = cursor.fetchone()
     if not row:
-        conn.close()
         return JSONResponse(status_code=400, content={"detail": "Code not found. Please register again."})
     stored_code, expiry = row
     if datetime.now().timestamp() > expiry:
         cursor.execute("DELETE FROM verification_codes_db WHERE email = ?", (email,))
         conn.commit()
-        conn.close()
         return JSONResponse(status_code=400, content={"detail": "Code expired. Please register again."})
     if stored_code != code:
-        conn.close()
         return JSONResponse(status_code=400, content={"detail": "Invalid code."})
     cursor.execute("DELETE FROM verification_codes_db WHERE email = ?", (email,))
     conn.commit()
-    conn.close()
     return {"status": "success"}
 
 @app.post("/api/forgot-password")
 @limiter.limit("5/minute")
 async def forgot_password(request: Request, data: dict, background_tasks: BackgroundTasks):
     email = data.get("email", "").strip().lower()
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT id FROM users WHERE LOWER(email) = ?", (email,))
     user = cursor.fetchone()
@@ -458,7 +467,6 @@ async def forgot_password(request: Request, data: dict, background_tasks: Backgr
         conn.commit()
         reset_link = f"{APP_URL}/?reset_token={token}"
         background_tasks.add_task(send_reset_email, email, reset_link)
-    conn.close()
     return {"status": "success"}
 
 @app.post("/api/reset-password")
@@ -466,18 +474,16 @@ async def forgot_password(request: Request, data: dict, background_tasks: Backgr
 async def reset_password(request: Request, data: dict):
     token = data.get("token", "")
     new_password = data.get("password", "")
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT email, expiry FROM reset_tokens WHERE token = ?", (token,))
     row = cursor.fetchone()
     if not row:
-        conn.close()
         return JSONResponse(status_code=400, content={"detail": "Invalid or expired link"})
     email, expiry = row
     if datetime.now().timestamp() > expiry:
         cursor.execute("DELETE FROM reset_tokens WHERE token = ?", (token,))
         conn.commit()
-        conn.close()
         return JSONResponse(status_code=400, content={"detail": "Link expired. Please request a new one."})
     pwd_hash = hash_password(new_password)
     cursor.execute("UPDATE users SET password_hash = ? WHERE LOWER(email) = ?", (pwd_hash, email))
@@ -489,7 +495,6 @@ async def reset_password(request: Request, data: dict):
     has_profile = cursor.fetchone() is not None
     cursor.execute("SELECT symbol FROM user_assets WHERE user_id = ?", (user[0],))
     assets = [r[0] for r in cursor.fetchall()]
-    conn.close()
     return {"status": "success", "user_id": user[0], "first_name": user[1], "onboarding_completed": has_profile, "assets": assets}
 
 class OnboardingData(BaseModel):
@@ -514,7 +519,7 @@ def verify_password(plain: str, stored: str) -> bool:
 @app.post("/api/register")
 @limiter.limit("5/minute")
 async def register(request: Request, user: UserRegister, background_tasks: BackgroundTasks):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     email_clean = user.email.strip().lower()
     phone_clean = user.phone.strip()
@@ -523,26 +528,22 @@ async def register(request: Request, user: UserRegister, background_tasks: Backg
     # Validate username format / content
     username_err = _validate_username(username_clean)
     if username_err:
-        conn.close()
         return JSONResponse(status_code=400, content={"detail": username_err})
 
     # Check username uniqueness
     cursor.execute("SELECT id FROM users WHERE LOWER(username) = ?", (username_clean.lower(),))
     if cursor.fetchone():
-        conn.close()
         return JSONResponse(status_code=400, content={"detail": "This username is already taken."})
 
     # Check email (case-insensitive)
     cursor.execute("SELECT id FROM users WHERE LOWER(email) = ?", (email_clean,))
     if cursor.fetchone():
-        conn.close()
         return JSONResponse(status_code=400, content={"detail": "This email is already registered."})
 
     # Check phone only if provided and non-empty
     if phone_clean:
         cursor.execute("SELECT id FROM users WHERE phone = ?", (phone_clean,))
         if cursor.fetchone():
-            conn.close()
             return JSONResponse(status_code=400, content={"detail": "This phone number is already registered."})
 
     pwd_hash = hash_password(user.password)
@@ -552,7 +553,6 @@ async def register(request: Request, user: UserRegister, background_tasks: Backg
         user_id = cursor.lastrowid
         conn.commit()
     except Exception as e:
-        conn.close()
         print(f"Register insert error for {email_clean}: {e}")
         return JSONResponse(status_code=500, content={"detail": f"Registration failed: {str(e)}"})
 
@@ -561,13 +561,12 @@ async def register(request: Request, user: UserRegister, background_tasks: Backg
     cursor.execute("INSERT OR REPLACE INTO verification_codes_db (email, code, expiry) VALUES (?, ?, ?)",
                    (email_clean, code, expiry))
     conn.commit()
-    conn.close()
     print(f"New user registered: id={user_id}, email={email_clean}, code={code}")
     background_tasks.add_task(send_verification_email, email_clean, code)
     return {"status": "success", "user_id": user_id}
 @app.post("/api/complete-onboarding")
 async def complete_onboarding(data: OnboardingData):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     try:
         cursor.execute("DELETE FROM user_assets WHERE user_id = ?", (data.user_id,))
@@ -579,9 +578,7 @@ async def complete_onboarding(data: OnboardingData):
                        (data.user_id, data.experience, data.frequency))
         conn.commit()
     except Exception as e:
-        conn.close()
         return JSONResponse(status_code=500, content={"detail": str(e)})
-    conn.close()
     return {"status": "success"}
 
 def _fetch_one(sym):
@@ -655,11 +652,10 @@ async def get_history_batch(symbols: str = ""):
 @app.get("/api/init")
 async def init_data(user_id: int, session_token: str = ""):
     """Single endpoint that returns assets + history + avg-volumes in one shot."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT symbol, threshold FROM user_assets WHERE user_id = ?", (user_id,))
     rows = cursor.fetchall()
-    conn.close()
 
     symbols = [r[0] for r in rows]
     thresholds = {r[0]: r[1] for r in rows}
@@ -680,11 +676,10 @@ async def init_data(user_id: int, session_token: str = ""):
 
 @app.get("/api/user-assets/{user_id}")
 async def get_user_assets(user_id: int):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT symbol, threshold FROM user_assets WHERE user_id = ?", (user_id,))
     rows = cursor.fetchall()
-    conn.close()
     return {"assets": [{"symbol": r[0], "threshold": r[1]} for r in rows]}
 
 class UpdateAssets(BaseModel):
@@ -695,7 +690,7 @@ class UpdateAssets(BaseModel):
 @app.post("/api/update-assets")
 async def update_assets(data: UpdateAssets):
     _validate_session(data.user_id, data.session_token)
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     try:
         cursor.execute("DELETE FROM user_assets WHERE user_id = ?", (data.user_id,))
@@ -704,14 +699,12 @@ async def update_assets(data: UpdateAssets):
                            (data.user_id, asset['symbol'], asset['threshold']))
         conn.commit()
     except Exception as e:
-        conn.close()
         return JSONResponse(status_code=500, content={"detail": str(e)})
-    conn.close()
     return {"status": "success"}
 
 @app.get("/api/user/{user_id}")
 async def get_user(user_id: int):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT first_name, full_name, email, phone, subscription_status,
@@ -721,11 +714,9 @@ async def get_user(user_id: int):
     """, (user_id,))
     row = cursor.fetchone()
     if not row:
-        conn.close()
         return JSONResponse(status_code=404, content={"detail": "User not found"})
     cursor.execute("SELECT experience, frequency FROM user_profiles WHERE user_id = ?", (user_id,))
     profile = cursor.fetchone()
-    conn.close()
     return {
         "first_name": row[0], "full_name": row[1], "email": row[2], "phone": row[3],
         "subscription_status": row[4] or "",
@@ -750,17 +741,15 @@ async def update_profile(data: dict):
     frequency = data.get("frequency")
     new_username = data.get("username", "").strip()
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
 
     if new_username:
         err = _validate_username(new_username)
         if err:
-            conn.close()
             return JSONResponse(status_code=400, content={"detail": err})
         cursor.execute("SELECT id FROM users WHERE LOWER(username) = ? AND id != ?", (new_username.lower(), user_id))
         if cursor.fetchone():
-            conn.close()
             return JSONResponse(status_code=400, content={"detail": "This username is already taken."})
         cursor.execute("UPDATE users SET first_name = ?, full_name = ?, phone = ?, username = ? WHERE id = ?",
                        (first_name, full_name, phone, new_username, user_id))
@@ -772,7 +761,6 @@ async def update_profile(data: dict):
         cursor.execute("INSERT OR REPLACE INTO user_profiles (user_id, experience, frequency) VALUES (?, ?, ?)",
                        (user_id, experience, frequency))
     conn.commit()
-    conn.close()
     return {"status": "success"}
 
 @app.post("/api/change-password")
@@ -781,31 +769,27 @@ async def change_password_endpoint(data: dict):
     _validate_session(user_id, data.get("session_token", ""))
     current_password = data.get("current_password", "")
     new_password = data.get("new_password", "")
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,))
     row = cursor.fetchone()
     if not row:
-        conn.close()
         return JSONResponse(status_code=404, content={"detail": "User not found"})
     if not verify_password(current_password, row[0]):
-        conn.close()
         return JSONResponse(status_code=400, content={"detail": "Current password is incorrect"})
     cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(new_password), user_id))
     conn.commit()
-    conn.close()
     return {"status": "success"}
 
 @app.delete("/api/delete-account/{user_id}")
 async def delete_account(user_id: int):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM user_assets WHERE user_id = ?", (user_id,))
     cursor.execute("DELETE FROM user_profiles WHERE user_id = ?", (user_id,))
     cursor.execute("DELETE FROM reset_tokens WHERE email = (SELECT email FROM users WHERE id = ?)", (user_id,))
     cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
     conn.commit()
-    conn.close()
     return {"status": "success"}
 
 def _zone_news(symbol: str) -> list:
@@ -970,9 +954,8 @@ async def _scanner_background_loop():
 async def _zone_background_loop():
     while True:
         try:
-            conn = sqlite3.connect(DB_PATH)
+            conn = _get_db()
             rows = conn.execute("SELECT DISTINCT symbol FROM user_assets").fetchall()
-            conn.close()
             symbols = [r[0] for r in rows]
             for sym in symbols:
                 try:
@@ -1125,16 +1108,15 @@ def _validate_session(user_id: int, session_token: str):
     If no token is provided we skip validation (backward compat for old clients)."""
     if not session_token:
         return
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     row = conn.execute("SELECT session_token FROM users WHERE id=?", (user_id,)).fetchone()
-    conn.close()
     if row and row[0] and row[0] != session_token:
         raise HTTPException(status_code=401, detail="session_replaced")
 
 @app.get("/api/admin/users")
 async def admin_list_users(request: Request):
     _admin_auth(request)
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     cursor.execute("""
@@ -1150,20 +1132,18 @@ async def admin_list_users(request: Request):
         ORDER BY u.id DESC
     """)
     rows = cursor.fetchall()
-    conn.close()
     return {"users": [dict(r) for r in rows], "total": len(rows)}
 
 @app.delete("/api/admin/users/{user_id}")
 async def admin_delete_user(user_id: int, request: Request):
     _admin_auth(request)
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM user_assets WHERE user_id = ?", (user_id,))
     cursor.execute("DELETE FROM user_profiles WHERE user_id = ?", (user_id,))
     cursor.execute("DELETE FROM reset_tokens WHERE email = (SELECT email FROM users WHERE id = ?)", (user_id,))
     cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
     conn.commit()
-    conn.close()
     print(f"Admin deleted user id={user_id}")
     return {"status": "success"}
 
@@ -1173,93 +1153,88 @@ async def login(request: Request, user: UserLogin):
     email_clean = user.email.strip().lower()
     _check_lockout(email_clean)
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT id, first_name, password_hash, subscription_status, stripe_customer_id FROM users WHERE LOWER(email) = ?", (email_clean,))
+    # Single query — fetch everything needed, including profile existence and chat terms
+    cursor.execute("""
+        SELECT u.id, u.first_name, u.password_hash, u.subscription_status,
+               u.stripe_customer_id, u.subscription_expires, u.chat_terms_accepted_at,
+               EXISTS(SELECT 1 FROM user_profiles WHERE user_id = u.id) AS has_profile
+        FROM users u WHERE LOWER(u.email) = ?
+    """, (email_clean,))
     row = cursor.fetchone()
 
     if not row:
         _record_failed_login(email_clean)
-        conn.close()
         return JSONResponse(status_code=401, content={"detail": "User not found"})
 
-    user_id, first_name, stored_pwd_hash, subscription_status, sub_id = row
+    user_id, first_name, stored_pwd_hash, subscription_status, sub_id, sub_expires, chat_terms_at, has_profile = row
+
     if not verify_password(user.password, stored_pwd_hash):
         _record_failed_login(email_clean)
-        conn.close()
         return JSONResponse(status_code=401, content={"detail": "Wrong password"})
     _clear_failed_login(email_clean)
+
     # Transparent upgrade: re-hash SHA256 passwords to bcrypt on successful login
     if not (stored_pwd_hash.startswith("$2b$") or stored_pwd_hash.startswith("$2a$")):
         conn.execute("UPDATE users SET password_hash=? WHERE id=?", (hash_password(user.password), user_id))
         conn.commit()
 
-    cursor.execute("SELECT experience FROM user_profiles WHERE user_id = ?", (user_id,))
-    has_profile = cursor.fetchone() is not None
     cursor.execute("SELECT symbol FROM user_assets WHERE user_id = ?", (user_id,))
     assets = [r[0] for r in cursor.fetchall()]
 
-    # Verify subscription with PayPal in real-time if user has a subscription ID
+    # PayPal subscription check — runs in thread executor so it never blocks the event loop
     if subscription_status == 'active' and sub_id and PAYPAL_CLIENT_ID:
-        try:
-            token = _paypal_token()
-            res = requests.get(
-                f"{PAYPAL_BASE}/v1/billing/subscriptions/{sub_id}",
-                headers={"Authorization": f"Bearer {token}"},
-                timeout=8
-            )
-            if res.status_code == 200:
-                sub_data = res.json()
-                paypal_status = sub_data.get("status", "")
-                if paypal_status not in ("ACTIVE", "TRIALING", "APPROVED"):
-                    # Check if cancelled but still within paid period
-                    cursor.execute("SELECT subscription_expires FROM users WHERE id=?", (user_id,))
-                    exp_row = cursor.fetchone()
-                    expires_str = exp_row[0] if exp_row else None
-                    keep_access = False
-                    if expires_str:
-                        try:
-                            exp_dt = datetime.fromisoformat(expires_str.replace("Z", "+00:00"))
-                            keep_access = exp_dt > datetime.now(timezone.utc)
-                        except Exception:
-                            pass
-                    if not keep_access:
-                        subscription_status = ''
-                        cursor.execute("UPDATE users SET subscription_status='' WHERE id=?", (user_id,))
-                        conn.commit()
-                        print(f"[Login] user={user_id} sub revoked, PayPal status={paypal_status}")
-        except Exception as e:
-            print(f"[Login] PayPal check failed (non-blocking): {e}")
+        def _check_paypal_sync():
+            try:
+                token = _paypal_token()
+                res = requests.get(
+                    f"{PAYPAL_BASE}/v1/billing/subscriptions/{sub_id}",
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=8,
+                )
+                return res.json().get("status", "") if res.status_code == 200 else None
+            except Exception as e:
+                print(f"[Login] PayPal check failed: {e}")
+                return None
 
-    # Generate a new session token — invalidates any previous active session for this account
+        paypal_status = await asyncio.get_event_loop().run_in_executor(None, _check_paypal_sync)
+        if paypal_status is not None and paypal_status not in ("ACTIVE", "TRIALING", "APPROVED"):
+            keep_access = False
+            if sub_expires:
+                try:
+                    keep_access = datetime.fromisoformat(sub_expires.replace("Z", "+00:00")) > datetime.now(timezone.utc)
+                except Exception:
+                    pass
+            if not keep_access:
+                subscription_status = ''
+                conn.execute("UPDATE users SET subscription_status='' WHERE id=?", (user_id,))
+                conn.commit()
+                print(f"[Login] user={user_id} sub revoked, PayPal status={paypal_status}")
+
     session_token = str(uuid.uuid4())
-    conn2 = sqlite3.connect(DB_PATH)
-    conn2.execute("UPDATE users SET session_token=? WHERE id=?", (session_token, user_id))
-    conn2.commit()
-    conn2.close()
+    conn.execute("UPDATE users SET session_token=? WHERE id=?", (session_token, user_id))
+    conn.commit()
 
-    conn3 = sqlite3.connect(DB_PATH)
-    terms_row = conn3.execute("SELECT chat_terms_accepted_at FROM users WHERE id=?", (user_id,)).fetchone()
-    conn3.close()
-    chat_terms_accepted = bool(terms_row and terms_row[0])
-
-    return {"user_id": user_id, "first_name": first_name, "onboarding_completed": has_profile,
-            "assets": assets, "subscription_status": subscription_status or "",
-            "session_token": session_token, "chat_terms_accepted": chat_terms_accepted}
+    return {
+        "user_id": user_id, "first_name": first_name,
+        "onboarding_completed": bool(has_profile),
+        "assets": assets, "subscription_status": subscription_status or "",
+        "session_token": session_token, "chat_terms_accepted": bool(chat_terms_at),
+    }
 
     
 def _check_subscriptions_sync():
     if not PAYPAL_CLIENT_ID:
         return
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute(
         "SELECT id, stripe_customer_id, subscription_expires FROM users "
         "WHERE subscription_status='active' AND stripe_customer_id IS NOT NULL AND stripe_customer_id != ''"
     )
     rows = cursor.fetchall()
-    conn.close()
     if not rows:
         return
     try:
@@ -1304,7 +1279,7 @@ def _check_subscriptions_sync():
             print(f"[SubChecker] user={user_id} error: {e}")
     # Also revoke cancel_pending subs whose expiry date has passed (no PayPal call needed)
     try:
-        conn2 = sqlite3.connect(DB_PATH)
+        conn2 = _get_db()
         c2 = conn2.cursor()
         c2.execute(
             "SELECT id FROM users WHERE subscription_cancel_pending=1 AND subscription_status='active' "
@@ -1312,7 +1287,6 @@ def _check_subscriptions_sync():
             (now.isoformat(),)
         )
         date_expired = [r[0] for r in c2.fetchall()]
-        conn2.close()
         expired.extend(date_expired)
         if date_expired:
             print(f"[SubChecker] {len(date_expired)} cancel_pending sub(s) expired by date")
@@ -1320,14 +1294,13 @@ def _check_subscriptions_sync():
         print(f"[SubChecker] date-check error: {e}")
 
     if expired or updates:
-        conn = sqlite3.connect(DB_PATH)
+        conn = _get_db()
         cursor = conn.cursor()
         for uid in set(expired):
             cursor.execute("UPDATE users SET subscription_status='' WHERE id=?", (uid,))
         for next_billing, uid in updates:
             cursor.execute("UPDATE users SET subscription_expires=? WHERE id=?", (next_billing, uid))
         conn.commit()
-        conn.close()
         if expired:
             print(f"[SubChecker] Revoked {len(expired)} subscription(s)")
 
@@ -1445,7 +1418,7 @@ def _send_lifecycle_emails():
         return
     cutoff_24h = (datetime.now() - timedelta(hours=24)).isoformat()
     cutoff_7d  = (datetime.now() - timedelta(days=7)).isoformat()
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
 
     # Abandoned checkout: registered > 24h, completed onboarding, NEVER had a subscription
@@ -1471,11 +1444,10 @@ def _send_lifecycle_emails():
           AND u.email IS NOT NULL AND u.email != ''
     """, (cutoff_7d,))
     expired = cursor.fetchall()
-    conn.close()
 
     for user_id, email, first_name in abandoned:
         if send_abandoned_checkout_email(email, first_name or "there"):
-            c = sqlite3.connect(DB_PATH)
+            c = _get_db()
             c.execute("UPDATE users SET reminder_email_sent_at=? WHERE id=?",
                       (datetime.now().isoformat(), user_id))
             c.commit(); c.close()
@@ -1483,7 +1455,7 @@ def _send_lifecycle_emails():
 
     for user_id, email, first_name in expired:
         if send_winback_email(email, first_name or "there"):
-            c = sqlite3.connect(DB_PATH)
+            c = _get_db()
             c.execute("UPDATE users SET winback_email_sent_at=? WHERE id=?",
                       (datetime.now().isoformat(), user_id))
             c.commit(); c.close()
@@ -1518,11 +1490,10 @@ async def create_checkout_session(data: dict):
     if not PAYPAL_CLIENT_ID or not PAYPAL_PLAN_ID:
         raise HTTPException(status_code=503, detail="Payments not configured")
     plan_id = PAYPAL_PLAN_ID_YEARLY if plan_type == "yearly" and PAYPAL_PLAN_ID_YEARLY else PAYPAL_PLAN_ID
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT email FROM users WHERE id = ?", (user_id,))
     row = cursor.fetchone()
-    conn.close()
     if not row:
         raise HTTPException(status_code=404, detail="User not found")
     try:
@@ -1571,14 +1542,13 @@ async def verify_payment(data: dict):
         if active:
             next_billing = (sub.get("billing_info") or {}).get("next_billing_time", "")
             start_time   = sub.get("start_time", datetime.now(timezone.utc).isoformat())
-            conn = sqlite3.connect(DB_PATH)
+            conn = _get_db()
             cursor = conn.cursor()
             cursor.execute(
                 "UPDATE users SET subscription_status='active', stripe_customer_id=?, subscription_plan=?, subscription_expires=?, subscription_start=?, subscription_cancel_pending=0 WHERE id=?",
                 (subscription_id, plan_type, next_billing, start_time, user_id)
             )
             conn.commit()
-            conn.close()
             print(f"PayPal activated: user={user_id} plan={plan_type} expires={next_billing}")
         return {"status": "active" if active else "pending"}
     except Exception as e:
@@ -1587,11 +1557,10 @@ async def verify_payment(data: dict):
 @app.post("/api/cancel-subscription")
 async def cancel_subscription(data: dict):
     user_id = data.get("user_id")
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT stripe_customer_id, subscription_expires FROM users WHERE id=?", (user_id,))
     row = cursor.fetchone()
-    conn.close()
     if not row or not row[0]:
         raise HTTPException(status_code=404, detail="No active PayPal subscription found")
     sub_id, expires = row
@@ -1611,11 +1580,10 @@ async def cancel_subscription(data: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute("UPDATE users SET subscription_cancel_pending=1 WHERE id=?", (user_id,))
     conn.commit()
-    conn.close()
     print(f"[Cancel] user={user_id} cancelled, access until {expires}")
     return {"status": "cancelled", "access_until": expires or ""}
 
@@ -1623,21 +1591,19 @@ async def cancel_subscription(data: dict):
 async def admin_grant_subscription(request: Request, data: dict):
     _admin_auth(request)
     user_id = data.get("user_id")
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute("UPDATE users SET subscription_status = 'active' WHERE id = ?", (user_id,))
     conn.commit()
-    conn.close()
     return {"status": "ok"}
 
 @app.get("/api/admin/blocked-words")
 async def admin_get_blocked_words(request: Request):
     _admin_auth(request)
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT word, added_at FROM chat_blocked_words ORDER BY added_at DESC")
     rows = cursor.fetchall()
-    conn.close()
     return {"words": [{"word": r[0], "added_at": r[1]} for r in rows]}
 
 @app.post("/api/admin/blocked-words")
@@ -1646,16 +1612,14 @@ async def admin_add_blocked_word(request: Request, data: dict):
     word = (data.get("word") or "").strip().lower()
     if not word:
         return JSONResponse(status_code=400, content={"detail": "Word is required"})
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     try:
         cursor.execute("INSERT INTO chat_blocked_words (word, added_at) VALUES (?, ?)",
                        (word, datetime.now().isoformat()))
         conn.commit()
     except Exception:
-        conn.close()
         return JSONResponse(status_code=400, content={"detail": "Word already exists"})
-    conn.close()
     global _custom_words_cache_ts
     _custom_words_cache_ts = 0.0
     return {"status": "ok", "word": word}
@@ -1664,34 +1628,31 @@ async def admin_add_blocked_word(request: Request, data: dict):
 async def admin_get_chat_messages(request: Request, room: str = "crypto", limit: int = 50):
     _admin_auth(request)
     room = room if room in ("crypto", "stocks") else "crypto"
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute(
         "SELECT id, user_id, first_name, message, created_at FROM chat_messages WHERE room=? ORDER BY id DESC LIMIT ?",
         (room, min(limit, 200))
     )
     rows = cursor.fetchall()
-    conn.close()
     return {"messages": [{"id": r[0], "user_id": r[1], "username": r[2], "message": r[3], "created_at": r[4]} for r in rows]}
 
 @app.delete("/api/admin/chat-messages/{message_id}")
 async def admin_delete_chat_message(message_id: int, request: Request):
     _admin_auth(request)
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM chat_messages WHERE id = ?", (message_id,))
     conn.commit()
-    conn.close()
     return {"status": "ok"}
 
 @app.delete("/api/admin/blocked-words/{word}")
 async def admin_delete_blocked_word(word: str, request: Request):
     _admin_auth(request)
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM chat_blocked_words WHERE word = ?", (word.lower(),))
     conn.commit()
-    conn.close()
     global _custom_words_cache_ts
     _custom_words_cache_ts = 0.0
     return {"status": "ok"}
@@ -1699,11 +1660,10 @@ async def admin_delete_blocked_word(word: str, request: Request):
 @app.get("/api/admin/username-blocked-words")
 async def admin_get_username_blocked_words(request: Request):
     _admin_auth(request)
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT word, added_at FROM username_blocked_words ORDER BY added_at DESC")
     rows = cursor.fetchall()
-    conn.close()
     return {"words": [{"word": r[0], "added_at": r[1]} for r in rows]}
 
 @app.post("/api/admin/username-blocked-words")
@@ -1712,16 +1672,14 @@ async def admin_add_username_blocked_word(request: Request, data: dict):
     word = (data.get("word") or "").strip().lower()
     if not word:
         return JSONResponse(status_code=400, content={"detail": "Word is required"})
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     try:
         cursor.execute("INSERT INTO username_blocked_words (word, added_at) VALUES (?, ?)",
                        (word, datetime.now().isoformat()))
         conn.commit()
     except Exception:
-        conn.close()
         return JSONResponse(status_code=400, content={"detail": "Word already exists"})
-    conn.close()
     global _custom_username_words_cache_ts
     _custom_username_words_cache_ts = 0.0
     return {"status": "ok", "word": word}
@@ -1729,11 +1687,10 @@ async def admin_add_username_blocked_word(request: Request, data: dict):
 @app.delete("/api/admin/username-blocked-words/{word}")
 async def admin_delete_username_blocked_word(word: str, request: Request):
     _admin_auth(request)
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM username_blocked_words WHERE word = ?", (word.lower(),))
     conn.commit()
-    conn.close()
     global _custom_username_words_cache_ts
     _custom_username_words_cache_ts = 0.0
     return {"status": "ok"}
@@ -1768,9 +1725,8 @@ async def heartbeat(data: HeartbeatData, request: Request):
     import time
 
     if data.session_token:
-        conn = sqlite3.connect(DB_PATH)
+        conn = _get_db()
         row = conn.execute("SELECT session_token FROM users WHERE id=?", (data.user_id,)).fetchone()
-        conn.close()
         if row and row[0] and row[0] != data.session_token:
             return JSONResponse(status_code=401, content={"detail": "session_replaced"})
 
@@ -1800,22 +1756,20 @@ async def accept_chat_terms(request: Request, data: dict):
     _validate_session(user_id, session_token)
     ip = get_remote_address(request)
     accepted_at = datetime.now(timezone.utc).isoformat()
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     conn.execute(
         "UPDATE users SET chat_terms_accepted_at=?, chat_terms_accepted_ip=? WHERE id=?",
         (accepted_at, ip, user_id)
     )
     conn.commit()
-    conn.close()
     print(f"[ChatTerms] user_id={user_id} accepted at {accepted_at} from {ip}")
     return {"status": "ok", "accepted_at": accepted_at}
 
 @app.post("/api/logout")
 async def logout(user_id: int):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     conn.execute("UPDATE users SET session_token=NULL WHERE id=?", (user_id,))
     conn.commit()
-    conn.close()
     return {"status": "ok"}
 
 @app.get("/api/admin/stats")
@@ -1863,19 +1817,18 @@ class _ChatManager:
 chat_manager = _ChatManager()
 
 def _chat_history(room: str, limit=20):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute(
         "SELECT id, user_id, first_name, message, created_at FROM chat_messages WHERE room=? ORDER BY id DESC LIMIT ?",
         (room, limit)
     )
     rows = cursor.fetchall()
-    conn.close()
     return [{"id": r[0], "user_id": r[1], "first_name": r[2], "message": r[3], "created_at": r[4]}
             for r in reversed(rows)]
 
 def _chat_save(user_id, first_name, message, room):
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     now = datetime.now(timezone.utc).isoformat()
     cursor.execute(
@@ -1885,17 +1838,15 @@ def _chat_save(user_id, first_name, message, room):
     msg_id = cursor.lastrowid
     cursor.execute("DELETE FROM chat_messages WHERE id NOT IN (SELECT id FROM chat_messages ORDER BY id DESC LIMIT 1000)")
     conn.commit()
-    conn.close()
     return msg_id, now
 
 @app.websocket("/ws/chat")
 async def chat_ws(ws: WebSocket, user_id: int = 0, room: str = "crypto"):
     room = room if room in ("crypto", "stocks") else "crypto"
-    conn = sqlite3.connect(DB_PATH)
+    conn = _get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT username, first_name FROM users WHERE id = ?", (user_id,))
     row = cursor.fetchone()
-    conn.close()
     display_name = (row[0] or row[1] or "User") if row else "User"
     await chat_manager.connect(ws, room)
     try:
