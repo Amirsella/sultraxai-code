@@ -15,10 +15,9 @@ const isNative = typeof window !== 'undefined' &&
 export default function App() {
   const [isAdminMode] = useState(() => new URLSearchParams(window.location.search).has('admin'));
 
-  // Stripe payment redirect params
-  const [stripePayment]   = useState(() => new URLSearchParams(window.location.search).get('payment') || '');
-  const [stripeSessionId] = useState(() => new URLSearchParams(window.location.search).get('session_id') || '');
-  const [stripeUserId]    = useState(() => new URLSearchParams(window.location.search).get('user_id') || '');
+  // Payment redirect params (Lemon Squeezy)
+  const [stripePayment] = useState(() => new URLSearchParams(window.location.search).get('payment') || '');
+  const [stripeUserId]  = useState(() => new URLSearchParams(window.location.search).get('user_id') || '');
 
   // טעינת מצב ראשוני מה-LocalStorage כדי למנוע ניתוק בריפרש
   const [resetToken, setResetToken] = useState(() => new URLSearchParams(window.location.search).get('reset_token') || '');
@@ -54,14 +53,14 @@ export default function App() {
     localStorage.setItem('subscriptionStatus', subscriptionStatus);
   }, [subscriptionStatus]);
 
-  // Handle Stripe redirect back to app
+  // Handle payment redirect back from Lemon Squeezy
   useEffect(() => {
-    if (stripePayment === 'success' && stripeSessionId && stripeUserId) {
+    if (stripePayment === 'success' && stripeUserId) {
       window.history.replaceState({}, '', '/');
       fetch(`${API_BASE}/api/verify-payment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: stripeSessionId, user_id: parseInt(stripeUserId) }),
+        body: JSON.stringify({ user_id: parseInt(stripeUserId) }),
       })
         .then(r => r.json())
         .then(d => {

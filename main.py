@@ -4,7 +4,6 @@ import os
 import random
 import uuid
 import requests
-import stripe
 
 # Load .env file if it exists (persists across git pulls)
 _env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
@@ -34,8 +33,9 @@ import uvicorn
 BREVO_API_KEY      = os.environ.get("BREVO_API_KEY", "")
 FINNHUB_KEY        = os.environ.get("FINNHUB_KEY", "")
 GROQ_KEY           = os.environ.get("GROQ_KEY", "")
-STRIPE_SECRET_KEY  = os.environ.get("STRIPE_SECRET_KEY", "")
-STRIPE_PRICE_ID    = os.environ.get("STRIPE_PRICE_ID", "")
+LS_API_KEY     = os.environ.get("LS_API_KEY", "")
+LS_STORE_ID    = os.environ.get("LS_STORE_ID", "")
+LS_VARIANT_ID  = os.environ.get("LS_VARIANT_ID", "")
 APP_URL   = "http://38.180.137.122:8000"
 ADMIN_KEY = "sultrax_admin_key_2026"
 
@@ -826,7 +826,7 @@ async def login(user: UserLogin):
 @app.post("/api/create-checkout-session")
 async def create_checkout_session(data: dict):
     user_id = data.get("user_id")
-    if not STRIPE_SECRET_KEY or not STRIPE_PRICE_ID:
+    if not LS_API_KEY or not LS_STORE_ID or not LS_VARIANT_ID:
         raise HTTPException(status_code=503, detail="Payments not configured")
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -835,41 +835,66 @@ async def create_checkout_session(data: dict):
     conn.close()
     if not row:
         raise HTTPException(status_code=404, detail="User not found")
-    stripe.api_key = STRIPE_SECRET_KEY
     try:
-        session = stripe.checkout.Session.create(
-            customer_email=row[0],
-            payment_method_types=["card"],
-            line_items=[{"price": STRIPE_PRICE_ID, "quantity": 1}],
-            mode="subscription",
-            success_url=f"{APP_URL}/?payment=success&session_id={{CHECKOUT_SESSION_ID}}&user_id={user_id}",
-            cancel_url=f"{APP_URL}/?payment=canceled&user_id={user_id}",
+        res = requests.post(
+            "https://api.lemonsqueezy.com/v1/checkouts",
+            headers={"Authorization": f"Bearer {LS_API_KEY}", "Accept": "application/vnd.api+json", "Content-Type": "application/vnd.api+json"},
+            json={
+                "data": {
+                    "type": "checkouts",
+                    "attributes": {
+                        "checkout_data": {
+                            "email": row[0],
+                            "custom": {"user_id": str(user_id)}
+                        },
+                        "product_options": {
+                            "redirect_url": f"{APP_URL}/?payment=success&user_id={user_id}"
+                        }
+                    },
+                    "relationships": {
+                        "store":   {"data": {"type": "stores",   "id": str(LS_STORE_ID)}},
+                        "variant": {"data": {"type": "variants", "id": str(LS_VARIANT_ID)}}
+                    }
+                }
+            },
+            timeout=10
         )
-        return {"url": session.url}
+        res.raise_for_status()
+        url = res.json()["data"]["attributes"]["url"]
+        return {"url": url}
     except Exception as e:
+        print(f"LemonSqueezy checkout error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/verify-payment")
 async def verify_payment(data: dict):
-    session_id = data.get("session_id")
-    user_id    = data.get("user_id")
-    if not STRIPE_SECRET_KEY:
+    user_id = data.get("user_id")
+    if not LS_API_KEY:
         raise HTTPException(status_code=503, detail="Payments not configured")
-    stripe.api_key = STRIPE_SECRET_KEY
     try:
-        session = stripe.checkout.Session.retrieve(session_id)
-        if session.payment_status == "paid":
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE users SET subscription_status = 'active', stripe_customer_id = ? WHERE id = ?",
-                (session.customer, user_id)
-            )
-            conn.commit()
+        # Find the subscription by custom user_id metadata
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT email FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        if not row:
             conn.close()
+            raise HTTPException(status_code=404)
+        # Check subscriptions for this email
+        res = requests.get(
+            "https://api.lemonsqueezy.com/v1/subscriptions",
+            headers={"Authorization": f"Bearer {LS_API_KEY}", "Accept": "application/vnd.api+json"},
+            params={"filter[user_email]": row[0]},
+            timeout=10
+        )
+        subs = res.json().get("data", [])
+        active = any(s["attributes"]["status"] in ("active", "trialing") for s in subs)
+        if active:
+            cursor.execute("UPDATE users SET subscription_status = 'active' WHERE id = ?", (user_id,))
+            conn.commit()
             print(f"Subscription activated: user_id={user_id}")
-            return {"status": "active"}
-        return {"status": session.payment_status}
+        conn.close()
+        return {"status": "active" if active else "pending"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
