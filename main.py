@@ -151,7 +151,7 @@ async def search_stocks(q: str = ""):
 
 @app.post("/api/verify-code")
 async def verify_code(data: dict):
-    email = data.get('email')
+    email = (data.get('email') or '').strip().lower()
     code = data.get('code')
     if verification_codes.get(email) == code:
         del verification_codes[email]
@@ -220,27 +220,38 @@ def hash_password(password: str) -> str:
 async def register(user: UserRegister, background_tasks: BackgroundTasks):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("SELECT id FROM users WHERE email = ? OR phone = ?", (user.email.strip(), user.phone.strip()))
+    email_clean = user.email.strip().lower()
+    phone_clean = user.phone.strip()
+
+    # Check email (case-insensitive)
+    cursor.execute("SELECT id FROM users WHERE LOWER(email) = ?", (email_clean,))
     if cursor.fetchone():
         conn.close()
-        return JSONResponse(status_code=400, content={"detail": "User already exists"})
+        return JSONResponse(status_code=400, content={"detail": "This email is already registered."})
+
+    # Check phone only if provided and non-empty
+    if phone_clean:
+        cursor.execute("SELECT id FROM users WHERE phone = ?", (phone_clean,))
+        if cursor.fetchone():
+            conn.close()
+            return JSONResponse(status_code=400, content={"detail": "This phone number is already registered."})
 
     code = str(random.randint(100000, 999999))
-    verification_codes[user.email.strip()] = code
-    background_tasks.add_task(send_verification_email, user.email.strip(), code)
+    verification_codes[email_clean] = code
+    background_tasks.add_task(send_verification_email, email_clean, code)
 
     pwd_hash = hash_password(user.password)
     try:
         cursor.execute("INSERT INTO users (first_name, full_name, email, phone, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                       (user.first_name, user.full_name, user.email.strip(), user.phone.strip() or None, pwd_hash, datetime.now().isoformat()))
+                       (user.first_name, user.full_name, email_clean, phone_clean or '', pwd_hash, datetime.now().isoformat()))
         user_id = cursor.lastrowid
         conn.commit()
     except Exception as e:
         conn.close()
-        print(f"Register insert error: {e}")
-        return JSONResponse(status_code=400, content={"detail": "Registration failed. Email or phone already in use."})
+        print(f"Register insert error for {email_clean}: {e}")
+        return JSONResponse(status_code=500, content={"detail": f"Registration failed: {str(e)}"})
     conn.close()
-    print(f"New user registered: id={user_id}, email={user.email.strip()}")
+    print(f"New user registered: id={user_id}, email={email_clean}")
     return {"status": "success", "user_id": user_id}
 @app.post("/api/complete-onboarding")
 async def complete_onboarding(data: OnboardingData):
