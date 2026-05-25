@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const API_BASE = 'http://38.180.137.122:8000';
+const API_BASE = '';
 
 const FEATURES = [
   'Real-time price alerts on all your assets',

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 
-const API_BASE = 'http://38.180.137.122:8000';
+const API_BASE = '';
 
 const SENSITIVITY_LEVELS = [
   { label: 'Major only', desc: '>5%', value: 5.0, color: '#ff3333' },

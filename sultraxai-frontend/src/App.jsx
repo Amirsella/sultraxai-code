@@ -7,7 +7,7 @@ const AdminPanel         = lazy(() => import('./components/AdminPanel'));
 const SubscriptionModal  = lazy(() => import('./components/SubscriptionModal'));
 import SupportBot from './components/SupportBot';
 import CommunityChat from './components/CommunityChat';
-const API_BASE = 'http://38.180.137.122:8000';
+const API_BASE = '';
 const MOCK_STOCKS = ["BTC/USD", "ETH/USD", "AAPL", "TSLA", "NVDA", "AMZN", "GOOGL", "MSFT", "META", "NFLX", "SOL/USD", "XRP/USD", "AMD", "PLTR", "COIN"];
 
 const isNative = typeof window !== 'undefined' &&
@@ -680,7 +680,7 @@ function SignUpForm({ isNative, onBack, onRegisterSuccess, setErrorMessage, erro
     const timer = setTimeout(async () => {
       setCheckingUsername(true);
       try {
-        const res = await fetch(`http://38.180.137.122:8000/api/check-username?username=${encodeURIComponent(username)}`);
+        const res = await fetch(`/api/check-username?username=${encodeURIComponent(username)}`);
         const data = await res.json();
         setUsernameAvailable(data.available);
         setUsernameMsg(data.available ? 'Username is available' : (data.error || 'Not available'));
@@ -717,7 +717,7 @@ function SignUpForm({ isNative, onBack, onRegisterSuccess, setErrorMessage, erro
     setIsLoading(true);
 
     try {
-      const res = await fetch('http://38.180.137.122:8000/api/register', {
+      const res = await fetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

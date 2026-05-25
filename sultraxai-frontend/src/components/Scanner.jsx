@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 
-const API_BASE = 'http://38.180.137.122:8000';
+const API_BASE = '';
 
 const THRESHOLDS = [
   { label: '>1%',  value: 1.0 },

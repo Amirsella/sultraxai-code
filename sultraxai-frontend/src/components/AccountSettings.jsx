@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const API_BASE = 'http://38.180.137.122:8000';
+const API_BASE = '';
 const SYS_FONT = '-apple-system, BlinkMacSystemFont, system-ui, "Inter", sans-serif';
 
 const inputStyle = {

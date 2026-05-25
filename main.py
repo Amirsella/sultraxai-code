@@ -44,7 +44,7 @@ PAYPAL_CLIENT_SECRET   = os.environ.get("PAYPAL_CLIENT_SECRET", "")
 PAYPAL_PLAN_ID         = os.environ.get("PAYPAL_PLAN_ID", "")
 PAYPAL_PLAN_ID_YEARLY  = os.environ.get("PAYPAL_PLAN_ID_YEARLY", "")
 PAYPAL_BASE            = "https://api-m.paypal.com"
-APP_URL   = "http://38.180.137.122:8000"
+APP_URL   = "https://sultraxai.com"
 ADMIN_KEY = os.environ.get("ADMIN_KEY", "sultrax_admin_key_2026")
 
 # Account lockout: 5 failed attempts → 15 minute lockout

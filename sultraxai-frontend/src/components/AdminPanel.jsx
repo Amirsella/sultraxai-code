@@ -30,7 +30,7 @@ const WorldMap = memo(({ countries }) => {
   );
 });
 
-const API_BASE = 'http://38.180.137.122:8000';
+const API_BASE = '';
 
 function fmt(iso) {
   if (!iso) return '—';

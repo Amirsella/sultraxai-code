@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
-const WS_BASE = 'ws://38.180.137.122:8000';
+const WS_BASE = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
 
 const ROOMS = [
   { id: 'crypto', label: 'Crypto', color: '#f7931a' },
@@ -74,7 +74,7 @@ function ChatTermsModal({ onAccept }) {
   );
 }
 
-const API_BASE_HTTP = 'http://38.180.137.122:8000';
+const API_BASE_HTTP = '';
 
 export default function CommunityChat({ userId, sessionToken }) {
   const [termsAccepted, setTermsAccepted] = useState(() => localStorage.getItem('chat_terms_v1') === 'accepted');
