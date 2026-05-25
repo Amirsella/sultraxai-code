@@ -611,6 +611,15 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
     return () => clearInterval(id);
   }, [selectedAssets]);
 
+  // Heartbeat — keeps the user counted as "online" in the admin dashboard
+  useEffect(() => {
+    if (!userId) return;
+    const ping = () => fetch(`${API_BASE}/api/heartbeat?user_id=${userId}`, { method: 'POST' }).catch(() => {});
+    ping();
+    const id = setInterval(ping, 60000);
+    return () => clearInterval(id);
+  }, [userId]);
+
   // Load historical average volumes for RVOL calculation
   useEffect(() => {
     if (!selectedAssets.length) return;

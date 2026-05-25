@@ -35,6 +35,7 @@ export default function AdminPanel({ onExit }) {
   const [chatRoom, setChatRoom] = useState('crypto');
   const [chatMessages, setChatMessages] = useState([]);
   const [chatLoading, setChatLoading] = useState(false);
+  const [onlineStats, setOnlineStats] = useState({ online_5m: 0, online_15m: 0 });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -99,9 +100,22 @@ export default function AdminPanel({ onExit }) {
     loadUsernameWords();
   };
 
+  const loadStats = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/stats?key=${ADMIN_KEY}`);
+      if (res.ok) setOnlineStats(await res.json());
+    } catch {}
+  }, []);
+
   useEffect(() => {
-    if (authed) { load(); loadWords(); loadUsernameWords(); loadChatMessages('crypto'); }
-  }, [authed, load, loadWords, loadUsernameWords, loadChatMessages]);
+    if (authed) { load(); loadWords(); loadUsernameWords(); loadChatMessages('crypto'); loadStats(); }
+  }, [authed, load, loadWords, loadUsernameWords, loadChatMessages, loadStats]);
+
+  useEffect(() => {
+    if (!authed) return;
+    const id = setInterval(loadStats, 30000);
+    return () => clearInterval(id);
+  }, [authed, loadStats]);
 
   useEffect(() => {
     if (authed) loadChatMessages(chatRoom);
@@ -225,7 +239,7 @@ export default function AdminPanel({ onExit }) {
       <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '2rem' }}>
 
         {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '2rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '1rem' }}>
           {[
             { label: 'Total Users', value: total },
             { label: 'With Onboarding', value: users.filter(u => u.experience).length },
@@ -236,6 +250,19 @@ export default function AdminPanel({ onExit }) {
               <div style={{ fontSize: '0.65rem', color: '#333', marginTop: '4px', letterSpacing: '0.06em', fontWeight: '700' }}>{s.label.toUpperCase()}</div>
             </div>
           ))}
+        </div>
+
+        {/* Online now */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', marginBottom: '2rem' }}>
+          <div style={{ background: '#080808', border: '1px solid #0d2b0d', borderRadius: '12px', padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', top: '12px', right: '14px', width: '7px', height: '7px', borderRadius: '50%', background: '#44cc44', boxShadow: '0 0 8px #44cc44' }} />
+            <div style={{ fontSize: '2rem', fontWeight: '900', color: '#44cc44', lineHeight: 1 }}>{onlineStats.online_5m}</div>
+            <div style={{ fontSize: '0.65rem', color: '#2a6b2a', marginTop: '4px', letterSpacing: '0.06em', fontWeight: '700' }}>ONLINE NOW · 5 MIN</div>
+          </div>
+          <div style={{ background: '#080808', border: '1px solid #111', borderRadius: '12px', padding: '18px 20px' }}>
+            <div style={{ fontSize: '2rem', fontWeight: '900', color: '#888', lineHeight: 1 }}>{onlineStats.online_15m}</div>
+            <div style={{ fontSize: '0.65rem', color: '#333', marginTop: '4px', letterSpacing: '0.06em', fontWeight: '700' }}>ACTIVE · 15 MIN</div>
+          </div>
         </div>
 
         {/* Toast */}

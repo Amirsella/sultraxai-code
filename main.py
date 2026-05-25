@@ -84,6 +84,9 @@ def send_verification_email(to_email: str, code: str) -> bool:
 dist_path = "/root/sultraxai/sultraxai-frontend/dist"
 app = FastAPI()
 
+# In-memory active sessions: {user_id: last_seen_timestamp}
+_active_sessions: dict[int, float] = {}
+
 # נתיב קבוע לבסיס הנתונים
 DB_PATH = "/root/sultraxai/sultraxai-frontend/users.db"
 
@@ -1388,6 +1391,28 @@ async def admin_delete_username_blocked_word(word: str, key: str = ""):
     global _custom_username_words_cache_ts
     _custom_username_words_cache_ts = 0.0
     return {"status": "ok"}
+
+# ─── HEARTBEAT / ACTIVE USERS ─────────────────────────────────────────────────
+
+@app.post("/api/heartbeat")
+async def heartbeat(user_id: int):
+    import time
+    _active_sessions[user_id] = time.time()
+    # Prune stale entries older than 10 minutes to keep the dict small
+    cutoff = time.time() - 600
+    stale = [uid for uid, ts in _active_sessions.items() if ts < cutoff]
+    for uid in stale:
+        del _active_sessions[uid]
+    return {"status": "ok"}
+
+@app.get("/api/admin/stats")
+async def admin_stats(key: str = ""):
+    import time
+    _admin_auth(key)
+    now = time.time()
+    online_5m  = sum(1 for ts in _active_sessions.values() if now - ts < 300)
+    online_15m = sum(1 for ts in _active_sessions.values() if now - ts < 900)
+    return {"online_5m": online_5m, "online_15m": online_15m}
 
 # ─── COMMUNITY CHAT ───────────────────────────────────────────────────────────
 
