@@ -168,7 +168,7 @@ export default function TheZone({ selectedAssets, onBack, isNative }) {
             <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: loading ? '#ff9900' : error ? '#ff3333' : '#44cc44', boxShadow: `0 0 6px ${loading ? '#ff9900' : error ? '#ff3333' : '#44cc44'}`, animation: loading ? 'spin 1s linear infinite' : 'none' }} />
             {lastUpdate && <span style={{ fontSize: '0.58rem', color: '#252525' }}>Updated {lastUpdate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>}
           </div>
-          <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid #1e1e1e', color: '#555', padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: '600' }}>← BACK</button>
+          {isNative && <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid #1e1e1e', color: '#555', padding: '6px 14px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: '600' }}>← BACK</button>}
         </div>
 
         {/* Asset selector */}
