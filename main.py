@@ -282,8 +282,22 @@ def _get_custom_username_blocked_words() -> set:
         _custom_username_words_cache_ts = now
     return _custom_username_words_cache
 
+def _is_english_only(text: str) -> bool:
+    """Allow ASCII + emojis. Block Hebrew, Arabic, Cyrillic, CJK, etc."""
+    for ch in text:
+        cp = ord(ch)
+        if cp <= 127:
+            continue  # standard ASCII — always OK
+        if 0x1F300 <= cp <= 0x1FAFF or 0x2600 <= cp <= 0x27BF:
+            continue  # emojis — OK
+        if ch.isalpha():
+            return False  # non-ASCII letter = non-English script
+    return True
+
 def _moderate_chat(user_id: int, text: str):
     """Returns error string or None if message is allowed."""
+    if not _is_english_only(text):
+        return "English only — please write your message in English"
     if _LINK_RE.search(text):
         return "Links are not allowed in the chat"
     normalized = _leet_normalize(text)
