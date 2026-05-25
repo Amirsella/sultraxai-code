@@ -1270,6 +1270,30 @@ async def admin_add_blocked_word(data: dict, key: str = ""):
     _custom_words_cache_ts = 0.0
     return {"status": "ok", "word": word}
 
+@app.get("/api/admin/chat-messages")
+async def admin_get_chat_messages(key: str = "", room: str = "crypto", limit: int = 50):
+    _admin_auth(key)
+    room = room if room in ("crypto", "stocks") else "crypto"
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, user_id, first_name, message, created_at FROM chat_messages WHERE room=? ORDER BY id DESC LIMIT ?",
+        (room, min(limit, 200))
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return {"messages": [{"id": r[0], "user_id": r[1], "username": r[2], "message": r[3], "created_at": r[4]} for r in rows]}
+
+@app.delete("/api/admin/chat-messages/{message_id}")
+async def admin_delete_chat_message(message_id: int, key: str = ""):
+    _admin_auth(key)
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM chat_messages WHERE id = ?", (message_id,))
+    conn.commit()
+    conn.close()
+    return {"status": "ok"}
+
 @app.delete("/api/admin/blocked-words/{word}")
 async def admin_delete_blocked_word(word: str, key: str = ""):
     _admin_auth(key)
@@ -1307,7 +1331,7 @@ class _ChatManager:
 
 chat_manager = _ChatManager()
 
-def _chat_history(room: str, limit=80):
+def _chat_history(room: str, limit=20):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(

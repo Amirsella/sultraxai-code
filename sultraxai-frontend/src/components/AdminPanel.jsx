@@ -28,6 +28,10 @@ export default function AdminPanel({ onExit }) {
   const [newWord, setNewWord] = useState('');
   const [wordMsg, setWordMsg] = useState('');
 
+  const [chatRoom, setChatRoom] = useState('crypto');
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatLoading, setChatLoading] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -50,9 +54,28 @@ export default function AdminPanel({ onExit }) {
     } catch {}
   }, []);
 
+  const loadChatMessages = useCallback(async (room) => {
+    setChatLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/chat-messages?key=${ADMIN_KEY}&room=${room}&limit=50`);
+      const data = await res.json();
+      setChatMessages(data.messages || []);
+    } catch {}
+    setChatLoading(false);
+  }, []);
+
+  const deleteChatMessage = async (id) => {
+    await fetch(`${API_BASE}/api/admin/chat-messages/${id}?key=${ADMIN_KEY}`, { method: 'DELETE' });
+    setChatMessages(prev => prev.filter(m => m.id !== id));
+  };
+
   useEffect(() => {
-    if (authed) { load(); loadWords(); }
-  }, [authed, load, loadWords]);
+    if (authed) { load(); loadWords(); loadChatMessages('crypto'); }
+  }, [authed, load, loadWords, loadChatMessages]);
+
+  useEffect(() => {
+    if (authed) loadChatMessages(chatRoom);
+  }, [chatRoom, authed, loadChatMessages]);
 
   const addWord = async () => {
     const w = newWord.trim().toLowerCase();
@@ -310,6 +333,48 @@ export default function AdminPanel({ onExit }) {
             ))}
           </div>
         )}
+
+        {/* Chat Messages */}
+        <div style={{ marginTop: '2.5rem', background: '#080808', border: '1px solid #111', borderRadius: '14px', padding: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+            <div>
+              <div style={{ fontSize: '0.65rem', fontWeight: '800', letterSpacing: '0.1em', color: '#fff', marginBottom: '3px' }}>CHAT MESSAGES</div>
+              <div style={{ fontSize: '0.75rem', color: '#444' }}>Last 50 messages per room</div>
+            </div>
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              {['crypto', 'stocks'].map(r => (
+                <button key={r} onClick={() => setChatRoom(r)}
+                  style={{ padding: '5px 14px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: '800', fontFamily: 'inherit', letterSpacing: '0.06em',
+                    background: chatRoom === r ? (r === 'crypto' ? 'rgba(247,147,26,0.15)' : 'rgba(68,204,68,0.15)') : '#111',
+                    color: chatRoom === r ? (r === 'crypto' ? '#f7931a' : '#44cc44') : '#444' }}>
+                  {r.toUpperCase()}
+                </button>
+              ))}
+              <button onClick={() => loadChatMessages(chatRoom)} style={{ background: 'none', border: '1px solid #1a1a1a', color: '#444', padding: '5px 10px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.7rem', fontFamily: 'inherit' }}>↻</button>
+            </div>
+          </div>
+
+          {chatLoading ? (
+            <div style={{ textAlign: 'center', padding: '2rem', color: '#2a2a2a', fontSize: '0.8rem' }}>Loading…</div>
+          ) : chatMessages.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '2rem', color: '#2a2a2a', fontSize: '0.8rem' }}>No messages in #{chatRoom}</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              {chatMessages.map(m => (
+                <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', borderRadius: '8px', background: '#0a0a0a', border: '1px solid #111' }}>
+                  <span style={{ fontSize: '0.65rem', color: '#444', fontWeight: '700', minWidth: '28px' }}>#{m.id}</span>
+                  <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#ccc', minWidth: '90px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.username}</span>
+                  <span style={{ flex: 1, fontSize: '0.78rem', color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.message}</span>
+                  <span style={{ fontSize: '0.6rem', color: '#2a2a2a', whiteSpace: 'nowrap' }}>{fmt(m.created_at)}</span>
+                  <button onClick={() => deleteChatMessage(m.id)}
+                    style={{ background: 'rgba(255,51,51,0.07)', border: '1px solid rgba(255,51,51,0.15)', color: '#ff4444', padding: '3px 8px', borderRadius: '5px', cursor: 'pointer', fontSize: '0.65rem', fontWeight: '700', fontFamily: 'inherit', flexShrink: 0 }}>
+                    Delete
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Blocked Words */}
         <div style={{ marginTop: '2.5rem', background: '#080808', border: '1px solid #111', borderRadius: '14px', padding: '1.5rem' }}>
