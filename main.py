@@ -610,11 +610,23 @@ def _finnhub_to_sym(fs: str) -> str:
     return fs
 
 async def _pf_init_prev_closes(symbols: list):
-    """Fetch prev_close for symbols via Finnhub REST so the dict is seeded correctly."""
+    """Seed _live_prices on startup.
+    Stocks: one yfinance batch call (avoids Finnhub rate limits with 25+ symbols).
+    Crypto: Finnhub REST per symbol (few symbols, real-time data)."""
     loop = asyncio.get_event_loop()
-    async def _one(sym):
-        if sym in _live_prices:
-            return
+
+    stocks  = [s for s in symbols if '-USD' not in s and '/' not in s and s not in _live_prices]
+    cryptos = [s for s in symbols if ('-USD' in s or '/' in s) and s not in _live_prices]
+
+    # Batch seed stocks in one yfinance request
+    if stocks:
+        batch = await loop.run_in_executor(None, _batch_seed_stocks, stocks)
+        for sym, data in batch.items():
+            _live_prices[sym] = data
+        print(f"[PriceFeed] Seeded {len(batch)}/{len(stocks)} stocks via yfinance batch")
+
+    # Crypto: individual Finnhub REST (real-time, typically ≤12 symbols)
+    async def _one_crypto(sym):
         try:
             res = await loop.run_in_executor(None, lambda: requests.get(
                 "https://finnhub.io/api/v1/quote",
@@ -626,15 +638,11 @@ async def _pf_init_prev_closes(symbols: list):
             prev  = d.get("pc") or 0
             if price > 0:
                 cp = ((price - prev) / prev * 100) if prev else 0
-                _live_prices[sym] = {
-                    "price": round(price, 4),
-                    "change_pct": round(cp, 4),
-                    "prev_close": round(prev, 4),
-                    "ts": time.time(),
-                }
+                _live_prices[sym] = {"price": round(price, 4), "change_pct": round(cp, 4), "prev_close": round(prev, 4), "ts": time.time()}
         except Exception as e:
             print(f"[PriceFeed] REST init {sym}: {e}")
-    await asyncio.gather(*[_one(s) for s in symbols])
+    if cryptos:
+        await asyncio.gather(*[_one_crypto(s) for s in cryptos])
 
 _PF_MAX_SYMBOLS = 50  # Finnhub free plan: 50 WebSocket subscriptions per connection
 
@@ -764,6 +772,66 @@ def _fetch_one(sym):
     _cache_set(f'price:{sym}', result)
     return sym, result
 
+def _batch_seed_stocks(symbols: list) -> dict:
+    """One yfinance batch request for many stock symbols — avoids N individual calls.
+    Returns {sym: {price, change_pct, prev_close, ts}} using last available daily close."""
+    if not symbols:
+        return {}
+    result = {}
+    try:
+        raw = yf.download(
+            ' '.join(symbols),
+            period='5d', interval='1d',
+            auto_adjust=True, progress=False, threads=True,
+        )
+        if raw.empty or 'Close' not in raw:
+            return result
+        closes = raw['Close']
+        now_ts = time.time()
+        if len(symbols) == 1:
+            series = closes.dropna()
+            if len(series) < 1:
+                return result
+            sym = symbols[0]
+            curr = float(series.iloc[-1])
+            prev = float(series.iloc[-2]) if len(series) >= 2 else curr
+            if curr > 0:
+                cp = ((curr - prev) / prev * 100) if prev else 0
+                result[sym] = {"price": round(curr, 4), "change_pct": round(cp, 4), "prev_close": round(prev, 4), "ts": now_ts}
+        else:
+            sym_cols = closes.columns.tolist() if hasattr(closes, 'columns') else []
+            for sym in symbols:
+                try:
+                    if sym not in sym_cols:
+                        continue
+                    series = closes[sym].dropna()
+                    if len(series) < 1:
+                        continue
+                    curr = float(series.iloc[-1])
+                    prev = float(series.iloc[-2]) if len(series) >= 2 else curr
+                    if curr <= 0:
+                        continue
+                    cp = ((curr - prev) / prev * 100) if prev else 0
+                    result[sym] = {"price": round(curr, 4), "change_pct": round(cp, 4), "prev_close": round(prev, 4), "ts": now_ts}
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f"[BatchSeed] error: {e}")
+    return result
+
+def _refresh_one_price(sym: str) -> tuple:
+    """Near-real-time price for a single symbol via yf.fast_info."""
+    try:
+        fi = yf.Ticker(sym).fast_info
+        price = float(fi.last_price)
+        prev  = float(fi.previous_close or price)
+        if price > 0:
+            cp = ((price - prev) / prev * 100) if prev else 0
+            return sym, {"price": round(price, 4), "change_pct": round(cp, 4), "prev_close": round(prev, 4), "ts": time.time()}
+    except Exception:
+        pass
+    return sym, None
+
 @app.get("/api/prices")
 async def get_prices(symbols: str = ""):
     if not symbols:
@@ -788,16 +856,27 @@ async def get_prices(symbols: str = ""):
             missing.append(sym)
 
     if missing:
-        # Subscribe new symbols to the backend WS feed for future requests
         for sym in missing:
             asyncio.create_task(_pf_subscribe_sym(sym))
-        # Fall back to yfinance for this request
-        with ThreadPoolExecutor(max_workers=min(len(missing), 5)) as ex:
-            fallback = ex.map(_fetch_one, missing)
-        for sym, data in fallback:
-            if data:
-                result[sym] = data
-                _live_prices[sym] = {**data, "ts": time.time()}
+
+        stocks_missing = [s for s in missing if '-USD' not in s and '/' not in s]
+        crypto_missing = [s for s in missing if '-USD' in s or '/' in s]
+
+        # Stocks: one batch yfinance call — much faster than N individual calls
+        if stocks_missing:
+            batch = _batch_seed_stocks(stocks_missing)
+            for sym, data in batch.items():
+                result[sym] = {k: v for k, v in data.items() if k != "ts"}
+                _live_prices[sym] = data
+
+        # Crypto: individual fallback (usually ≤5 crypto symbols missing)
+        if crypto_missing:
+            with ThreadPoolExecutor(max_workers=min(len(crypto_missing), 5)) as ex:
+                fallback = list(ex.map(_fetch_one, crypto_missing))
+            for sym, data in fallback:
+                if data:
+                    result[sym] = data
+                    _live_prices[sym] = {**data, "ts": time.time()}
 
     return {"prices": result}
 
@@ -1285,6 +1364,38 @@ async def _scanner_background_loop():
             print(f"Scanner background error: {e}")
         await asyncio.sleep(60)
 
+async def _background_price_refresh():
+    """Refresh _live_prices for all user stocks every 60s via yf.fast_info (parallel).
+    Prevents prices from going stale when Finnhub WS isn't sending trades for a symbol."""
+    while True:
+        await asyncio.sleep(60)
+        try:
+            conn = _get_db()
+            rows = conn.execute("SELECT DISTINCT symbol FROM user_assets").fetchall()
+            stocks = [r[0] for r in rows if '-USD' not in r[0] and '/' not in r[0]]
+            if not stocks:
+                continue
+            loop = asyncio.get_event_loop()
+            results = await loop.run_in_executor(
+                None,
+                lambda: list(ThreadPoolExecutor(max_workers=8).map(_refresh_one_price, stocks))
+            )
+            now_ts = time.time()
+            updated = 0
+            for sym, data in results:
+                if not data:
+                    continue
+                existing = _live_prices.get(sym)
+                # Don't overwrite data that just came from Finnhub WS (<30s old)
+                if existing and existing.get("ts", 0) > now_ts - 30:
+                    continue
+                _live_prices[sym] = data
+                updated += 1
+            if updated:
+                print(f"[PriceRefresh] Updated {updated}/{len(stocks)} stock prices via yfinance")
+        except Exception as e:
+            print(f"[PriceRefresh] error: {e}")
+
 async def _zone_background_loop():
     while True:
         try:
@@ -1339,6 +1450,7 @@ async def start_scanner_loop():
     asyncio.create_task(_scanner_background_loop())
     asyncio.create_task(_zone_background_loop())
     asyncio.create_task(_finnhub_price_feed())
+    asyncio.create_task(_background_price_refresh())
     asyncio.create_task(_warmup_cache())
 
 @app.get("/api/scanner")
