@@ -34,7 +34,48 @@ function renderText(text, roomColor, myUsername) {
   });
 }
 
+const CHAT_RULES = [
+  { icon: '🚫', text: 'No profanity, insults, or hate speech' },
+  { icon: '🔞', text: 'No sexual, explicit, or offensive content' },
+  { icon: '📢', text: 'No spam, flooding, or self-promotion' },
+  { icon: '💰', text: 'No pump-and-dump or financial manipulation' },
+  { icon: '🤝', text: 'Treat every member with respect' },
+  { icon: '⚖️', text: 'Violations may result in a permanent ban' },
+];
+
+function ChatTermsModal({ onAccept }) {
+  return (
+    <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)', borderRadius: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', zIndex: 10 }}>
+      <div style={{ width: '100%', maxWidth: '260px', textAlign: 'center' }}>
+        <div style={{ fontSize: '1.6rem', marginBottom: '8px' }}>💬</div>
+        <div style={{ fontSize: '0.9rem', fontWeight: '800', color: '#fff', letterSpacing: '0.05em', marginBottom: '4px' }}>Community Rules</div>
+        <div style={{ fontSize: '0.68rem', color: '#555', marginBottom: '16px' }}>Read and accept before joining the chat</div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '20px', textAlign: 'left' }}>
+          {CHAT_RULES.map((rule, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', background: '#0d0d0d', border: '1px solid #1a1a1a', borderRadius: '10px', padding: '9px 12px' }}>
+              <span style={{ fontSize: '0.85rem', flexShrink: 0, marginTop: '1px' }}>{rule.icon}</span>
+              <span style={{ fontSize: '0.72rem', color: '#bbb', lineHeight: 1.45 }}>{rule.text}</span>
+            </div>
+          ))}
+        </div>
+
+        <button onClick={onAccept}
+          style={{ width: '100%', padding: '11px', background: '#ff3333', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '800', fontSize: '0.8rem', letterSpacing: '0.06em', cursor: 'pointer', transition: 'opacity 0.15s' }}
+          onMouseEnter={e => e.currentTarget.style.opacity = '0.85'}
+          onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
+          I AGREE — ENTER CHAT
+        </button>
+        <div style={{ fontSize: '0.62rem', color: '#333', marginTop: '10px', lineHeight: 1.5 }}>
+          By clicking, you agree to follow these rules.<br />Violations may lead to removal from the community.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CommunityChat({ userId }) {
+  const [termsAccepted, setTermsAccepted] = useState(() => localStorage.getItem('chat_terms_v1') === 'accepted');
   const [open, setOpen]           = useState(false);
   const [room, setRoom]           = useState('crypto');
   const [dropdown, setDropdown]   = useState(false);
@@ -43,7 +84,7 @@ export default function CommunityChat({ userId }) {
   const [connected, setConnected] = useState(false);
   const [unread, setUnread]       = useState(0);
   const [chatError, setChatError] = useState('');
-  const [mentionQuery, setMentionQuery] = useState(null); // null = closed, '' = show all
+  const [mentionQuery, setMentionQuery] = useState(null);
   const [mentionIndex, setMentionIndex] = useState(0);
 
   const wsRef        = useRef(null);
@@ -168,6 +209,16 @@ export default function CommunityChat({ userId }) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   };
 
+  const handleAcceptTerms = () => {
+    localStorage.setItem('chat_terms_v1', 'accepted');
+    setTermsAccepted(true);
+  };
+
+  const handleToggle = () => {
+    if (!termsAccepted) { setOpen(true); return; }
+    setOpen(o => !o);
+  };
+
   const activeRoom = ROOMS.find(r => r.id === room);
   const currentMessages = messages[room] || [];
 
@@ -176,6 +227,7 @@ export default function CommunityChat({ userId }) {
 
       {open && (
         <div style={{ position: 'absolute', bottom: '56px', left: 0, width: '300px', height: '440px', background: '#080808', border: '1px solid #1a1a1a', borderRadius: '16px', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}>
+          {!termsAccepted && <ChatTermsModal onAccept={handleAcceptTerms} />}
 
           {/* Header */}
           <div style={{ padding: '10px 14px', borderBottom: '1px solid #111', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -290,7 +342,7 @@ export default function CommunityChat({ userId }) {
       )}
 
       {/* Toggle button */}
-      <button onClick={() => setOpen(o => !o)}
+      <button onClick={handleToggle}
         style={{ width: '44px', height: '44px', borderRadius: '50%', background: open ? '#ff3333' : '#0d0d0d', border: `1px solid ${open ? '#ff333360' : '#1e1e1e'}`, color: open ? '#fff' : '#555', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: open ? '0 4px 20px rgba(255,51,51,0.3)' : '0 2px 12px rgba(0,0,0,0.5)', transition: 'all 0.2s', position: 'relative' }}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
