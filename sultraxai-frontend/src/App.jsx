@@ -149,6 +149,8 @@ export default function App() {
 
   const handleSignOut = () => {
     clearTimeout(inactivityRef.current);
+    const id = localStorage.getItem('userId');
+    if (id) fetch(`${API_BASE}/api/logout?user_id=${id}`, { method: 'POST' }).catch(() => {});
     setUserId(null);
     setSessionToken('');
     setFirstName('');
@@ -330,7 +332,7 @@ export default function App() {
         )}
 
         {currentView === 'settings' && (
-          <AccountSettings userId={userId} onBack={() => setCurrentView('main_app')} onSignOut={handleSignOut} isNative={isNative} onProfileUpdate={setFirstName} />
+          <AccountSettings userId={userId} sessionToken={sessionToken} onBack={() => setCurrentView('main_app')} onSignOut={handleSignOut} isNative={isNative} onProfileUpdate={setFirstName} />
         )}
 
         {currentView === 'subscription' && (

@@ -558,9 +558,11 @@ async def get_user_assets(user_id: int):
 class UpdateAssets(BaseModel):
     user_id: int
     assets: list
+    session_token: str = ""
 
 @app.post("/api/update-assets")
 async def update_assets(data: UpdateAssets):
+    _validate_session(data.user_id, data.session_token)
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:
@@ -608,6 +610,7 @@ async def get_user(user_id: int):
 @app.post("/api/update-profile")
 async def update_profile(data: dict):
     user_id = data.get("user_id")
+    _validate_session(user_id, data.get("session_token", ""))
     first_name = data.get("first_name", "").strip()
     full_name = data.get("full_name", "").strip()
     phone = data.get("phone", "").strip()
@@ -643,6 +646,7 @@ async def update_profile(data: dict):
 @app.post("/api/change-password")
 async def change_password_endpoint(data: dict):
     user_id = data.get("user_id")
+    _validate_session(user_id, data.get("session_token", ""))
     current_password = data.get("current_password", "")
     new_password = data.get("new_password", "")
     conn = sqlite3.connect(DB_PATH)
@@ -963,6 +967,17 @@ async def contact(msg: ContactMessage):
 def _admin_auth(key: str):
     if key != ADMIN_KEY:
         raise HTTPException(status_code=403, detail="Forbidden")
+
+def _validate_session(user_id: int, session_token: str):
+    """Raise 401 if the provided token doesn't match the active session in DB.
+    If no token is provided we skip validation (backward compat for old clients)."""
+    if not session_token:
+        return
+    conn = sqlite3.connect(DB_PATH)
+    row = conn.execute("SELECT session_token FROM users WHERE id=?", (user_id,)).fetchone()
+    conn.close()
+    if row and row[0] and row[0] != session_token:
+        raise HTTPException(status_code=401, detail="session_replaced")
 
 @app.get("/api/admin/users")
 async def admin_list_users(key: str = ""):
@@ -1400,23 +1415,34 @@ async def admin_delete_username_blocked_word(word: str, key: str = ""):
 
 # ─── HEARTBEAT / ACTIVE USERS ─────────────────────────────────────────────────
 
+class HeartbeatData(BaseModel):
+    user_id: int
+    session_token: str = ""
+
 @app.post("/api/heartbeat")
-async def heartbeat(user_id: int, session_token: str = ""):
+async def heartbeat(data: HeartbeatData):
     import time
 
-    # Validate session token — if another device logged in, their token replaced this one
-    if session_token:
+    if data.session_token:
         conn = sqlite3.connect(DB_PATH)
-        row = conn.execute("SELECT session_token FROM users WHERE id=?", (user_id,)).fetchone()
+        row = conn.execute("SELECT session_token FROM users WHERE id=?", (data.user_id,)).fetchone()
         conn.close()
-        if row and row[0] and row[0] != session_token:
+        if row and row[0] and row[0] != data.session_token:
             return JSONResponse(status_code=401, content={"detail": "session_replaced"})
 
-    _active_sessions[user_id] = time.time()
+    _active_sessions[data.user_id] = time.time()
     cutoff = time.time() - 600
     stale = [uid for uid, ts in _active_sessions.items() if ts < cutoff]
     for uid in stale:
         del _active_sessions[uid]
+    return {"status": "ok"}
+
+@app.post("/api/logout")
+async def logout(user_id: int):
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("UPDATE users SET session_token=NULL WHERE id=?", (user_id,))
+    conn.commit()
+    conn.close()
     return {"status": "ok"}
 
 @app.get("/api/admin/stats")

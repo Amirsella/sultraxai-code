@@ -18,7 +18,7 @@ const Label = ({ children }) => (
   <div style={{ fontSize: '0.62rem', color: '#444', fontWeight: '700', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '7px' }}>{children}</div>
 );
 
-export default function AccountSettings({ userId, onBack, onSignOut, isNative, onProfileUpdate }) {
+export default function AccountSettings({ userId, sessionToken, onBack, onSignOut, isNative, onProfileUpdate }) {
   const [tab, setTab] = useState('profile');
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -116,7 +116,7 @@ export default function AccountSettings({ userId, onBack, onSignOut, isNative, o
     try {
       const res = await fetch(`${API_BASE}/api/update-profile`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: parseInt(userId), first_name: firstName, full_name: fullName, phone, username, experience, frequency })
+        body: JSON.stringify({ user_id: parseInt(userId), first_name: firstName, full_name: fullName, phone, username, experience, frequency, session_token: sessionToken || '' })
       });
       const data = await res.json();
       if (res.ok) {
@@ -140,7 +140,7 @@ export default function AccountSettings({ userId, onBack, onSignOut, isNative, o
     try {
       const res = await fetch(`${API_BASE}/api/change-password`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: parseInt(userId), current_password: currentPwd, new_password: newPwd })
+        body: JSON.stringify({ user_id: parseInt(userId), current_password: currentPwd, new_password: newPwd, session_token: sessionToken || '' })
       });
       const data = await res.json();
       if (res.ok) {

@@ -311,7 +311,7 @@ function TopMoversTicker({ onMoverClick }) {
   );
 }
 
-function EditPanel({ userId, selectedAssets, thresholds, onSave, onClose }) {
+function EditPanel({ userId, sessionToken, selectedAssets, thresholds, onSave, onClose }) {
   const [editAssets, setEditAssets] = useState([...selectedAssets]);
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -345,7 +345,7 @@ function EditPanel({ userId, selectedAssets, thresholds, onSave, onClose }) {
     try {
       await fetch(`${API_BASE}/api/update-assets`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: parseInt(userId), assets }),
+        body: JSON.stringify({ user_id: parseInt(userId), assets, session_token: sessionToken || '' }),
       });
       onSave(editAssets);
     } catch (e) { console.error(e); }
@@ -617,10 +617,11 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
     if (!userId) return;
     const ping = async () => {
       try {
-        const res = await fetch(
-          `${API_BASE}/api/heartbeat?user_id=${userId}&session_token=${encodeURIComponent(sessionToken || '')}`,
-          { method: 'POST' }
-        );
+        const res = await fetch(`${API_BASE}/api/heartbeat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: parseInt(userId), session_token: sessionToken || '' }),
+        });
         if (res.status === 401) {
           onSessionReplaced?.();
         }
@@ -984,7 +985,7 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
     try {
       const res = await fetch(`${API_BASE}/api/update-assets`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: parseInt(userId), assets }),
+        body: JSON.stringify({ user_id: parseInt(userId), assets, session_token: sessionToken || '' }),
       });
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       setThresholds(newThresholds);
@@ -1023,7 +1024,7 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
   const sharedModals = (
     <>
       {editing && (
-        <EditPanel userId={userId} selectedAssets={selectedAssets} thresholds={thresholds}
+        <EditPanel userId={userId} sessionToken={sessionToken} selectedAssets={selectedAssets} thresholds={thresholds}
           onSave={(newAssets) => { onAssetsUpdate(newAssets); setEditing(false); }}
           onClose={() => setEditing(false)} />
       )}
