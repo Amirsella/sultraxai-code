@@ -1028,8 +1028,8 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
           triggerFlash(sym, price > (prev?.price ?? price) ? 'up' : 'down');
           pricesRef.current = { ...pricesRef.current, ...update };
           setPrices(p => ({ ...p, ...update }));
-          // Feed live chart if open for this symbol
           const now = Date.now();
+          // Feed live chart if open for this symbol
           if (chartSymRef.current === sym && chartCallbackRef.current) {
             chartCallbackRef.current(price, now);
           }
@@ -1037,6 +1037,60 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
             lastUpdateTsRef.current = now;
             setLastUpdate(new Date(now));
           }
+          // ── ALERT LOGIC (mirrors backend-WS handler) ──
+          const today = new Date(now).toISOString().slice(0, 10);
+          const priceThreshold = thresholdsRef.current[sym] ?? 2.0;
+          const tracking = volumeTrackingRef.current[sym];
+          if (tracking) {
+            tracking.priceHistory.push({ price, time: now });
+            const cut10m = now - 600000;
+            while (tracking.priceHistory.length && tracking.priceHistory[0].time < cut10m)
+              tracking.priceHistory.shift();
+            if (tracking.priceHistory.length > 600)
+              tracking.priceHistory.splice(0, tracking.priceHistory.length - 600);
+          }
+          const binanceAlerts = [];
+          // Layer 1: daily move
+          if (!sessionBaselineRef.current[sym] || sessionBaselineRef.current[sym].date !== today)
+            sessionBaselineRef.current[sym] = { price, date: today };
+          const sessionBase = sessionBaselineRef.current[sym].price;
+          const dailyMove = ((price - sessionBase) / sessionBase) * 100;
+          const dailyLevel = Math.floor(Math.abs(dailyMove) / priceThreshold);
+          if (dailyLevel >= 1) {
+            if (!dailyLevelsFiredRef.current[sym] || dailyLevelsFiredRef.current[sym].date !== today)
+              dailyLevelsFiredRef.current[sym] = { date: today, up: new Set(), down: new Set() };
+            const fired = dailyLevelsFiredRef.current[sym];
+            const dir = dailyMove >= 0 ? 'up' : 'down';
+            if (!fired[dir].has(dailyLevel)) {
+              fired[dir].add(dailyLevel);
+              binanceAlerts.push({ type: 'price', subtype: 'daily', id: `price-${sym}-${now}`, symbol: sym,
+                pct: parseFloat(dailyMove.toFixed(2)), price, level: dailyLevel, threshold: priceThreshold,
+                time: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) });
+            }
+          }
+          // Layer 2: momentum spike
+          if (tracking) {
+            const spikeThreshold = Math.max(priceThreshold / 4, 0.25);
+            const hist = tracking.priceHistory;
+            let ref5m = null;
+            for (let i = hist.length - 1; i >= 0; i--) {
+              const age = now - hist[i].time;
+              if (age < 270000) continue;
+              if (age <= 360000) { ref5m = hist[i]; break; }
+              break;
+            }
+            if (ref5m) {
+              const momentum5m = ((price - ref5m.price) / ref5m.price) * 100;
+              const spikeDir = momentum5m >= 0 ? 'up' : 'down';
+              if (Math.abs(momentum5m) >= spikeThreshold && (now - tracking.momentumCooldown[spikeDir]) > 300000) {
+                tracking.momentumCooldown[spikeDir] = now;
+                binanceAlerts.push({ type: 'price', subtype: 'spike', id: `spike-${sym}-${now}`, symbol: sym,
+                  pct: parseFloat(momentum5m.toFixed(2)), price, threshold: spikeThreshold,
+                  time: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) });
+              }
+            }
+          }
+          if (binanceAlerts.length) setAlerts(prev => [...binanceAlerts, ...prev].slice(0, 100));
         } catch {}
       };
       binanceWs.onerror = () => {};
