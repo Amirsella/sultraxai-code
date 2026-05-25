@@ -446,8 +446,8 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
   const reconnectTimerRef = useRef(null);
   const reconnectCountRef = useRef(0);
   const flashTimersRef = useRef({});
-  const baselinePricesRef = useRef({});
-  const lastAlertTimeRef = useRef({});
+  const sessionBaselineRef = useRef({});   // first price of the trading day per symbol
+  const dailyLevelsFiredRef = useRef({});  // which threshold multiples fired today per symbol
   const watchlistRef = useRef(selectedAssets);
   const thresholdsRef = useRef(thresholds);
   const pricesRef = useRef(prices);
@@ -576,9 +576,12 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
           vwapNum: 0, vwapDen: 0, vwapDate: new Date().toISOString().slice(0, 10),
           flowWindow: [],
           lastPrice: null,
+          lastDir: null,
           pendingConfirmation: null,
           lastSignalTime: 0,
           trades5m: [],
+          priceHistory: [],            // [{price, time}] rolling 10-min buffer
+          momentumCooldown: { up: 0, down: 0 }, // last spike alert time per direction
         };
       }
     });
@@ -686,6 +689,12 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
           const avgVol5m = (avgVol / (sym.endsWith('-USD') ? 1440 : 390)) * 5;
           const cur5m = tracking.trades5m.reduce((s, t) => s + t.vol, 0);
           rvolUpdates[sym] = parseFloat((avgVol5m > 0 ? cur5m / avgVol5m : 0).toFixed(2));
+        }
+
+        // Price history buffer for momentum (10-min rolling window, trimmed lazily)
+        tracking.priceHistory.push({ price, time: now });
+        if (tracking.priceHistory.length > 1200) {
+          tracking.priceHistory = tracking.priceHistory.filter(p => now - p.time < 600000);
         }
 
         // Trade direction — equal price carries forward last direction (no default bias)
@@ -797,18 +806,66 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
         }
 
         const priceThreshold = thresholdsRef.current[sym] ?? 2.0;
-        const baseline = baselinePricesRef.current[sym] ?? newPrice;
-        const moveFromBaseline = baseline ? ((newPrice - baseline) / baseline) * 100 : 0;
-        const lastAlertTime = lastAlertTimeRef.current[sym] ?? 0;
-        if (Math.abs(moveFromBaseline) >= priceThreshold && (now - lastAlertTime) > 30000) {
-          baselinePricesRef.current[sym] = newPrice;
-          lastAlertTimeRef.current[sym] = now;
-          newAlerts.push({
-            type: 'price', id: `price-${sym}-${now}`,
-            symbol: sym, pct: moveFromBaseline, price: newPrice,
-            time: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-            threshold: priceThreshold,
-          });
+        const today = new Date().toISOString().slice(0, 10);
+
+        // ── LAYER 1: DAILY MOVE ALERT ──
+        // Measures from session open (first price of the day). Fires once per threshold
+        // multiple per direction — e.g. at 2%, 4%, 6% if threshold=2%. Resets each day.
+        if (!sessionBaselineRef.current[sym] || sessionBaselineRef.current[sym].date !== today) {
+          sessionBaselineRef.current[sym] = { price: newPrice, date: today };
+        }
+        const sessionBase = sessionBaselineRef.current[sym].price;
+        const dailyMove = ((newPrice - sessionBase) / sessionBase) * 100;
+        const dailyLevel = Math.floor(Math.abs(dailyMove) / priceThreshold);
+
+        if (dailyLevel >= 1) {
+          if (!dailyLevelsFiredRef.current[sym] || dailyLevelsFiredRef.current[sym].date !== today) {
+            dailyLevelsFiredRef.current[sym] = { date: today, up: new Set(), down: new Set() };
+          }
+          const firedLevels = dailyLevelsFiredRef.current[sym];
+          const dailyDir = dailyMove >= 0 ? 'up' : 'down';
+
+          if (!firedLevels[dailyDir].has(dailyLevel)) {
+            firedLevels[dailyDir].add(dailyLevel);
+            newAlerts.push({
+              type: 'price', subtype: 'daily',
+              id: `price-${sym}-${now}`,
+              symbol: sym,
+              pct: parseFloat(dailyMove.toFixed(2)),
+              price: newPrice,
+              level: dailyLevel,
+              threshold: priceThreshold,
+              time: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            });
+          }
+        }
+
+        // ── LAYER 2: MOMENTUM SPIKE ALERT ──
+        // Detects short-term acceleration: if price moved >= threshold/4 in the last 5 min,
+        // fire a SPIKE alert. Cooldown: 5 min per direction to prevent spam.
+        const tracking = volumeTrackingRef.current[sym];
+        if (tracking) {
+          const spikeThreshold = Math.max(priceThreshold / 4, 0.25);
+          // Reference price: oldest point within the 4.5–6 min window
+          const hist = tracking.priceHistory;
+          const ref5m = hist.slice().reverse().find(p => now - p.time >= 270000 && now - p.time <= 360000);
+          if (ref5m) {
+            const momentum5m = ((newPrice - ref5m.price) / ref5m.price) * 100;
+            const spikeDir = momentum5m >= 0 ? 'up' : 'down';
+            const cooldownMs = 5 * 60 * 1000;
+            if (Math.abs(momentum5m) >= spikeThreshold && (now - tracking.momentumCooldown[spikeDir]) > cooldownMs) {
+              tracking.momentumCooldown[spikeDir] = now;
+              newAlerts.push({
+                type: 'price', subtype: 'spike',
+                id: `spike-${sym}-${now}`,
+                symbol: sym,
+                pct: parseFloat(momentum5m.toFixed(2)),
+                price: newPrice,
+                threshold: spikeThreshold,
+                time: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+              });
+            }
+          }
         }
       });
 
@@ -1158,24 +1215,48 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
               {priceAlerts.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '5rem 1rem' }}>
                   <div style={{ fontSize: '2.2rem', marginBottom: '1rem' }}>🔔</div>
-                  <p style={{ color: '#2a2a2a', fontSize: '0.82rem', margin: 0, lineHeight: 1.7 }}>Alerts fire when price moves<br />past your set threshold.</p>
+                  <p style={{ color: '#2a2a2a', fontSize: '0.82rem', margin: 0, lineHeight: 1.7 }}>Alerts fire when daily move crosses<br />your threshold, or spikes in 5 min.</p>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {priceAlerts.map((a, i) => (
-                    <div key={i} style={{ padding: '14px', borderRadius: '12px', background: '#0d0d0d', border: '1px solid #1a1a1a', animation: 'fadeIn 0.3s ease' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                        <span style={{ fontWeight: '700', color: '#e8e8e8', fontSize: '0.9rem' }}>{a.symbol}</span>
-                        <span style={{ fontSize: '0.62rem', color: '#444' }}>{a.time}</span>
+                  {priceAlerts.map((a, i) => {
+                    const accent = a.pct > 0 ? '#44cc44' : '#ff4444';
+                    const isSpike = a.subtype === 'spike';
+                    const spikeColor = '#ff9900';
+                    const badgeColor = isSpike ? spikeColor : accent;
+                    const alertTs = parseInt((a.id || '').split('-').pop());
+                    const isFlashing = !isNaN(alertTs) && alertTs >= mountTimeRef.current && Date.now() - alertTs < 60000;
+                    const flashAccent = isSpike ? spikeColor : accent;
+                    const barPct = isSpike
+                      ? Math.min(100, (Math.abs(a.pct) / a.threshold) * 100)
+                      : Math.min(100, ((Math.abs(a.pct) / a.threshold) % 1 || 1) * 100);
+                    return (
+                      <div key={a.id || i}
+                        style={{ padding: '14px', borderRadius: '12px', background: isFlashing && flashOn ? `${flashAccent}0f` : '#0d0d0d', border: `1px solid ${isFlashing && flashOn ? flashAccent : '#1a1a1a'}`, boxShadow: isFlashing && flashOn ? `0 0 10px ${flashAccent}44` : 'none', transition: 'border-color 0.25s, box-shadow 0.25s', animation: i === 0 && !isFlashing ? 'fadeIn 0.3s ease' : 'none' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '0.78rem' }}>{isSpike ? '⚡' : a.pct > 0 ? '▲' : '▼'}</span>
+                            <span style={{ fontWeight: '700', color: '#e8e8e8', fontSize: '0.9rem' }}>{a.symbol}</span>
+                            <span style={{ fontSize: '0.58rem', fontWeight: '800', color: badgeColor, background: `${badgeColor}18`, padding: '1px 6px', borderRadius: '5px', letterSpacing: '0.07em' }}>
+                              {isSpike ? 'SPIKE' : `DAILY ×${a.level ?? 1}`}
+                            </span>
+                          </div>
+                          <span style={{ fontSize: '0.62rem', color: '#444' }}>{a.time}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                          <span style={{ color: accent, fontSize: '0.88rem', fontWeight: '700' }}>
+                            {a.pct > 0 ? '+' : ''}{a.pct.toFixed(2)}%
+                          </span>
+                          <span style={{ color: '#444', fontSize: '0.68rem' }}>
+                            ${fmtPrice(a.price)} · {isSpike ? `${a.threshold.toFixed(2)}% / 5m` : `${a.threshold}% thr`}
+                          </span>
+                        </div>
+                        <div style={{ height: '3px', background: '#1a1a1a', borderRadius: '2px', overflow: 'hidden' }}>
+                          <div style={{ width: `${barPct}%`, height: '100%', background: `linear-gradient(to right, ${badgeColor}66, ${badgeColor})`, borderRadius: '2px' }} />
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ color: a.pct > 0 ? '#44cc44' : '#ff4444', fontSize: '0.88rem', fontWeight: '700' }}>
-                          {a.pct > 0 ? '▲' : '▼'} {Math.abs(a.pct).toFixed(2)}%
-                        </span>
-                        <span style={{ color: '#444', fontSize: '0.7rem' }}>${fmtPrice(a.price)} · {a.threshold}% thr</span>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1224,14 +1305,14 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
       }} />
 
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.75rem' }}>
-        <div>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.75rem', position: 'relative' }}>
+        <div style={{ flex: 1 }}>
           <h2 style={{ fontSize: '1.6rem', fontWeight: '900', margin: 0, letterSpacing: '0.06em', background: 'linear-gradient(to right, #fff 50%, #555)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>TERMINAL</h2>
           <p style={{ color: '#333', margin: '0.2rem 0 0', fontSize: '0.72rem' }}>
             {loading ? 'Loading…' : lastUpdate ? `Last trade ${lastUpdate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : 'Waiting for trades…'}
           </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: statusDot, animation: wsStatus === 'live' ? 'pulse 2s infinite' : 'none', boxShadow: wsStatus === 'live' ? `0 0 8px ${statusDot}` : 'none' }} />
             <span style={{ fontSize: '0.68rem', color: statusDot, fontWeight: '700', letterSpacing: '0.08em' }}>{statusLabel}</span>
@@ -1242,6 +1323,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
             + Watchlist
           </button>
         </div>
+        <div style={{ flex: 1 }} />
       </div>
 
       <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
@@ -1429,31 +1511,44 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
             {priceAlerts.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '1.5rem 0.5rem' }}>
                 <div style={{ fontSize: '1.4rem', marginBottom: '0.4rem' }}>🔔</div>
-                <p style={{ color: '#2a2a2a', fontSize: '0.73rem', margin: 0, lineHeight: 1.6 }}>Alerts fire when price moves<br />past your set threshold.</p>
+                <p style={{ color: '#2a2a2a', fontSize: '0.73rem', margin: 0, lineHeight: 1.6 }}>Alerts fire when daily move crosses<br />your threshold, or spikes in 5 min.</p>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '260px', overflowY: 'auto', paddingBottom: '0.25rem' }}>
                 {priceAlerts.map((a, i) => {
                   const accent = a.pct > 0 ? '#44cc44' : '#ff4444';
+                  const isSpike = a.subtype === 'spike';
+                  const spikeColor = '#ff9900';
+                  const badgeColor = isSpike ? spikeColor : accent;
                   const alertTs = parseInt((a.id || '').split('-').pop());
                   const isFlashing = !isNaN(alertTs) && alertTs >= mountTimeRef.current && Date.now() - alertTs < 60000;
+                  const flashAccent = isSpike ? spikeColor : accent;
+                  // Progress bar: daily → % of threshold band; spike → % of spike threshold
+                  const barPct = isSpike
+                    ? Math.min(100, (Math.abs(a.pct) / a.threshold) * 100)
+                    : Math.min(100, ((Math.abs(a.pct) / a.threshold) % 1 || 1) * 100);
                   return (
                     <div key={a.id || i}
-                      style={{ padding: '0.65rem 0.75rem', borderRadius: '10px', background: isFlashing && flashOn ? `${accent}0f` : '#111', border: `1px solid ${isFlashing && flashOn ? accent : '#1e1e1e'}`, boxShadow: isFlashing && flashOn ? `0 0 10px ${accent}44` : 'none', animation: i === 0 && !isFlashing ? 'fadeIn 0.3s ease' : 'none', transition: 'border-color 0.25s, box-shadow 0.25s' }}>
+                      style={{ padding: '0.65rem 0.75rem', borderRadius: '10px', background: isFlashing && flashOn ? `${flashAccent}0f` : '#111', border: `1px solid ${isFlashing && flashOn ? flashAccent : '#1e1e1e'}`, boxShadow: isFlashing && flashOn ? `0 0 10px ${flashAccent}44` : 'none', animation: i === 0 && !isFlashing ? 'fadeIn 0.3s ease' : 'none', transition: 'border-color 0.25s, box-shadow 0.25s' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontSize: '0.78rem' }}>{a.pct > 0 ? '▲' : '▼'}</span>
+                          <span style={{ fontSize: '0.78rem' }}>{isSpike ? '⚡' : a.pct > 0 ? '▲' : '▼'}</span>
                           <span style={{ fontWeight: '700', color: '#e8e8e8', fontSize: '0.85rem' }}>{a.symbol}</span>
-                          <span style={{ fontSize: '0.62rem', fontWeight: '700', color: accent, background: `${accent}18`, padding: '1px 6px', borderRadius: '5px' }}>{a.pct > 0 ? '+' : ''}{a.pct.toFixed(2)}%</span>
+                          <span style={{ fontSize: '0.58rem', fontWeight: '800', color: badgeColor, background: `${badgeColor}18`, padding: '1px 6px', borderRadius: '5px', letterSpacing: '0.07em' }}>
+                            {isSpike ? 'SPIKE' : `DAILY ×${a.level ?? 1}`}
+                          </span>
+                          <span style={{ fontSize: '0.62rem', fontWeight: '700', color: accent }}>{a.pct > 0 ? '+' : ''}{a.pct.toFixed(2)}%</span>
                         </div>
                         <span style={{ fontSize: '0.6rem', color: '#444', flexShrink: 0 }}>{a.time}</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
                         <span style={{ fontSize: '0.72rem', fontWeight: '700', color: '#bbb', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>${fmtPrice(a.price)}</span>
                         <div style={{ flex: 1, height: '3px', background: '#1a1a1a', borderRadius: '2px', overflow: 'hidden' }}>
-                          <div style={{ width: `${Math.min(100, (Math.abs(a.pct) / (a.threshold * 2)) * 100)}%`, height: '100%', background: `linear-gradient(to right, ${accent}66, ${accent})`, borderRadius: '2px' }} />
+                          <div style={{ width: `${barPct}%`, height: '100%', background: `linear-gradient(to right, ${badgeColor}66, ${badgeColor})`, borderRadius: '2px' }} />
                         </div>
-                        <span style={{ fontSize: '0.6rem', color: '#555', flexShrink: 0 }}>{a.threshold}% thr</span>
+                        <span style={{ fontSize: '0.6rem', color: '#555', flexShrink: 0 }}>
+                          {isSpike ? `${a.threshold.toFixed(2)}% / 5m` : `${a.threshold}% thr`}
+                        </span>
                       </div>
                     </div>
                   );
