@@ -139,9 +139,14 @@ def init_db():
             user_id INTEGER,
             first_name TEXT,
             message TEXT,
-            created_at TEXT
+            created_at TEXT,
+            room TEXT DEFAULT 'crypto'
         )
     """)
+    try:
+        cursor.execute("ALTER TABLE chat_messages ADD COLUMN room TEXT DEFAULT 'crypto'")
+    except Exception:
+        pass
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS verification_codes_db (
             email TEXT PRIMARY KEY,
@@ -1106,65 +1111,65 @@ async def admin_grant_subscription(data: dict, key: str = ""):
 
 class _ChatManager:
     def __init__(self):
-        self.active: list[WebSocket] = []
+        self.rooms: dict[str, list[WebSocket]] = {"crypto": [], "stocks": []}
 
-    async def connect(self, ws: WebSocket):
+    async def connect(self, ws: WebSocket, room: str):
         await ws.accept()
-        self.active.append(ws)
+        self.rooms.setdefault(room, []).append(ws)
 
-    def disconnect(self, ws: WebSocket):
-        self.active = [c for c in self.active if c is not ws]
+    def disconnect(self, ws: WebSocket, room: str):
+        self.rooms[room] = [c for c in self.rooms.get(room, []) if c is not ws]
 
-    async def broadcast(self, msg: dict):
+    async def broadcast(self, msg: dict, room: str):
         dead = []
-        for ws in self.active:
+        for ws in self.rooms.get(room, []):
             try:
                 await ws.send_json(msg)
             except Exception:
                 dead.append(ws)
         for ws in dead:
-            self.disconnect(ws)
+            self.disconnect(ws, room)
 
 chat_manager = _ChatManager()
 
-def _chat_history(limit=80):
+def _chat_history(room: str, limit=80):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, user_id, first_name, message, created_at FROM chat_messages ORDER BY id DESC LIMIT ?",
-        (limit,)
+        "SELECT id, user_id, first_name, message, created_at FROM chat_messages WHERE room=? ORDER BY id DESC LIMIT ?",
+        (room, limit)
     )
     rows = cursor.fetchall()
     conn.close()
     return [{"id": r[0], "user_id": r[1], "first_name": r[2], "message": r[3], "created_at": r[4]}
             for r in reversed(rows)]
 
-def _chat_save(user_id, first_name, message):
+def _chat_save(user_id, first_name, message, room):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     now = datetime.now(timezone.utc).isoformat()
     cursor.execute(
-        "INSERT INTO chat_messages (user_id, first_name, message, created_at) VALUES (?,?,?,?)",
-        (user_id, first_name, message, now)
+        "INSERT INTO chat_messages (user_id, first_name, message, created_at, room) VALUES (?,?,?,?,?)",
+        (user_id, first_name, message, now, room)
     )
     msg_id = cursor.lastrowid
-    # Keep only last 500 messages
-    cursor.execute("DELETE FROM chat_messages WHERE id NOT IN (SELECT id FROM chat_messages ORDER BY id DESC LIMIT 500)")
+    cursor.execute("DELETE FROM chat_messages WHERE id NOT IN (SELECT id FROM chat_messages ORDER BY id DESC LIMIT 1000)")
     conn.commit()
     conn.close()
     return msg_id, now
 
 @app.websocket("/ws/chat")
-async def chat_ws(ws: WebSocket, user_id: int = 0, first_name: str = "User"):
-    await chat_manager.connect(ws)
+async def chat_ws(ws: WebSocket, user_id: int = 0, first_name: str = "User", room: str = "crypto"):
+    room = room if room in ("crypto", "stocks") else "crypto"
+    await chat_manager.connect(ws, room)
     try:
-        await ws.send_json({"type": "history", "messages": _chat_history()})
+        await ws.send_json({"type": "history", "messages": _chat_history(room)})
         while True:
             data = await ws.receive_json()
             text = (data.get("message") or "").strip()[:500]
             if not text:
                 continue
-            msg_id, ts = _chat_save(user_id, first_name, text)
+            msg_id, ts = _chat_save(user_id, first_name, text, room)
             await chat_manager.broadcast({
                 "type": "message",
                 "id": msg_id,
@@ -1172,11 +1177,12 @@ async def chat_ws(ws: WebSocket, user_id: int = 0, first_name: str = "User"):
                 "first_name": first_name,
                 "message": text,
                 "created_at": ts,
-            })
+                "room": room,
+            }, room)
     except WebSocketDisconnect:
-        chat_manager.disconnect(ws)
+        chat_manager.disconnect(ws, room)
     except Exception:
-        chat_manager.disconnect(ws)
+        chat_manager.disconnect(ws, room)
 
 dist_path = "/root/sultraxai/sultraxai-frontend/dist"
 if os.path.exists(dist_path):
