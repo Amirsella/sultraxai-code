@@ -259,6 +259,12 @@ def init_db():
             expiry REAL
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS admin_sessions (
+            token TEXT PRIMARY KEY,
+            expiry TEXT NOT NULL
+        )
+    """)
     conn.commit()
 
 init_db()
@@ -1296,9 +1302,7 @@ async def contact(msg: ContactMessage):
         print(f"Contact email error: {e}")
     return {"status": "ok"}
 
-# Admin sessions: short-lived tokens issued by /api/admin/auth (never leave the server)
-_admin_sessions: dict[str, datetime] = {}  # token -> expiry
-
+# Admin sessions — stored in DB so they survive server restarts
 @app.post("/api/admin/auth")
 @limiter.limit("5/minute")
 async def admin_auth_endpoint(request: Request, data: dict):
@@ -1307,7 +1311,10 @@ async def admin_auth_endpoint(request: Request, data: dict):
         print(f"[Security] Failed admin auth attempt from {get_remote_address(request)}")
         raise HTTPException(status_code=403, detail="Forbidden")
     token = str(uuid.uuid4())
-    _admin_sessions[token] = datetime.now(timezone.utc) + timedelta(hours=8)
+    expiry = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+    conn = _get_db()
+    conn.execute("DELETE FROM admin_sessions WHERE expiry < ?", (datetime.now(timezone.utc).isoformat(),))
+    conn.execute("INSERT INTO admin_sessions (token, expiry) VALUES (?, ?)", (token, expiry))
     return {"token": token}
 
 def _admin_auth(request: Request):
@@ -1315,9 +1322,12 @@ def _admin_auth(request: Request):
     if not auth.startswith("Bearer "):
         raise HTTPException(status_code=403, detail="Forbidden")
     token = auth[7:]
-    expiry = _admin_sessions.get(token)
-    if not expiry or datetime.now(timezone.utc) > expiry:
-        _admin_sessions.pop(token, None)
+    conn = _get_db()
+    row = conn.execute("SELECT expiry FROM admin_sessions WHERE token = ?", (token,)).fetchone()
+    if not row:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if datetime.fromisoformat(row[0]) < datetime.now(timezone.utc):
+        conn.execute("DELETE FROM admin_sessions WHERE token = ?", (token,))
         raise HTTPException(status_code=403, detail="Forbidden")
 
 def _validate_session(user_id: int, session_token: str):

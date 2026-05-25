@@ -69,10 +69,18 @@ export default function AdminPanel({ onExit }) {
   const [chatLoading, setChatLoading] = useState(false);
   const [onlineStats, setOnlineStats] = useState({ online_5m: 0, online_15m: 0, countries: {} });
 
+  const handleExpiredSession = useCallback(() => {
+    sessionStorage.removeItem('admin_token');
+    setAdminToken('');
+    setAuthed(false);
+    setKeyError('Session expired after server restart — please log in again.');
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/admin/users`, { headers: authH() });
+      if (res.status === 403) { handleExpiredSession(); return; }
       if (!res.ok) throw new Error();
       const data = await res.json();
       setUsers(data.users || []);
@@ -81,7 +89,7 @@ export default function AdminPanel({ onExit }) {
       setKeyError('Failed to load users. Check server connection.');
     }
     setLoading(false);
-  }, [adminToken]);
+  }, [adminToken, handleExpiredSession]);
 
   const loadWords = useCallback(async () => {
     try {
