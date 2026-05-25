@@ -30,6 +30,7 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
+  const [previousView, setPreviousView] = useState('landing');
   const [onboardingStep, setOnboardingStep] = useState(1);
   const [errorMessage, setErrorMessage] = useState('');
   const [pendingEmail, setPendingEmail] = useState(() => localStorage.getItem('pendingEmail') || '');
@@ -212,9 +213,9 @@ export default function App() {
 
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: currentView === 'landing' ? 'flex-start' : 'center', padding: currentView === 'landing' ? '0' : '2rem' }}>
 
-          {currentView === 'contact' && <ContactPage onBack={() => setCurrentView('landing')} />}
-        {currentView === 'terms'   && <TermsPage   onBack={() => setCurrentView('landing')} />}
-        {currentView === 'privacy' && <PrivacyPage onBack={() => setCurrentView('landing')} />}
+          {currentView === 'contact' && <ContactPage onBack={() => setCurrentView(previousView)} />}
+        {currentView === 'terms'   && <TermsPage   onBack={() => setCurrentView(previousView)} />}
+        {currentView === 'privacy' && <PrivacyPage onBack={() => setCurrentView(previousView)} />}
 
         {currentView === 'landing' && (
             isNative ? (
@@ -230,7 +231,7 @@ export default function App() {
                 </div>
               </div>
             ) : (
-              <LandingPage onSignUp={() => setCurrentView('signup')} onSignIn={() => setCurrentView('signin')} onNavigate={setCurrentView} />
+              <LandingPage onSignUp={() => setCurrentView('signup')} onSignIn={() => setCurrentView('signin')} onNavigateStatic={v => { setPreviousView('landing'); setCurrentView(v); }} />
             )
           )}
 
@@ -373,7 +374,7 @@ export default function App() {
       {!isNative && (
         <div style={{ borderTop: '1px solid #0a0a0a', padding: '14px 0', display: 'flex', justifyContent: 'center', gap: '28px' }}>
           {[['Contact', 'contact'], ['Terms of Service', 'terms'], ['Privacy Policy', 'privacy']].map(([label, view]) => (
-            <button key={view} onClick={() => setCurrentView(view)}
+            <button key={view} onClick={() => { setPreviousView(currentView); setCurrentView(view); }}
               style={{ background: 'none', border: 'none', color: '#252525', cursor: 'pointer', fontSize: '0.6rem', fontWeight: '600', letterSpacing: '0.08em', fontFamily: 'inherit', textTransform: 'uppercase', transition: 'color 0.15s' }}
               onMouseEnter={e => e.currentTarget.style.color = '#555'}
               onMouseLeave={e => e.currentTarget.style.color = '#252525'}>
@@ -840,7 +841,7 @@ const FEATURES = [
   },
 ];
 
-function LandingPage({ onSignUp, onSignIn, onNavigate }) {
+function LandingPage({ onSignUp, onSignIn, onNavigateStatic }) {
   return (
     <div style={{ width: '100%', animation: 'fadeUp 0.5s ease both' }}>
 
@@ -897,7 +898,7 @@ function LandingPage({ onSignUp, onSignIn, onNavigate }) {
         <p style={{ color: '#1e1e1e', fontSize: '0.65rem', letterSpacing: '0.1em', fontWeight: '600', marginBottom: '12px' }}>SULTRAXAI · MARKET INTELLIGENCE PLATFORM</p>
         <div style={{ display: 'flex', gap: '24px', justifyContent: 'center', flexWrap: 'wrap' }}>
           {[['Contact', 'contact'], ['Terms of Service', 'terms'], ['Privacy Policy', 'privacy']].map(([label, view]) => (
-            <button key={view} onClick={() => onNavigate(view)}
+            <button key={view} onClick={() => onNavigateStatic(view)}
               style={{ background: 'none', border: 'none', color: '#2a2a2a', cursor: 'pointer', fontSize: '0.65rem', fontWeight: '600', letterSpacing: '0.06em', fontFamily: 'inherit', textTransform: 'uppercase', transition: 'color 0.15s' }}
               onMouseEnter={e => e.currentTarget.style.color = '#555'}
               onMouseLeave={e => e.currentTarget.style.color = '#2a2a2a'}>
