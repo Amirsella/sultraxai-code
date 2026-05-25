@@ -160,7 +160,7 @@ def init_db():
                   "subscription_start TEXT", "subscription_cancel_pending INTEGER DEFAULT 0",
                   "username TEXT", "session_token TEXT",
                   "chat_terms_accepted_at TEXT", "chat_terms_accepted_ip TEXT",
-                  "reminder_email_sent_at TEXT"]:
+                  "reminder_email_sent_at TEXT", "winback_email_sent_at TEXT"]:
         try:
             cursor.execute(f"ALTER TABLE users ADD COLUMN {_col}")
         except Exception:
@@ -1326,44 +1326,113 @@ def send_abandoned_checkout_email(to_email: str, first_name: str) -> bool:
         print(f"[Reminder] Email error to {to_email}: {e}")
         return False
 
-def _send_abandoned_checkout_reminders():
+def send_winback_email(to_email: str, first_name: str) -> bool:
+    try:
+        res = requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={"api-key": BREVO_API_KEY, "Content-Type": "application/json"},
+            json={
+                "sender": {"name": "SultraxAI", "email": "support@sultraxai.com"},
+                "to": [{"email": to_email}],
+                "subject": "The market didn't wait — come back",
+                "htmlContent": f"""
+<div style="background:#080808;color:#fff;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;max-width:520px;margin:0 auto;padding:40px 32px;border-radius:16px">
+  <div style="font-size:1.3rem;font-weight:900;letter-spacing:0.08em;color:#ff3333;margin-bottom:8px">SULTRAX<span style="color:#fff">AI</span></div>
+  <div style="font-size:0.7rem;color:#555;letter-spacing:0.2em;margin-bottom:36px">THE SIGNAL BEFORE THE NOISE</div>
+
+  <h2 style="font-size:1.4rem;font-weight:800;margin:0 0 16px;line-height:1.3">Hey {first_name}, we noticed you've been away.</h2>
+  <p style="color:#888;font-size:0.9rem;line-height:1.7;margin:0 0 24px">
+    Your account is still here. Your watchlist is still set up.<br>
+    The market kept moving — your terminal is ready when you are.
+  </p>
+
+  <div style="background:#0d0d0d;border:1px solid #1a1a1a;border-radius:12px;padding:20px 24px;margin-bottom:28px">
+    <div style="font-size:0.75rem;font-weight:700;color:#555;letter-spacing:0.12em;margin-bottom:14px">STILL WAITING FOR YOU</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="font-size:0.85rem;color:#ccc"><span style="color:#ff3333;font-weight:900">→</span> Real-time alerts the moment price moves</div>
+      <div style="font-size:0.85rem;color:#ccc"><span style="color:#ff3333;font-weight:900">→</span> Live data — crypto &amp; stocks, no delay</div>
+      <div style="font-size:0.85rem;color:#ccc"><span style="color:#ff3333;font-weight:900">→</span> Community of active traders, live now</div>
+      <div style="font-size:0.85rem;color:#ccc"><span style="color:#ff3333;font-weight:900">→</span> AI scanner — catch moves before they happen</div>
+    </div>
+  </div>
+
+  <a href="{APP_URL}" style="display:block;background:#ff3333;color:#fff;text-align:center;padding:14px;border-radius:10px;text-decoration:none;font-weight:800;font-size:0.9rem;letter-spacing:0.06em;margin-bottom:24px">
+    REACTIVATE MY ACCOUNT →
+  </a>
+
+  <p style="color:#333;font-size:0.75rem;text-align:center;margin:0;line-height:1.6">
+    Questions? Reply to this email — we read everything.<br>
+    <a href="{APP_URL}" style="color:#555">sultraxai.com</a>
+  </p>
+</div>
+"""
+            }
+        )
+        return res.status_code == 201
+    except Exception as e:
+        print(f"[Winback] Email error to {to_email}: {e}")
+        return False
+
+def _send_lifecycle_emails():
     if not BREVO_API_KEY:
         return
-    cutoff = (datetime.now() - timedelta(hours=24)).isoformat()
+    cutoff_24h = (datetime.now() - timedelta(hours=24)).isoformat()
+    cutoff_7d  = (datetime.now() - timedelta(days=7)).isoformat()
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+
+    # Abandoned checkout: registered > 24h, completed onboarding, NEVER had a subscription
     cursor.execute("""
         SELECT u.id, u.email, u.first_name FROM users u
         INNER JOIN user_profiles p ON p.user_id = u.id
         WHERE (u.subscription_status IS NULL OR u.subscription_status = '')
+          AND (u.subscription_start IS NULL OR u.subscription_start = '')
           AND (u.reminder_email_sent_at IS NULL OR u.reminder_email_sent_at = '')
-          AND u.created_at IS NOT NULL
           AND u.created_at < ?
           AND u.email IS NOT NULL AND u.email != ''
-    """, (cutoff,))
-    rows = cursor.fetchall()
-    conn.close()
-    for user_id, email, first_name in rows:
-        ok = send_abandoned_checkout_email(email, first_name or "there")
-        if ok:
-            conn2 = sqlite3.connect(DB_PATH)
-            conn2.execute("UPDATE users SET reminder_email_sent_at=? WHERE id=?",
-                          (datetime.now().isoformat(), user_id))
-            conn2.commit()
-            conn2.close()
-            print(f"[Reminder] Sent to user_id={user_id} ({email})")
+    """, (cutoff_24h,))
+    abandoned = cursor.fetchall()
 
-async def _abandoned_checkout_loop():
-    await asyncio.sleep(60 * 60)  # wait 1h after startup before first run
+    # Win-back: subscription expired > 7 days ago, not yet sent win-back
+    cursor.execute("""
+        SELECT u.id, u.email, u.first_name FROM users u
+        WHERE (u.subscription_status IS NULL OR u.subscription_status = '')
+          AND u.subscription_start IS NOT NULL AND u.subscription_start != ''
+          AND (u.winback_email_sent_at IS NULL OR u.winback_email_sent_at = '')
+          AND u.subscription_expires IS NOT NULL
+          AND u.subscription_expires < ?
+          AND u.email IS NOT NULL AND u.email != ''
+    """, (cutoff_7d,))
+    expired = cursor.fetchall()
+    conn.close()
+
+    for user_id, email, first_name in abandoned:
+        if send_abandoned_checkout_email(email, first_name or "there"):
+            c = sqlite3.connect(DB_PATH)
+            c.execute("UPDATE users SET reminder_email_sent_at=? WHERE id=?",
+                      (datetime.now().isoformat(), user_id))
+            c.commit(); c.close()
+            print(f"[Abandoned] Sent to user_id={user_id} ({email})")
+
+    for user_id, email, first_name in expired:
+        if send_winback_email(email, first_name or "there"):
+            c = sqlite3.connect(DB_PATH)
+            c.execute("UPDATE users SET winback_email_sent_at=? WHERE id=?",
+                      (datetime.now().isoformat(), user_id))
+            c.commit(); c.close()
+            print(f"[Winback] Sent to user_id={user_id} ({email})")
+
+async def _lifecycle_email_loop():
+    await asyncio.sleep(60 * 60)
     while True:
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, _send_abandoned_checkout_reminders)
-        await asyncio.sleep(60 * 60)  # check every hour
+        await loop.run_in_executor(None, _send_lifecycle_emails)
+        await asyncio.sleep(60 * 60)
 
 @app.on_event("startup")
 async def _startup():
     asyncio.create_task(_subscription_checker_loop())
-    asyncio.create_task(_abandoned_checkout_loop())
+    asyncio.create_task(_lifecycle_email_loop())
 
 def _paypal_token():
     res = requests.post(
