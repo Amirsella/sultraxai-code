@@ -1409,21 +1409,32 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
                 <p style={{ color: '#2a2a2a', fontSize: '0.73rem', margin: 0, lineHeight: 1.6 }}>Alerts fire when price moves<br />past your set threshold.</p>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '260px', overflowY: 'auto' }}>
-                {priceAlerts.map((a, i) => (
-                  <div key={i} style={{ padding: '0.65rem 0.75rem', borderRadius: '10px', animation: 'fadeIn 0.3s ease', background: '#111', border: '1px solid #1e1e1e' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                      <span style={{ fontWeight: '700', color: '#e8e8e8', fontSize: '0.85rem' }}>{a.symbol}</span>
-                      <span style={{ fontSize: '0.6rem', color: '#444' }}>{a.time}</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '260px', overflowY: 'auto', paddingBottom: '0.25rem' }}>
+                {priceAlerts.map((a, i) => {
+                  const accent = a.pct > 0 ? '#44cc44' : '#ff4444';
+                  const alertTs = parseInt((a.id || '').split('-').pop());
+                  const isFlashing = !isNaN(alertTs) && alertTs >= mountTimeRef.current && Date.now() - alertTs < 60000;
+                  return (
+                    <div key={a.id || i}
+                      style={{ padding: '0.65rem 0.75rem', borderRadius: '10px', background: isFlashing && flashOn ? `${accent}0f` : '#111', border: `1px solid ${isFlashing && flashOn ? accent : '#1e1e1e'}`, boxShadow: isFlashing && flashOn ? `0 0 10px ${accent}44` : 'none', animation: i === 0 && !isFlashing ? 'fadeIn 0.3s ease' : 'none', transition: 'border-color 0.25s, box-shadow 0.25s' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '0.78rem' }}>{a.pct > 0 ? '▲' : '▼'}</span>
+                          <span style={{ fontWeight: '700', color: '#e8e8e8', fontSize: '0.85rem' }}>{a.symbol}</span>
+                          <span style={{ fontSize: '0.62rem', fontWeight: '700', color: accent, background: `${accent}18`, padding: '1px 6px', borderRadius: '5px' }}>{a.pct > 0 ? '+' : ''}{a.pct.toFixed(2)}%</span>
+                        </div>
+                        <span style={{ fontSize: '0.6rem', color: '#444', flexShrink: 0 }}>{a.time}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: '700', color: '#bbb', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>${fmtPrice(a.price)}</span>
+                        <div style={{ flex: 1, height: '3px', background: '#1a1a1a', borderRadius: '2px', overflow: 'hidden' }}>
+                          <div style={{ width: `${Math.min(100, (Math.abs(a.pct) / (a.threshold * 2)) * 100)}%`, height: '100%', background: `linear-gradient(to right, ${accent}66, ${accent})`, borderRadius: '2px' }} />
+                        </div>
+                        <span style={{ fontSize: '0.6rem', color: '#555', flexShrink: 0 }}>{a.threshold}% thr</span>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ color: a.pct > 0 ? '#44cc44' : '#ff4444', fontSize: '0.8rem', fontWeight: '700' }}>
-                        {a.pct > 0 ? '▲' : '▼'} {Math.abs(a.pct).toFixed(2)}%
-                      </span>
-                      <span style={{ color: '#444', fontSize: '0.65rem' }}>${fmtPrice(a.price)} · {a.threshold}% thr</span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
