@@ -1236,7 +1236,7 @@ export default function MainTerminal({ userId, selectedAssets, onSignOut, onAsse
             const rvolStyle = getRvolStyle(rvols[sym]);
 
             return (
-              <div key={sym} style={{ background: cardBg, border: `1px solid ${status.color}22`, borderLeft: `3px solid ${status.color}`, borderRadius: '16px', padding: '1.25rem', backdropFilter: 'blur(12px)', transition: 'background 0.2s ease, border-color 0.4s', animation: 'fadeIn 0.35s ease', boxShadow: status.label === 'ALERT' ? `0 0 24px ${status.color}18, 0 2px 8px rgba(0,0,0,0.4)` : '0 2px 8px rgba(0,0,0,0.3)', cursor: 'pointer' }}
+              <div key={sym} style={{ background: cardBg, border: `1px solid ${status.color}22`, borderLeft: `3px solid ${status.color}`, borderRadius: '16px', padding: '1.25rem', backdropFilter: 'blur(12px)', transition: 'background 0.2s ease, border-color 0.4s', animation: 'fadeIn 0.35s ease', boxShadow: status.label === 'ALERT' ? `0 0 24px ${status.color}18, 0 2px 8px rgba(0,0,0,0.4)` : '0 2px 8px rgba(0,0,0,0.3)', cursor: 'pointer', alignSelf: 'flex-start' }}
                 onClick={() => setChartSym(sym)}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
                   <span style={{ fontWeight: '700', fontSize: '0.95rem' }}>{sym}</span>
