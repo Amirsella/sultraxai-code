@@ -488,79 +488,81 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
 
   useEffect(() => {
     const unlock = () => {
-      if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtxRef.current.state === 'suspended') {
-        audioCtxRef.current.resume().then(() => {
+      try {
+        if (!audioCtxRef.current)
+          audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+        const ctx = audioCtxRef.current;
+        const markUnlocked = () => {
+          // Play a zero-length silent buffer — this permanently unlocks AudioContext on iOS
+          try {
+            const buf = ctx.createBuffer(1, 1, 22050);
+            const src = ctx.createBufferSource();
+            src.buffer = buf;
+            src.connect(ctx.destination);
+            src.start(0);
+          } catch {}
           if (!audioUnlockedRef.current) {
             audioUnlockedRef.current = true;
             setAudioUnlocked(true);
           }
-        });
-      } else {
-        if (!audioUnlockedRef.current) {
-          audioUnlockedRef.current = true;
-          setAudioUnlocked(true);
-        }
-      }
+        };
+        if (ctx.state === 'suspended') ctx.resume().then(markUnlocked).catch(() => {});
+        else markUnlocked();
+      } catch {}
     };
     window.addEventListener('click', unlock);
     window.addEventListener('touchstart', unlock);
     return () => { window.removeEventListener('click', unlock); window.removeEventListener('touchstart', unlock); };
   }, []);
 
-  const _getCtx = useCallback(async () => {
-    if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtxRef.current.state === 'suspended') await audioCtxRef.current.resume();
-    return audioCtxRef.current;
-  }, []);
-
   // Signal alert — ascending "di-ding" (880 → 1175 Hz)
   const playBeep = useCallback(() => {
     if (soundMutedRef.current) return;
-    _getCtx().then(ctx => {
-      try {
-        const now = ctx.currentTime;
-        const osc1 = ctx.createOscillator(); const g1 = ctx.createGain();
-        osc1.connect(g1); g1.connect(ctx.destination);
-        osc1.type = 'sine'; osc1.frequency.value = 880;
-        g1.gain.setValueAtTime(0.28, now);
-        g1.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-        osc1.start(now); osc1.stop(now + 0.12);
+    // Only play if context is fully unlocked and running — never try to resume outside a gesture
+    const ctx = audioCtxRef.current;
+    if (!ctx || ctx.state !== 'running') return;
+    try {
+      const now = ctx.currentTime;
+      const osc1 = ctx.createOscillator(); const g1 = ctx.createGain();
+      osc1.connect(g1); g1.connect(ctx.destination);
+      osc1.type = 'sine'; osc1.frequency.value = 880;
+      g1.gain.setValueAtTime(0.28, now);
+      g1.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+      osc1.start(now); osc1.stop(now + 0.12);
 
-        const osc2 = ctx.createOscillator(); const g2 = ctx.createGain();
-        osc2.connect(g2); g2.connect(ctx.destination);
-        osc2.type = 'sine'; osc2.frequency.value = 1175;
-        g2.gain.setValueAtTime(0, now);
-        g2.gain.setValueAtTime(0.3, now + 0.1);
-        g2.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
-        osc2.start(now); osc2.stop(now + 0.55);
-      } catch {}
-    }).catch(() => {});
-  }, [_getCtx]);
+      const osc2 = ctx.createOscillator(); const g2 = ctx.createGain();
+      osc2.connect(g2); g2.connect(ctx.destination);
+      osc2.type = 'sine'; osc2.frequency.value = 1175;
+      g2.gain.setValueAtTime(0, now);
+      g2.gain.setValueAtTime(0.3, now + 0.1);
+      g2.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+      osc2.start(now); osc2.stop(now + 0.55);
+    } catch {}
+  }, []);
 
   // Price alert — single descending bell (1040 → 660 Hz), softer
   const playPriceBeep = useCallback(() => {
     if (soundMutedRef.current) return;
-    _getCtx().then(ctx => {
-      try {
-        const now = ctx.currentTime;
-        const osc1 = ctx.createOscillator(); const g1 = ctx.createGain();
-        osc1.connect(g1); g1.connect(ctx.destination);
-        osc1.type = 'sine'; osc1.frequency.value = 1040;
-        g1.gain.setValueAtTime(0.22, now);
-        g1.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-        osc1.start(now); osc1.stop(now + 0.18);
+    const ctx = audioCtxRef.current;
+    if (!ctx || ctx.state !== 'running') return;
+    try {
+      const now = ctx.currentTime;
+      const osc1 = ctx.createOscillator(); const g1 = ctx.createGain();
+      osc1.connect(g1); g1.connect(ctx.destination);
+      osc1.type = 'sine'; osc1.frequency.value = 1040;
+      g1.gain.setValueAtTime(0.22, now);
+      g1.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+      osc1.start(now); osc1.stop(now + 0.18);
 
-        const osc2 = ctx.createOscillator(); const g2 = ctx.createGain();
-        osc2.connect(g2); g2.connect(ctx.destination);
-        osc2.type = 'sine'; osc2.frequency.value = 660;
-        g2.gain.setValueAtTime(0, now);
-        g2.gain.setValueAtTime(0.25, now + 0.15);
-        g2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
-        osc2.start(now); osc2.stop(now + 0.6);
-      } catch {}
-    }).catch(() => {});
-  }, [_getCtx]);
+      const osc2 = ctx.createOscillator(); const g2 = ctx.createGain();
+      osc2.connect(g2); g2.connect(ctx.destination);
+      osc2.type = 'sine'; osc2.frequency.value = 660;
+      g2.gain.setValueAtTime(0, now);
+      g2.gain.setValueAtTime(0.25, now + 0.15);
+      g2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+      osc2.start(now); osc2.stop(now + 0.6);
+    } catch {}
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('sultrax_alerts', JSON.stringify(alerts));
@@ -587,7 +589,7 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
       lastSoundIdRef.current = newest.id;
       playBeep();
     }
-  }, [alerts, playBeep]);
+  }, [alerts]);
 
   const lastPriceSoundIdRef = useRef(null);
   useEffect(() => {
@@ -598,7 +600,7 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
       lastPriceSoundIdRef.current = newest.id;
       playPriceBeep();
     }
-  }, [alerts, playPriceBeep]);
+  }, [alerts]);
 
   useEffect(() => {
     selectedAssets.forEach(sym => {
@@ -1412,7 +1414,8 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
                   {signals.length > 0 && <span style={{ fontSize: '0.62rem', background: 'rgba(255,153,0,0.15)', color: '#ff9900', padding: '1px 7px', borderRadius: '8px', fontWeight: '700' }}>{signals.length}</span>}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <button onClick={() => setSoundMuted(m => !m)} title={soundMuted ? 'Unmute' : 'Mute'} style={{ background: 'none', border: 'none', color: soundMuted ? '#333' : '#666', cursor: 'pointer', fontSize: '0.8rem', padding: '2px 4px', lineHeight: 1 }}>{soundMuted ? '🔇' : '🔔'}</button>
+                  <button onClick={() => { setSoundMuted(m => !m); }} title={soundMuted ? 'Unmute' : 'Mute'} style={{ background: 'none', border: 'none', color: soundMuted ? '#555' : '#ff9900', cursor: 'pointer', fontSize: '0.8rem', padding: '2px 4px', lineHeight: 1 }}>{soundMuted ? '🔇' : '🔔'}</button>
+                  {!soundMuted && <button onClick={() => playBeep()} title="Test sound" style={{ background: 'none', border: '1px solid #222', color: '#333', cursor: 'pointer', fontSize: '0.6rem', padding: '1px 6px', borderRadius: '5px', lineHeight: 1.6 }}>test</button>}
                   {signals.length > 0 && <button onClick={() => setAlerts(prev => prev.filter(a => a.type !== 'signal'))} style={{ background: 'none', border: 'none', color: '#333', cursor: 'pointer', fontSize: '0.75rem', padding: '2px 6px' }}>Clear</button>}
                 </div>
               </div>
