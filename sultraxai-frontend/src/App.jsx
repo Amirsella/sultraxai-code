@@ -5,8 +5,8 @@ const Scanner            = lazy(() => import('./components/Scanner'));
 const AccountSettings    = lazy(() => import('./components/AccountSettings'));
 const AdminPanel         = lazy(() => import('./components/AdminPanel'));
 const SubscriptionModal  = lazy(() => import('./components/SubscriptionModal'));
-import SupportBot from './components/SupportBot';
-import CommunityChat from './components/CommunityChat';
+const SupportBot    = lazy(() => import('./components/SupportBot'));
+const CommunityChat = lazy(() => import('./components/CommunityChat'));
 const API_BASE = '';
 const MOCK_STOCKS = ["BTC/USD", "ETH/USD", "AAPL", "TSLA", "NVDA", "AMZN", "GOOGL", "MSFT", "META", "NFLX", "SOL/USD", "XRP/USD", "AMD", "PLTR", "COIN"];
 
