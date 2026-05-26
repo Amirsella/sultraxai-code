@@ -1020,6 +1020,9 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
           if (!watchlistRef.current.includes(sym)) return;
           const price = parseFloat(trade.p);
           if (!price) return;
+          const vol = parseFloat(trade.q) || 0;
+          // trade.m = buyer is market maker (passive) → sell aggressor; false = buy aggressor
+          const tradeDir = trade.m ? 'sell' : 'buy';
           const prev = pricesRef.current[sym];
           const prevClose = prev?.prev_close ?? price;
           const changePct = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
@@ -1037,17 +1040,52 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
             lastUpdateTsRef.current = now;
             setLastUpdate(new Date(now));
           }
-          // ── ALERT LOGIC (mirrors backend-WS handler) ──
+          // ── TRACKING + ALERT LOGIC ──
           const today = new Date(now).toISOString().slice(0, 10);
           const priceThreshold = thresholdsRef.current[sym] ?? 2.0;
           const tracking = volumeTrackingRef.current[sym];
+          let vwap = price;
+          let snapshotEmaVol = 0; // pre-update EWMA, used for z-score in Layer 3
           if (tracking) {
+            // Price history (for momentum spike detection)
             tracking.priceHistory.push({ price, time: now });
             const cut10m = now - 600000;
             while (tracking.priceHistory.length && tracking.priceHistory[0].time < cut10m)
               tracking.priceHistory.shift();
             if (tracking.priceHistory.length > 600)
               tracking.priceHistory.splice(0, tracking.priceHistory.length - 600);
+
+            if (vol > 0) {
+              // VWAP — reset daily at midnight UTC
+              if (tracking.vwapDate !== today) {
+                tracking.vwapNum = 0; tracking.vwapDen = 0; tracking.vwapDate = today;
+              }
+              tracking.vwapNum += price * vol;
+              tracking.vwapDen += vol;
+              vwap = tracking.vwapDen > 0 ? tracking.vwapNum / tracking.vwapDen : price;
+
+              // Trade direction + order flow window (rolling 30s)
+              tracking.lastDir = tradeDir;
+              tracking.lastPrice = price;
+              tracking.flowWindow.push({ dir: tradeDir, time: now });
+              const cut30s = now - 30000;
+              while (tracking.flowWindow.length > 0 && tracking.flowWindow[0].time < cut30s)
+                tracking.flowWindow.shift();
+
+              // EWMA mean and variance (α=0.1)
+              const α = 0.1;
+              const prevEmaVol = tracking.emaVol;
+              snapshotEmaVol = prevEmaVol; // capture before update for Layer 3 z-score
+              const prevEmaVar = tracking.emaVar;
+              if (tracking.tradeCount === 0) {
+                tracking.emaVol = vol; tracking.emaVar = 0;
+              } else {
+                const diff = vol - prevEmaVol;
+                tracking.emaVol = α * vol + (1 - α) * prevEmaVol;
+                tracking.emaVar = α * diff * diff + (1 - α) * prevEmaVar;
+              }
+              tracking.tradeCount++;
+            }
           }
           const binanceAlerts = [];
           // Layer 1: daily move
@@ -1060,9 +1098,9 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
             if (!dailyLevelsFiredRef.current[sym] || dailyLevelsFiredRef.current[sym].date !== today)
               dailyLevelsFiredRef.current[sym] = { date: today, up: new Set(), down: new Set() };
             const fired = dailyLevelsFiredRef.current[sym];
-            const dir = dailyMove >= 0 ? 'up' : 'down';
-            if (!fired[dir].has(dailyLevel)) {
-              fired[dir].add(dailyLevel);
+            const dailyDir = dailyMove >= 0 ? 'up' : 'down';
+            if (!fired[dailyDir].has(dailyLevel)) {
+              fired[dailyDir].add(dailyLevel);
               binanceAlerts.push({ type: 'price', subtype: 'daily', id: `price-${sym}-${now}`, symbol: sym,
                 pct: parseFloat(dailyMove.toFixed(2)), price, level: dailyLevel, threshold: priceThreshold,
                 time: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) });
@@ -1087,6 +1125,49 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
                 binanceAlerts.push({ type: 'price', subtype: 'spike', id: `spike-${sym}-${now}`, symbol: sym,
                   pct: parseFloat(momentum5m.toFixed(2)), price, threshold: spikeThreshold,
                   time: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) });
+              }
+            }
+          }
+          // Layer 3: volume signal (EWMA z-score, mirrors Finnhub WS handler)
+          if (tracking && vol > 0 && tracking.tradeCount >= 20 && (now - tracking.lastSignalTime) >= 180000) {
+            const std = Math.sqrt(tracking.emaVar);
+            if (std >= 0.001) {
+              const z = (vol - snapshotEmaVol) / std;
+              if (z >= 2.5) {
+                const buyCount = tracking.flowWindow.filter(t => t.dir === 'buy').length;
+                const flowRatio = tracking.flowWindow.length > 3
+                  ? buyCount / tracking.flowWindow.length : 0.5;
+                const isBuy = tradeDir === 'buy';
+                let score = 0;
+                if (z >= 5.0) score += 40; else if (z >= 3.5) score += 30; else score += 20;
+                if (isBuy && flowRatio >= 0.65) score += 30;
+                else if (!isBuy && flowRatio <= 0.35) score += 30;
+                else if (isBuy && flowRatio >= 0.55) score += 15;
+                else if (!isBuy && flowRatio <= 0.45) score += 15;
+                if (isBuy && price >= vwap) score += 20;
+                else if (!isBuy && price <= vwap) score += 20;
+                else score = Math.max(0, score - 10);
+                if (score >= 40) {
+                  tracking.lastSignalTime = now;
+                  const displayScore = Math.round((score / 90) * 100);
+                  const strengthLabel = score >= 80
+                    ? (isBuy ? 'STRONG BUY' : 'STRONG SELL')
+                    : score >= 60 ? (isBuy ? 'BUY' : 'SELL') : (isBuy ? 'WEAK BUY' : 'WEAK SELL');
+                  binanceAlerts.push({
+                    type: 'signal', id: `${sym}-${now}`,
+                    symbol: sym, dir: isBuy ? 'buy' : 'sell',
+                    score: displayScore, strengthLabel,
+                    volMultiplier: parseFloat((snapshotEmaVol > 0 ? vol / snapshotEmaVol : 1).toFixed(1)),
+                    flowRatio: parseFloat(flowRatio.toFixed(2)),
+                    price, vwap: parseFloat(vwap.toFixed(2)),
+                    time: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                    confirmed: null, priceImpact: null,
+                  });
+                  tracking.pendingConfirmation = {
+                    alertId: `${sym}-${now}`, entryPrice: price,
+                    dir: isBuy ? 'buy' : 'sell', deadline: now + 30000,
+                  };
+                }
               }
             }
           }
