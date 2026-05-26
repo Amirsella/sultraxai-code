@@ -265,6 +265,20 @@ def init_db():
             expiry TEXT NOT NULL
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS price_cache (
+            symbol TEXT PRIMARY KEY,
+            price REAL, change_pct REAL, prev_close REAL,
+            saved_at REAL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS scanner_cache_db (
+            id INTEGER PRIMARY KEY,
+            movers_json TEXT,
+            saved_at REAL
+        )
+    """)
     conn.commit()
 
 init_db()
@@ -1432,6 +1446,16 @@ def _run_scanner_sync():
     _scanner_cache["movers"] = movers
     _scanner_cache["scanned"] = len(movers)
     _scanner_cache["updated"] = datetime.now().isoformat()
+    # Persist for instant restore on next restart
+    try:
+        conn = _get_db()
+        conn.execute(
+            "INSERT OR REPLACE INTO scanner_cache_db (id, movers_json, saved_at) VALUES (1, ?, ?)",
+            (_json.dumps(movers), time.time())
+        )
+        conn.commit()
+    except Exception:
+        pass
 
 async def _scanner_background_loop():
     loop = asyncio.get_event_loop()
@@ -1497,10 +1521,65 @@ async def _zone_background_loop():
             print(f"Zone background error: {e}")
         await asyncio.sleep(10 * 60)
 
+def _save_prices_to_db():
+    """Persist current _live_prices to DB so they survive restarts."""
+    try:
+        conn = _get_db()
+        now_ts = time.time()
+        for sym, d in list(_live_prices.items()):
+            conn.execute(
+                "INSERT OR REPLACE INTO price_cache (symbol, price, change_pct, prev_close, saved_at) VALUES (?,?,?,?,?)",
+                (sym, d.get("price"), d.get("change_pct"), d.get("prev_close"), now_ts)
+            )
+        conn.commit()
+    except Exception as e:
+        print(f"[PriceCache] Save error: {e}")
+
+def _load_prices_from_db():
+    """Load persisted prices into _live_prices on startup (instant, no yfinance)."""
+    try:
+        conn = _get_db()
+        cutoff = time.time() - 14400  # ignore prices older than 4 hours
+        rows = conn.execute(
+            "SELECT symbol, price, change_pct, prev_close, saved_at FROM price_cache WHERE saved_at > ?",
+            (cutoff,)
+        ).fetchall()
+        loaded = 0
+        for sym, price, change_pct, prev_close, saved_at in rows:
+            if sym not in _live_prices and price:
+                _live_prices[sym] = {
+                    "price": price, "change_pct": change_pct or 0.0,
+                    "prev_close": prev_close or price, "ts": saved_at
+                }
+                loaded += 1
+        if loaded:
+            print(f"[Warmup] Loaded {loaded} cached prices from DB (instant)")
+    except Exception as e:
+        print(f"[PriceCache] Load error: {e}")
+
+def _load_scanner_from_db():
+    """Restore last scanner results from DB so ticker shows immediately after restart."""
+    try:
+        conn = _get_db()
+        row = conn.execute(
+            "SELECT movers_json FROM scanner_cache_db WHERE id = 1"
+        ).fetchone()
+        if row and row[0]:
+            movers = _json.loads(row[0])
+            _scanner_cache["movers"] = movers
+            _scanner_cache["scanned"] = len(movers)
+            print(f"[Warmup] Restored {len(movers)} scanner movers from DB (instant)")
+    except Exception as e:
+        print(f"[ScannerCache] Load error: {e}")
+
 async def _warmup_cache():
-    """Pre-fetch history/avg-volumes for all user symbols.
-    Prices are handled by _finnhub_price_feed via REST+WS — no yfinance needed there."""
-    await asyncio.sleep(4)  # let price feed initialize first
+    """Seed live prices + history/avg-volumes for all user symbols."""
+    # Step 1 (instant): restore persisted prices and scanner from DB
+    _load_prices_from_db()
+    _load_scanner_from_db()
+
+    await asyncio.sleep(3)  # let WS feeds connect first
+
     try:
         loop = asyncio.get_event_loop()
         conn = _get_db()
@@ -1508,8 +1587,19 @@ async def _warmup_cache():
         symbols = [r[0] for r in rows]
         if not symbols:
             return
+
+        # Step 2: seed any stocks not yet in _live_prices via yfinance batch
+        stocks_missing = [s for s in symbols if '-USD' not in s and '/' not in s and s not in _live_prices]
+        if stocks_missing:
+            print(f"[Warmup] Seeding {len(stocks_missing)} missing stock prices via yfinance...")
+            batch = await loop.run_in_executor(None, _batch_seed_stocks, stocks_missing)
+            for sym, data in batch.items():
+                if sym not in _live_prices:
+                    _live_prices[sym] = data
+            print(f"[Warmup] Stock prices ready ({len(batch)} symbols)")
+
+        # Step 3: history + avg-volumes for sparklines/RVOL
         print(f"[Warmup] Pre-warming history/volumes for {len(symbols)} symbols...")
-        # Fetch history and avg-vol in parallel per symbol, 5 at a time
         for i in range(0, len(symbols), 5):
             batch = symbols[i:i+5]
             await asyncio.gather(*[
@@ -1519,9 +1609,19 @@ async def _warmup_cache():
             ])
             if i + 5 < len(symbols):
                 await asyncio.sleep(1.0)
+
+        # Step 4: persist to DB for next restart
+        _save_prices_to_db()
         print(f"[Warmup] Done.")
     except Exception as e:
         print(f"[Warmup] Error: {e}")
+
+async def _periodic_price_persist():
+    """Save _live_prices to DB every 5 minutes so restarts are always fast."""
+    await asyncio.sleep(60)  # wait for initial warmup to finish first
+    while True:
+        _save_prices_to_db()
+        await asyncio.sleep(300)
 
 @app.on_event("startup")
 async def start_scanner_loop():
@@ -1531,6 +1631,7 @@ async def start_scanner_loop():
     asyncio.create_task(_finnhub_price_feed())   # stocks: real-time during market hours
     asyncio.create_task(_background_price_refresh())
     asyncio.create_task(_warmup_cache())
+    asyncio.create_task(_periodic_price_persist())
 
 @app.get("/api/scanner")
 async def get_scanner(threshold: float = 1.0):

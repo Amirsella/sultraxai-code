@@ -570,13 +570,14 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
     localStorage.setItem('sultrax_alerts', JSON.stringify(alerts));
   }, [alerts]);
 
-  // Save prices to localStorage every 5s — enables instant display on next page load
-  const priceSaveTimerRef = useRef(null);
+  // Save prices to localStorage at most once per 30s (throttle, not debounce)
+  // Debounce would be reset by every WS tick and never fire
+  const lastPriceSaveRef = useRef(0);
   useEffect(() => {
-    clearTimeout(priceSaveTimerRef.current);
-    priceSaveTimerRef.current = setTimeout(() => {
-      try { localStorage.setItem('sultrax_prices', JSON.stringify(prices)); } catch {}
-    }, 5000);
+    const now = Date.now();
+    if (now - lastPriceSaveRef.current < 30000) return;
+    lastPriceSaveRef.current = now;
+    try { localStorage.setItem('sultrax_prices', JSON.stringify(prices)); } catch {}
   }, [prices]);
 
   useEffect(() => {
@@ -1201,8 +1202,12 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
           const changed = Object.entries(update).some(
             ([s, d]) => !prev[s] || prev[s].price !== d.price
           );
-          pricesRef.current = { ...prev, ...update };
-          if (changed) setPrices(p => ({ ...p, ...update }));
+          const merged = { ...prev, ...update };
+          pricesRef.current = merged;
+          if (changed) setPrices(merged);
+          // Save immediately after every API poll — captures fresh prices for next page load
+          try { localStorage.setItem('sultrax_prices', JSON.stringify(merged)); } catch {}
+          lastPriceSaveRef.current = Date.now();
           setLoading(false);
         })
         .catch(() => setLoading(false));
