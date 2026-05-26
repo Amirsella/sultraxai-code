@@ -267,7 +267,7 @@ const Sparkline = React.memo(function Sparkline({ sym, prices }) {
   );
 });
 
-function TopMoversTicker({ onMoverClick }) {
+function TopMoversTicker({ onMoverClick, fallbackPrices, fallbackAssets }) {
   const [movers, setMovers] = useState(() => {
     try { return JSON.parse(localStorage.getItem('sultrax_movers') || '[]'); }
     catch { return []; }
@@ -301,9 +301,19 @@ function TopMoversTicker({ onMoverClick }) {
     return () => { clearInterval(retryId); clearInterval(intervalId); };
   }, []);
 
-  if (!movers.length) return null;
+  // Fallback: show user's own assets while scanner loads
+  const displayMovers = movers.length > 0 ? movers : (fallbackAssets || [])
+    .filter(s => fallbackPrices?.[s]?.price)
+    .map(s => ({
+      symbol: s,
+      price: fallbackPrices[s].price,
+      pct: fallbackPrices[s].change_pct ?? 0,
+      change: 0,
+    }));
 
-  const items = [...movers, ...movers, ...movers];
+  if (!displayMovers.length) return null;
+
+  const items = [...displayMovers, ...displayMovers, ...displayMovers];
 
   return (
     <div style={{ overflow: 'hidden', borderBottom: '1px solid #0d0d0d', padding: '8px 0', marginBottom: '1.75rem', position: 'relative' }}>
@@ -1191,35 +1201,41 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
       binanceWs.onerror = () => {};
     }
 
-    const pollPrices = () => {
+    const retryTimerRef = { current: null };
+    const pollPrices = (retryCount = 0) => {
       fetch(`${API_BASE}/api/prices?symbols=${selectedAssets.join(',')}`)
         .then(r => r.json())
         .then(data => {
           if (cancelled) return;
           const update = data.prices || {};
-          if (!Object.keys(update).length) return;
-          const prev = pricesRef.current;
-          const changed = Object.entries(update).some(
-            ([s, d]) => !prev[s] || prev[s].price !== d.price
-          );
-          const merged = { ...prev, ...update };
-          pricesRef.current = merged;
-          if (changed) setPrices(merged);
-          // Save immediately after every API poll — captures fresh prices for next page load
-          try { localStorage.setItem('sultrax_prices', JSON.stringify(merged)); } catch {}
-          lastPriceSaveRef.current = Date.now();
-          setLoading(false);
+          const missing = data.missing || [];
+          if (Object.keys(update).length > 0) {
+            const prev = pricesRef.current;
+            const changed = Object.entries(update).some(
+              ([s, d]) => !prev[s] || prev[s].price !== d.price
+            );
+            const merged = { ...prev, ...update };
+            pricesRef.current = merged;
+            if (changed) setPrices(merged);
+            try { localStorage.setItem('sultrax_prices', JSON.stringify(merged)); } catch {}
+            lastPriceSaveRef.current = Date.now();
+            setLoading(false);
+          }
+          // Backend seeded missing symbols in background — retry quickly to pick them up
+          if (missing.length > 0 && retryCount < 6) {
+            retryTimerRef.current = setTimeout(() => pollPrices(retryCount + 1), 2000);
+          }
         })
         .catch(() => setLoading(false));
     };
 
-    pollPrices(); // immediate snapshot
-    // Fallback poll every 30s — keeps prices fresh when WS feed is stale (e.g. weekend, reconnecting)
-    const pollId = setInterval(pollPrices, 30000);
+    pollPrices();
+    const pollId = setInterval(() => pollPrices(), 30000);
 
     return () => {
       cancelled = true;
       clearInterval(pollId);
+      clearTimeout(retryTimerRef.current);
       clearInterval(wsPingRef.current);
       clearTimeout(reconnectTimerRef.current);
       Object.values(flashTimersRef.current).forEach(clearTimeout);
@@ -1603,13 +1619,17 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
 
       {sharedModals}
 
-      <TopMoversTicker onMoverClick={(m) => {
-        setPrices(prev => prev[m.symbol] ? prev : {
-          ...prev,
-          [m.symbol]: { price: m.price, change_pct: m.pct, prev_close: m.prev_close }
-        });
-        setChartSym(m.symbol);
-      }} />
+      <TopMoversTicker
+        fallbackPrices={prices}
+        fallbackAssets={selectedAssets}
+        onMoverClick={(m) => {
+          setPrices(prev => prev[m.symbol] ? prev : {
+            ...prev,
+            [m.symbol]: { price: m.price, change_pct: m.pct, prev_close: m.prev_close }
+          });
+          setChartSym(m.symbol);
+        }}
+      />
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.75rem', position: 'relative' }}>

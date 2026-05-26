@@ -914,14 +914,39 @@ def _refresh_one_price(sym: str) -> tuple:
         pass
     return sym, None
 
+async def _seed_missing_background(stocks_missing: list, crypto_missing: list):
+    """Seed missing symbols into _live_prices in the background (non-blocking)."""
+    loop = asyncio.get_event_loop()
+    tasks = []
+    if stocks_missing:
+        tasks.append(loop.run_in_executor(None, _batch_seed_stocks, stocks_missing))
+    if crypto_missing:
+        def _fetch_crypto_batch(syms):
+            with ThreadPoolExecutor(max_workers=min(len(syms), 5)) as ex:
+                return list(ex.map(_fetch_one, syms))
+        tasks.append(loop.run_in_executor(None, _fetch_crypto_batch, crypto_missing))
+    try:
+        gathered = await asyncio.gather(*tasks, return_exceptions=True)
+        idx = 0
+        if stocks_missing:
+            batch = gathered[idx] if not isinstance(gathered[idx], Exception) else {}
+            idx += 1
+            for sym, data in (batch or {}).items():
+                _live_prices[sym] = data
+        if crypto_missing:
+            fallback = gathered[idx] if not isinstance(gathered[idx], Exception) else []
+            for sym, data in (fallback or []):
+                if data:
+                    _live_prices[sym] = {**data, "ts": time.time()}
+    except Exception as e:
+        print(f"[seed_missing] Error: {e}")
+
 @app.get("/api/prices")
 async def get_prices(symbols: str = ""):
     if not symbols:
         return {"prices": {}}
     symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
 
-    # Fast path: read from backend live price feed (instant, no network call)
-    # Fall back to yfinance if data is stale: >2 min for crypto (24/7), >10 min for stocks
     result = {}
     missing = []
     now_ts = time.time()
@@ -940,37 +965,13 @@ async def get_prices(symbols: str = ""):
     if missing:
         for sym in missing:
             asyncio.create_task(_pf_subscribe_sym(sym))
-
         stocks_missing = [s for s in missing if '-USD' not in s and '/' not in s]
         crypto_missing = [s for s in missing if '-USD' in s or '/' in s]
-        loop = asyncio.get_event_loop()
+        # Fire and forget — don't block the HTTP response waiting for yfinance
+        asyncio.create_task(_seed_missing_background(stocks_missing, crypto_missing))
 
-        # Both calls run in executor — never block the event loop with yfinance I/O
-        tasks = []
-        if stocks_missing:
-            tasks.append(loop.run_in_executor(None, _batch_seed_stocks, stocks_missing))
-        if crypto_missing:
-            def _fetch_crypto_batch(syms):
-                with ThreadPoolExecutor(max_workers=min(len(syms), 5)) as ex:
-                    return list(ex.map(_fetch_one, syms))
-            tasks.append(loop.run_in_executor(None, _fetch_crypto_batch, crypto_missing))
-
-        gathered = await asyncio.gather(*tasks, return_exceptions=True)
-        idx = 0
-        if stocks_missing:
-            batch = gathered[idx] if not isinstance(gathered[idx], Exception) else {}
-            idx += 1
-            for sym, data in (batch or {}).items():
-                result[sym] = {k: v for k, v in data.items() if k != "ts"}
-                _live_prices[sym] = data
-        if crypto_missing:
-            fallback = gathered[idx] if not isinstance(gathered[idx], Exception) else []
-            for sym, data in (fallback or []):
-                if data:
-                    result[sym] = data
-                    _live_prices[sym] = {**data, "ts": time.time()}
-
-    return {"prices": result}
+    # Return immediately with whatever is cached — client retries in 2s for missing symbols
+    return {"prices": result, "missing": missing}
 
 def _fetch_avg_volume_one(sym):
     cached = _cache_get(f'vol:{sym}', _VOL_TTL)
