@@ -9,11 +9,9 @@ export default defineConfig({
     chunkSizeWarningLimit: 700,
     rollupOptions: {
       output: {
-        manualChunks: {
-          // Cached forever — only re-downloads when React version changes
-          'vendor-react': ['react', 'react-dom'],
-          // Large geo lib, only used in AdminPanel (already lazy)
-          'vendor-maps': ['react-simple-maps'],
+        manualChunks(id) {
+          if (id.includes('/react/') || id.includes('/react-dom/')) return 'vendor-react';
+          if (id.includes('/react-simple-maps/')) return 'vendor-maps';
         },
       },
     },
