@@ -268,7 +268,10 @@ const Sparkline = React.memo(function Sparkline({ sym, prices }) {
 });
 
 function TopMoversTicker({ onMoverClick }) {
-  const [movers, setMovers] = useState([]);
+  const [movers, setMovers] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('sultrax_movers') || '[]'); }
+    catch { return []; }
+  });
   const hasDataRef = useRef(false);
 
   useEffect(() => {
@@ -280,19 +283,20 @@ function TopMoversTicker({ onMoverClick }) {
         .then(r => r.json())
         .then(d => {
           const m = (d.movers || []).slice(0, 20);
-          setMovers(m);
-          if (m.length > 0 && !hasDataRef.current) {
-            // Scanner just populated — switch to slow 60s poll
-            hasDataRef.current = true;
-            clearInterval(retryId);
-            retryId = null;
-            intervalId = setInterval(load, 60000);
+          if (m.length > 0) {
+            setMovers(m);
+            try { localStorage.setItem('sultrax_movers', JSON.stringify(m)); } catch {}
+            if (!hasDataRef.current) {
+              hasDataRef.current = true;
+              clearInterval(retryId);
+              retryId = null;
+              intervalId = setInterval(load, 60000);
+            }
           }
         })
         .catch(() => {});
 
     load();
-    // Fast retry every 8s until scanner cache is populated, then slow 60s poll
     retryId = setInterval(load, 8000);
     return () => { clearInterval(retryId); clearInterval(intervalId); };
   }, []);
@@ -430,7 +434,10 @@ function EditPanel({ userId, sessionToken, selectedAssets, thresholds, onSave, o
 
 export default function MainTerminal({ userId, sessionToken, selectedAssets, onSignOut, onSessionReplaced, onAssetsUpdate, isNative, onNavigateToZone, onNavigateToSettings, onNavigateToScanner }) {
   const [thresholds, setThresholds] = useState({});
-  const [prices, setPrices] = useState({});
+  const [prices, setPrices] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('sultrax_prices') || '{}'); }
+    catch { return {}; }
+  });
   const [history, setHistory] = useState({});
   const [avgVolumes, setAvgVolumes] = useState({});
   const [rvols, setRvols] = useState({});
@@ -439,7 +446,10 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
     catch { return []; }
   });
   const [lastUpdate, setLastUpdate] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => {
+    try { return Object.keys(JSON.parse(localStorage.getItem('sultrax_prices') || '{}')).length === 0; }
+    catch { return true; }
+  });
   const [wsStatus, setWsStatus] = useState('connecting');
   const [editing, setEditing] = useState(false);
   const [flashing, setFlashing] = useState({});
@@ -559,6 +569,15 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
   useEffect(() => {
     localStorage.setItem('sultrax_alerts', JSON.stringify(alerts));
   }, [alerts]);
+
+  // Save prices to localStorage every 5s — enables instant display on next page load
+  const priceSaveTimerRef = useRef(null);
+  useEffect(() => {
+    clearTimeout(priceSaveTimerRef.current);
+    priceSaveTimerRef.current = setTimeout(() => {
+      try { localStorage.setItem('sultrax_prices', JSON.stringify(prices)); } catch {}
+    }, 5000);
+  }, [prices]);
 
   useEffect(() => {
     const id = setInterval(() => {
