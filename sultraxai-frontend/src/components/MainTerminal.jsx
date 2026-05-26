@@ -1195,34 +1195,47 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
       <div style={{ position: 'fixed', inset: 0, background: '#020202', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <style>{`
           @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
-          @keyframes fadeIn { from{opacity:0;transform:translateY(-5px)} to{opacity:1;transform:translateY(0)} }
+          @keyframes fadeIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
           @keyframes newSignal { 0%,100%{box-shadow:none} 50%{box-shadow:0 0 0 2px #ff3333,0 0 16px rgba(255,51,51,0.5)} }
-          ::-webkit-scrollbar { width: 3px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #222; border-radius: 2px; }
+          @keyframes priceUp { 0%{color:#44cc44} 100%{color:inherit} }
+          @keyframes priceDown { 0%{color:#ff4444} 100%{color:inherit} }
+          ::-webkit-scrollbar { width: 3px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #1e1e1e; border-radius: 2px; }
+          * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
         `}</style>
         {sharedModals}
 
         {/* ── Native Header ── */}
-        <div style={{ paddingTop: '56px', paddingLeft: '20px', paddingRight: '20px', paddingBottom: '14px', background: '#020202', borderBottom: '1px solid #0f0f0f', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '900', letterSpacing: '0.07em', color: '#fff' }}>TERMINAL</h2>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '3px' }}>
-              <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: statusDot, animation: wsStatus === 'live' ? 'pulse 2s infinite' : 'none', boxShadow: wsStatus === 'live' ? `0 0 6px ${statusDot}` : 'none' }} />
-              <span style={{ fontSize: '0.62rem', color: statusDot, fontWeight: '700', letterSpacing: '0.06em' }}>{statusLabel}</span>
-              {lastUpdate && <span style={{ fontSize: '0.58rem', color: '#2a2a2a' }}>· {lastUpdate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>}
+        <div style={{ paddingTop: '56px', paddingLeft: '18px', paddingRight: '18px', paddingBottom: '12px', background: 'linear-gradient(180deg, #050505 0%, #020202 100%)', borderBottom: '1px solid #0f0f0f', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 34" style={{ width: '9px', height: '25px', flexShrink: 0 }}>
+                <defs>
+                  <linearGradient id="hb" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor="#6b0000"/><stop offset="38%" stopColor="#dd1515"/><stop offset="54%" stopColor="#ff5252"/><stop offset="100%" stopColor="#6b0000"/></linearGradient>
+                  <linearGradient id="hg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor="#3a0000"/><stop offset="50%" stopColor="#bb0f0f"/><stop offset="100%" stopColor="#3a0000"/></linearGradient>
+                </defs>
+                <polygon points="6,0 4,21 6,21.8 8,21" fill="url(#hb)"/>
+                <rect x="0" y="21" width="12" height="2.5" rx="1.25" fill="url(#hg)"/>
+                <rect x="4.8" y="23.5" width="2.4" height="7" rx="1.2" fill="#7a0000"/>
+                <circle cx="6" cy="32" r="2" fill="url(#hg)"/>
+                <circle cx="6" cy="32" r="0.9" fill="#cc1010"/>
+              </svg>
+              <span style={{ fontSize: '1.05rem', fontWeight: '800', letterSpacing: '0.06em', color: '#fff', fontFamily: "'Space Grotesk', sans-serif" }}>SULTRAXAI</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: statusDot, animation: wsStatus === 'live' ? 'pulse 2s infinite' : 'none', boxShadow: wsStatus === 'live' ? `0 0 8px ${statusDot}` : 'none' }} />
+              <span style={{ fontSize: '0.6rem', color: statusDot, fontWeight: '700', letterSpacing: '0.07em' }}>{statusLabel}</span>
+              {lastUpdate && <span style={{ fontSize: '0.57rem', color: '#2a2a2a' }}>· {lastUpdate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button onClick={() => setEditing(true)} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid #1e1e1e', color: '#666', padding: '7px 13px', borderRadius: '10px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: '600' }}>
+          <div style={{ display: 'flex', gap: '7px' }}>
+            <button onClick={() => setEditing(true)} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid #1e1e1e', color: '#555', padding: '8px 12px', borderRadius: '12px', cursor: 'pointer', fontSize: '0.68rem', fontWeight: '700', letterSpacing: '0.04em' }}>
               + LIST
             </button>
-            <button onClick={onNavigateToZone} style={{ background: 'rgba(68,136,255,0.08)', border: '1px solid rgba(68,136,255,0.2)', color: '#4488ff', padding: '7px 13px', borderRadius: '10px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: '700' }}>
+            <button onClick={onNavigateToZone} style={{ background: 'rgba(68,136,255,0.1)', border: '1px solid rgba(68,136,255,0.25)', color: '#5599ff', padding: '8px 12px', borderRadius: '12px', cursor: 'pointer', fontSize: '0.68rem', fontWeight: '700', letterSpacing: '0.04em' }}>
               ZONE
             </button>
-            <button onClick={onNavigateToSettings} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid #2a2a2a', color: '#666', padding: '7px 13px', borderRadius: '10px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: '700' }}>
+            <button onClick={onNavigateToSettings} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid #1e1e1e', color: '#444', padding: '8px 10px', borderRadius: '12px', cursor: 'pointer', fontSize: '0.85rem', lineHeight: 1 }}>
               ⚙
-            </button>
-            <button onClick={onSignOut} style={{ background: 'rgba(255,51,51,0.07)', border: '1px solid rgba(255,51,51,0.18)', color: '#ff4444', padding: '7px 13px', borderRadius: '10px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: '700' }}>
-              OUT
             </button>
           </div>
         </div>
@@ -1245,32 +1258,37 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
                 const rvolStyle = getRvolStyle(rvols[sym]);
                 return (
                   <div key={sym}
-                    style={{ background: cardBg, border: '1px solid #111', borderLeft: `3px solid ${status.color}`, borderRadius: '14px', padding: '14px 16px', cursor: 'pointer', transition: 'background 0.2s', animation: 'fadeIn 0.3s ease', boxShadow: status.label === 'ALERT' ? `0 0 20px ${status.color}12` : 'none' }}
+                    style={{ background: flash === 'up' ? 'rgba(68,204,68,0.06)' : flash === 'down' ? 'rgba(255,68,68,0.06)' : 'linear-gradient(145deg, #0c0c0c 0%, #080808 100%)', border: `1px solid ${status.label === 'ALERT' ? status.color + '55' : '#141414'}`, borderLeft: `3px solid ${status.color}`, borderRadius: '18px', padding: '15px 16px', cursor: 'pointer', transition: 'background 0.25s, border-color 0.25s', animation: 'fadeIn 0.3s ease', boxShadow: status.label === 'ALERT' ? `0 0 24px ${status.color}18, inset 0 1px 0 rgba(255,255,255,0.03)` : 'inset 0 1px 0 rgba(255,255,255,0.02)' }}
                     onClick={() => setChartSym(sym)}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '7px', flexWrap: 'wrap' }}>
-                          <span style={{ fontWeight: '800', fontSize: '0.95rem', color: '#fff' }}>{sym}</span>
-                          <span style={{ fontSize: '0.6rem', fontWeight: '700', color: status.color, background: `${status.color}18`, padding: '2px 8px', borderRadius: '20px' }}>{status.label}</span>
-                          {rvolStyle && <span style={{ fontSize: '0.58rem', fontWeight: '700', color: rvolStyle.color }}>{rvolStyle.icon} {rvols[sym].toFixed(1)}x</span>}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '9px', flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: '800', fontSize: '0.98rem', color: '#e8e8e8', letterSpacing: '0.02em', fontFamily: "'Space Grotesk', sans-serif" }}>{sym}</span>
+                          <span style={{ fontSize: '0.58rem', fontWeight: '700', color: status.color, background: `${status.color}15`, padding: '2px 9px', borderRadius: '20px', border: `1px solid ${status.color}30`, letterSpacing: '0.05em' }}>{status.label}</span>
+                          {rvolStyle && <span style={{ fontSize: '0.58rem', fontWeight: '700', color: rvolStyle.color, background: `${rvolStyle.color}12`, padding: '2px 7px', borderRadius: '10px' }}>{rvolStyle.icon} {rvols[sym].toFixed(1)}x</span>}
                           <button onClick={e => { e.stopPropagation(); setExpandedCard(prev => prev === sym ? null : sym); }}
-                            style={{ background: 'none', border: 'none', color: expandedCard === sym ? '#aaa' : '#2a2a2a', cursor: 'pointer', fontSize: '0.88rem', marginLeft: 'auto', padding: '2px 4px', lineHeight: 1 }}>⚙</button>
+                            style={{ background: 'none', border: 'none', color: expandedCard === sym ? '#888' : '#252525', cursor: 'pointer', fontSize: '0.85rem', marginLeft: 'auto', padding: '2px 4px', lineHeight: 1, transition: 'color 0.15s' }}>⚙</button>
                         </div>
-                        <div style={{ fontSize: '1.55rem', fontWeight: '800', fontVariantNumeric: 'tabular-nums', color: priceColor, transition: 'color 0.15s', lineHeight: 1.1 }}>
-                          {p ? `$${fmtPrice(p.price)}` : '—'}
-                        </div>
-                        <div style={{ fontSize: '0.82rem', fontWeight: '600', color: pct > 0 ? '#44cc44' : pct < 0 ? '#ff4444' : '#444', marginTop: '2px' }}>
-                          {pct != null ? `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%` : '—'}
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+                          <div style={{ fontSize: '1.7rem', fontWeight: '800', fontVariantNumeric: 'tabular-nums', color: priceColor, transition: 'color 0.15s', lineHeight: 1, fontFamily: "'Space Grotesk', sans-serif", letterSpacing: '-0.01em' }}>
+                            {p ? `$${fmtPrice(p.price)}` : '—'}
+                          </div>
+                          {pct != null && (
+                            <div style={{ fontSize: '0.85rem', fontWeight: '700', color: pct > 0 ? '#44cc44' : pct < 0 ? '#ff4444' : '#444', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                              <span style={{ fontSize: '0.65rem' }}>{pct > 0 ? '▲' : pct < 0 ? '▼' : ''}</span>
+                              {pct > 0 ? '+' : ''}{pct.toFixed(2)}%
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <div style={{ width: '110px', marginTop: '2px', flexShrink: 0 }}>
+                      <div style={{ width: '105px', marginTop: '4px', flexShrink: 0 }}>
                         <Sparkline sym={sym} prices={history[sym]} />
                       </div>
                     </div>
-                    <div style={{ marginTop: '10px', height: '2px', background: '#1a1a1a', borderRadius: '2px', overflow: 'hidden' }}>
-                      <div style={{ width: `${barWidth}%`, height: '100%', background: status.color, transition: 'width 0.4s' }} />
+                    <div style={{ marginTop: '12px', height: '2px', background: '#161616', borderRadius: '2px', overflow: 'hidden' }}>
+                      <div style={{ width: `${barWidth}%`, height: '100%', background: `linear-gradient(90deg, ${status.color}88, ${status.color})`, transition: 'width 0.4s', borderRadius: '2px' }} />
                     </div>
-                    <div style={{ fontSize: '0.6rem', color: '#2a2a2a', marginTop: '3px' }}>{barWidth.toFixed(0)}% of {t}% threshold</div>
+                    <div style={{ fontSize: '0.58rem', color: '#252525', marginTop: '4px', fontWeight: '500' }}>{barWidth.toFixed(0)}% of {t}% threshold</div>
 
                     {expandedCard === sym && (
                       <div onClick={e => e.stopPropagation()} style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid #1a1a1a' }}>
@@ -1446,21 +1464,27 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
         </div>
 
         {/* ── Bottom tab bar ── */}
-        <div style={{ flexShrink: 0, display: 'flex', background: '#070707', borderTop: '1px solid #0f0f0f', paddingBottom: '30px' }}>
+        <div style={{ flexShrink: 0, display: 'flex', background: 'linear-gradient(180deg, #040404 0%, #060606 100%)', borderTop: '1px solid #0f0f0f', paddingBottom: 'env(safe-area-inset-bottom, 24px)' }}>
           {[
-            { id: 'assets',  label: 'ASSETS',  count: 0 },
-            { id: 'signals', label: 'SIGNALS', count: signals.length },
-            { id: 'alerts',  label: 'ALERTS',  count: priceAlerts.length },
-          ].map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              style={{ flex: 1, background: 'none', border: 'none', cursor: 'pointer', padding: '13px 0 6px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
-              <span style={{ fontSize: '0.62rem', fontWeight: '700', letterSpacing: '0.1em', color: activeTab === tab.id ? '#fff' : '#333', transition: 'color 0.15s' }}>{tab.label}</span>
-              {tab.count > 0 && (
-                <span style={{ fontSize: '0.55rem', background: tab.id === 'signals' ? '#ff9900' : '#ff3333', color: '#fff', padding: '1px 6px', borderRadius: '8px', fontWeight: '700', lineHeight: 1.5 }}>{tab.count}</span>
-              )}
-              <div style={{ width: '20px', height: '2px', background: activeTab === tab.id ? '#ff3333' : 'transparent', borderRadius: '1px', transition: 'background 0.15s', marginTop: '2px' }} />
-            </button>
-          ))}
+            { id: 'assets',  label: 'Assets',  icon: '▦', count: 0 },
+            { id: 'signals', label: 'Signals', icon: '⚡', count: signals.length },
+            { id: 'alerts',  label: 'Alerts',  icon: '◉', count: priceAlerts.length },
+          ].map(tab => {
+            const active = activeTab === tab.id;
+            return (
+              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                style={{ flex: 1, background: 'none', border: 'none', cursor: 'pointer', padding: '12px 0 8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', position: 'relative' }}>
+                {active && <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: '36px', height: '2px', background: 'linear-gradient(90deg, #ff333388, #ff3333, #ff333388)', borderRadius: '0 0 2px 2px' }} />}
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '30px', borderRadius: '10px', background: active ? 'rgba(255,51,51,0.1)' : 'transparent', transition: 'background 0.2s' }}>
+                  <span style={{ fontSize: '1rem', lineHeight: 1, filter: active ? 'none' : 'opacity(0.3)', transition: 'filter 0.2s' }}>{tab.icon}</span>
+                  {tab.count > 0 && (
+                    <span style={{ position: 'absolute', top: '-2px', right: '-2px', fontSize: '0.5rem', background: tab.id === 'signals' ? '#ff9900' : '#ff3333', color: '#fff', padding: '1px 4px', borderRadius: '6px', fontWeight: '800', lineHeight: 1.4, minWidth: '14px', textAlign: 'center' }}>{tab.count > 9 ? '9+' : tab.count}</span>
+                  )}
+                </div>
+                <span style={{ fontSize: '0.6rem', fontWeight: active ? '700' : '500', color: active ? '#ccc' : '#2e2e2e', letterSpacing: '0.03em', transition: 'color 0.15s' }}>{tab.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
     );
@@ -1473,7 +1497,8 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
         @keyframes fadeIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
         @keyframes tickerScroll { 0%{transform:translateX(0)} 100%{transform:translateX(-33.333%)} }
-        ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
+        ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #1e1e1e; border-radius: 2px; }
+        * { font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
       `}</style>
 
       {sharedModals}
@@ -1523,32 +1548,37 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
             const rvolStyle = getRvolStyle(rvols[sym]);
 
             return (
-              <div key={sym} style={{ background: cardBg, border: `1px solid ${status.color}22`, borderLeft: `3px solid ${status.color}`, borderRadius: '16px', padding: '1.25rem', backdropFilter: 'blur(12px)', transition: 'background 0.2s ease, border-color 0.4s', animation: 'fadeIn 0.35s ease', boxShadow: status.label === 'ALERT' ? `0 0 24px ${status.color}18, 0 2px 8px rgba(0,0,0,0.4)` : '0 2px 8px rgba(0,0,0,0.3)', cursor: 'pointer', alignSelf: 'flex-start' }}
+              <div key={sym} style={{ background: flash === 'up' ? 'rgba(68,204,68,0.07)' : flash === 'down' ? 'rgba(255,68,68,0.07)' : 'linear-gradient(145deg, #0c0c0c, #080808)', border: `1px solid ${status.label === 'ALERT' ? status.color + '44' : '#141414'}`, borderLeft: `3px solid ${status.color}`, borderRadius: '18px', padding: '1.2rem', transition: 'background 0.25s ease, border-color 0.3s', animation: 'fadeIn 0.35s ease', boxShadow: status.label === 'ALERT' ? `0 0 28px ${status.color}18, inset 0 1px 0 rgba(255,255,255,0.03)` : 'inset 0 1px 0 rgba(255,255,255,0.02)', cursor: 'pointer', alignSelf: 'flex-start' }}
                 onClick={() => setChartSym(sym)}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                  <span style={{ fontWeight: '700', fontSize: '0.95rem' }}>{sym}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <span style={{ fontWeight: '800', fontSize: '0.95rem', color: '#e8e8e8', letterSpacing: '0.02em', fontFamily: "'Space Grotesk', sans-serif" }}>{sym}</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '0.65rem', fontWeight: '700', color: status.color, background: `${status.color}18`, padding: '3px 8px', borderRadius: '20px' }}>
+                    <span style={{ fontSize: '0.6rem', fontWeight: '700', color: status.color, background: `${status.color}15`, padding: '2px 9px', borderRadius: '20px', border: `1px solid ${status.color}28`, letterSpacing: '0.04em' }}>
                       {status.label}
                     </span>
                     <button onClick={e => { e.stopPropagation(); setExpandedCard(prev => prev === sym ? null : sym); }}
-                      style={{ background: 'none', border: 'none', color: expandedCard === sym ? '#fff' : '#444', cursor: 'pointer', fontSize: '0.85rem', lineHeight: 1, padding: '2px' }}>
+                      style={{ background: 'none', border: 'none', color: expandedCard === sym ? '#999' : '#2e2e2e', cursor: 'pointer', fontSize: '0.85rem', lineHeight: 1, padding: '2px', transition: 'color 0.15s' }}>
                       ⚙
                     </button>
                   </div>
                 </div>
 
                 {rvolStyle && (
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '0.6rem', fontWeight: '700', color: rvolStyle.color, background: rvolStyle.bg, border: `1px solid ${rvolStyle.border}`, padding: '2px 7px', borderRadius: '8px', marginBottom: '0.4rem' }}>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '0.58rem', fontWeight: '700', color: rvolStyle.color, background: rvolStyle.bg, border: `1px solid ${rvolStyle.border}`, padding: '2px 8px', borderRadius: '8px', marginBottom: '0.5rem' }}>
                     {rvolStyle.icon} {rvols[sym].toFixed(1)}x VOL
                   </div>
                 )}
 
-                <div style={{ fontSize: '1.45rem', fontWeight: '800', fontVariantNumeric: 'tabular-nums', color: priceColor, transition: 'color 0.15s ease' }}>
-                  {p ? `$${fmtPrice(p.price)}` : '—'}
-                </div>
-                <div style={{ fontSize: '0.82rem', fontWeight: '600', color: pct > 0 ? '#44cc44' : pct < 0 ? '#ff4444' : '#666', marginBottom: '0.6rem' }}>
-                  {pct != null ? `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%` : '—'}
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '0.5rem' }}>
+                  <div style={{ fontSize: '1.55rem', fontWeight: '800', fontVariantNumeric: 'tabular-nums', color: priceColor, transition: 'color 0.15s ease', fontFamily: "'Space Grotesk', sans-serif", letterSpacing: '-0.01em' }}>
+                    {p ? `$${fmtPrice(p.price)}` : '—'}
+                  </div>
+                  {pct != null && (
+                    <div style={{ fontSize: '0.82rem', fontWeight: '700', color: pct > 0 ? '#44cc44' : pct < 0 ? '#ff4444' : '#555', display: 'flex', alignItems: 'center', gap: '2px' }}>
+                      <span style={{ fontSize: '0.6rem' }}>{pct > 0 ? '▲' : pct < 0 ? '▼' : ''}</span>
+                      {pct > 0 ? '+' : ''}{pct.toFixed(2)}%
+                    </div>
+                  )}
                 </div>
 
                 <Sparkline sym={sym} prices={history[sym]} />
