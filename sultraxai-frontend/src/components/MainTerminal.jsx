@@ -515,54 +515,46 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
     return () => { window.removeEventListener('click', unlock); window.removeEventListener('touchstart', unlock); };
   }, []);
 
+  const _playTones = useCallback((tones) => {
+    if (soundMutedRef.current) return;
+    // Require prior user gesture — never create context spontaneously
+    if (!audioUnlockedRef.current) return;
+    if (!audioCtxRef.current) return;
+    const ctx = audioCtxRef.current;
+    const fire = () => {
+      try {
+        const t = ctx.currentTime;
+        tones.forEach(({ freq, startDelay = 0, duration, gain: vol }) => {
+          const osc = ctx.createOscillator(); const g = ctx.createGain();
+          osc.connect(g); g.connect(ctx.destination);
+          osc.type = 'sine'; osc.frequency.value = freq;
+          g.gain.setValueAtTime(startDelay > 0 ? 0 : vol, t);
+          if (startDelay > 0) g.gain.setValueAtTime(vol, t + startDelay);
+          g.gain.exponentialRampToValueAtTime(0.001, t + startDelay + duration);
+          osc.start(t + startDelay); osc.stop(t + startDelay + duration);
+        });
+      } catch {}
+    };
+    // If context was suspended (e.g. tab backgrounded), resume then play
+    if (ctx.state === 'running') fire();
+    else ctx.resume().then(fire).catch(() => {});
+  }, []);
+
   // Signal alert — ascending "di-ding" (880 → 1175 Hz)
   const playBeep = useCallback(() => {
-    if (soundMutedRef.current) return;
-    // Only play if context is fully unlocked and running — never try to resume outside a gesture
-    const ctx = audioCtxRef.current;
-    if (!ctx || ctx.state !== 'running') return;
-    try {
-      const now = ctx.currentTime;
-      const osc1 = ctx.createOscillator(); const g1 = ctx.createGain();
-      osc1.connect(g1); g1.connect(ctx.destination);
-      osc1.type = 'sine'; osc1.frequency.value = 880;
-      g1.gain.setValueAtTime(0.28, now);
-      g1.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-      osc1.start(now); osc1.stop(now + 0.12);
+    _playTones([
+      { freq: 880,  startDelay: 0,    duration: 0.12, gain: 0.28 },
+      { freq: 1175, startDelay: 0.10, duration: 0.45, gain: 0.30 },
+    ]);
+  }, [_playTones]);
 
-      const osc2 = ctx.createOscillator(); const g2 = ctx.createGain();
-      osc2.connect(g2); g2.connect(ctx.destination);
-      osc2.type = 'sine'; osc2.frequency.value = 1175;
-      g2.gain.setValueAtTime(0, now);
-      g2.gain.setValueAtTime(0.3, now + 0.1);
-      g2.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
-      osc2.start(now); osc2.stop(now + 0.55);
-    } catch {}
-  }, []);
-
-  // Price alert — single descending bell (1040 → 660 Hz), softer
+  // Price alert — descending bell (1040 → 660 Hz)
   const playPriceBeep = useCallback(() => {
-    if (soundMutedRef.current) return;
-    const ctx = audioCtxRef.current;
-    if (!ctx || ctx.state !== 'running') return;
-    try {
-      const now = ctx.currentTime;
-      const osc1 = ctx.createOscillator(); const g1 = ctx.createGain();
-      osc1.connect(g1); g1.connect(ctx.destination);
-      osc1.type = 'sine'; osc1.frequency.value = 1040;
-      g1.gain.setValueAtTime(0.22, now);
-      g1.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-      osc1.start(now); osc1.stop(now + 0.18);
-
-      const osc2 = ctx.createOscillator(); const g2 = ctx.createGain();
-      osc2.connect(g2); g2.connect(ctx.destination);
-      osc2.type = 'sine'; osc2.frequency.value = 660;
-      g2.gain.setValueAtTime(0, now);
-      g2.gain.setValueAtTime(0.25, now + 0.15);
-      g2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
-      osc2.start(now); osc2.stop(now + 0.6);
-    } catch {}
-  }, []);
+    _playTones([
+      { freq: 1040, startDelay: 0,    duration: 0.18, gain: 0.22 },
+      { freq: 660,  startDelay: 0.15, duration: 0.45, gain: 0.25 },
+    ]);
+  }, [_playTones]);
 
   useEffect(() => {
     localStorage.setItem('sultrax_alerts', JSON.stringify(alerts));
@@ -589,7 +581,7 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
       lastSoundIdRef.current = newest.id;
       playBeep();
     }
-  }, [alerts]);
+  }, [alerts, playBeep]);
 
   const lastPriceSoundIdRef = useRef(null);
   useEffect(() => {
@@ -600,7 +592,7 @@ export default function MainTerminal({ userId, sessionToken, selectedAssets, onS
       lastPriceSoundIdRef.current = newest.id;
       playPriceBeep();
     }
-  }, [alerts]);
+  }, [alerts, playPriceBeep]);
 
   useEffect(() => {
     selectedAssets.forEach(sym => {
